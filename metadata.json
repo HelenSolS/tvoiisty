@@ -1,0 +1,7 @@
+{
+  "name": "твоИИстиль",
+  "description": "Персональный AI-стилист и виртуальная примерочная.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
