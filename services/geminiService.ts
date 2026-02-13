@@ -1,12 +1,32 @@
-
 import { GoogleGenAI } from "@google/genai";
 
 const getBase64Data = (dataUrl: string) => {
   return dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
 };
 
+const getApiKey = () => {
+  // Для Vite на Vercel используем именно этот способ
+  // Мы используем 'as any', чтобы TypeScript не ругался на отсутствие типов env
+  const env = (import.meta as any).env;
+  const viteKey = env?.VITE_API_KEY;
+  
+  if (viteKey) return viteKey;
+
+  // Запасной вариант для локальной разработки или других сред
+  try {
+    if (typeof process !== 'undefined' && process.env?.API_KEY) {
+      return process.env.API_KEY;
+    }
+  } catch (e) {}
+
+  return "";
+};
+
 export const describeOutfit = async (base64Image: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const key = getApiKey();
+  if (!key) throw new Error("Ключ API не найден. Проверьте настройки VITE_API_KEY в Vercel.");
+
+  const ai = new GoogleGenAI({ apiKey: key });
   
   try {
     const response = await ai.models.generateContent({
@@ -38,7 +58,10 @@ export const generateTryOn = async (
   outfitBase64: string,
   outfitDescription: string
 ): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const key = getApiKey();
+  if (!key) throw new Error("Ключ API не найден.");
+
+  const ai = new GoogleGenAI({ apiKey: key });
 
   const prompt = `
     ЗАДАЧА: ВИРТУАЛЬНАЯ ПРИМЕРКА ОДЕЖДЫ ВО ВЕСЬ РОСТ.
@@ -77,9 +100,12 @@ export const generateTryOn = async (
       }
     });
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
+    const candidates = response.candidates;
+    if (candidates && candidates.length > 0) {
+      for (const part of candidates[0].content.parts) {
+        if (part.inlineData) {
+          return `data:image/png;base64,${part.inlineData.data}`;
+        }
       }
     }
   } catch (e) {
