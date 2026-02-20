@@ -8,8 +8,22 @@
 type Req = { method?: string; body?: Record<string, unknown> };
 type Res = { status: (n: number) => { json: (o: object) => void } };
 
-const KIE_BASE = 'https://api.kie.ai/api/v1';
+const DEFAULT_KIE_BASE = 'https://api.kie.ai/api/v1';
 const POLL_INTERVAL_MS = 3000;
+
+type ProviderId = 'default' | 'backup';
+
+function getKieConfig(provider: ProviderId): { base: string; apiKey: string | undefined } {
+  if (provider === 'backup') {
+    const base = process.env.KIE_BACKUP_BASE_URL;
+    const apiKey = process.env.KIE_BACKUP_API_KEY;
+    if (base && apiKey) return { base: base.replace(/\/$/, ''), apiKey };
+  }
+  return {
+    base: (process.env.KIE_BASE_URL || DEFAULT_KIE_BASE).replace(/\/$/, ''),
+    apiKey: process.env.KIE_API_KEY,
+  };
+}
 const POLL_MAX_ATTEMPTS = 80;
 
 const DEFAULT_VIDEO_PROMPT =
@@ -40,11 +54,13 @@ export default async function handler(req: Req, res: Res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.KIE_API_KEY;
+  const provider = (req.body?.provider === 'backup' ? 'backup' : 'default') as ProviderId;
+  const { base: KIE_BASE, apiKey } = getKieConfig(provider);
   if (!apiKey) {
-    console.error('[generate-video] KIE_API_KEY not set in environment');
+    console.error('[generate-video] API key not set for provider', provider);
     return res.status(500).json({ error: 'Сервис временно недоступен. Попробуйте позже.' });
   }
+  console.error('[generate-video] provider', provider);
 
   try {
     const { imageUrl, prompt } = (req.body || {}) as { imageUrl?: string; prompt?: string };

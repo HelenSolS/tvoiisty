@@ -69,9 +69,10 @@
 
 ### Переменные окружения (Vercel)
 
-- **KIE_API_KEY** — обязателен для примерки и видео.
+- **KIE_API_KEY** — обязателен для примерки и видео (основной провайдер).
 - **KIE_IMAGE_MODEL** — опционально, по умолчанию `flux-2/flex-image-to-image`.
-- **BLOB_READ_WRITE_TOKEN** — **обязателен для примерки**, если фронт шлёт data-URL/base64. Хранилище Blob должно быть **публичным (Public)**: KIE по нашим URL сам запрашивает картинки; если URL на `private.blob.vercel-storage.com`, их серверы не имеют доступа → «Your media file is unavailable». В Vercel: **Storage** → **Blob** → создать хранилище с **Public** доступом, токен этого хранилища задать как `BLOB_READ_WRITE_TOKEN`.
+- **BLOB_READ_WRITE_TOKEN** — **обязателен для примерки**, если фронт шлёт data-URL/base64.
+- **Переключатель нейросети:** в настройках приложения пользователь может выбрать «Основной» или «Резервный». Для резервного задай **KIE_BACKUP_BASE_URL** и **KIE_BACKUP_API_KEY**. Если не заданы — при выборе «Резервный» используется основной. Опционально **KIE_BASE_URL** — базовый URL основного провайдера (по умолчанию `https://api.kie.ai/api/v1`). Хранилище Blob должно быть **публичным (Public)**: KIE по нашим URL сам запрашивает картинки; если URL на `private.blob.vercel-storage.com`, их серверы не имеют доступа → «Your media file is unavailable». В Vercel: **Storage** → **Blob** → создать хранилище с **Public** доступом, токен этого хранилища задать как `BLOB_READ_WRITE_TOKEN`.
 
 Ключи используются только в serverless-функциях (`api/*`), на фронт не передаются.
 

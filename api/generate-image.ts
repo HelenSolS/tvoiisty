@@ -6,8 +6,22 @@
 
 import { put } from '@vercel/blob';
 
-const KIE_BASE = 'https://api.kie.ai/api/v1';
+const DEFAULT_KIE_BASE = 'https://api.kie.ai/api/v1';
 const POLL_INTERVAL_MS = 2000;
+
+type ProviderId = 'default' | 'backup';
+
+function getKieConfig(provider: ProviderId): { base: string; apiKey: string | undefined } {
+  if (provider === 'backup') {
+    const base = process.env.KIE_BACKUP_BASE_URL;
+    const apiKey = process.env.KIE_BACKUP_API_KEY;
+    if (base && apiKey) return { base: base.replace(/\/$/, ''), apiKey };
+  }
+  return {
+    base: (process.env.KIE_BASE_URL || DEFAULT_KIE_BASE).replace(/\/$/, ''),
+    apiKey: process.env.KIE_API_KEY,
+  };
+}
 const POLL_MAX_ATTEMPTS = 60; // ~2 минуты макс
 const MODEL_IMAGE = process.env.KIE_IMAGE_MODEL || 'flux-2/flex-image-to-image';
 
@@ -37,13 +51,15 @@ export default async function handler(
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.KIE_API_KEY;
+  const provider = ((req.body as Record<string, unknown>)?.provider === 'backup' ? 'backup' : 'default') as ProviderId;
+  const { base: KIE_BASE, apiKey } = getKieConfig(provider);
   if (!apiKey) {
-    console.error('[generate-image] KIE_API_KEY not set in environment');
+    console.error('[generate-image] API key not set for provider', provider);
     return res
       .status(500)
       .json({ error: 'Сервис временно недоступен. Попробуйте позже.' });
   }
+  console.error('[generate-image] provider', provider, 'base', KIE_BASE);
 
   try {
     const { personImageBase64, clothingImageBase64, prompt } = (req.body ||

@@ -1,9 +1,28 @@
 /**
  * Сервис примерки и видео. Вызывает только наш backend (/api/...).
  * Ключи KIE на фронте не используются и не передаются.
+ * Провайдер (нейросеть) выбирается в настройках и передаётся в теле запроса.
  */
 
 const API_BASE = ''; // тот же origin: Vercel отдаёт и SPA, и /api
+
+export type AiProviderId = 'default' | 'backup';
+
+const PROVIDER_STORAGE_KEY = 'tvoisty_ai_provider';
+
+export function getAiProvider(): AiProviderId {
+  try {
+    const v = localStorage.getItem(PROVIDER_STORAGE_KEY);
+    if (v === 'backup' || v === 'default') return v;
+  } catch {}
+  return 'default';
+}
+
+export function setAiProvider(provider: AiProviderId): void {
+  try {
+    localStorage.setItem(PROVIDER_STORAGE_KEY, provider);
+  } catch {}
+}
 
 /** Описание образа для подсказки KIE (пока заглушка). */
 async function describeOutfit(_imageUrl: string): Promise<string> {
@@ -17,8 +36,10 @@ async function describeOutfit(_imageUrl: string): Promise<string> {
 async function generateTryOn(
   personImageBase64: string,
   clothingImageBase64: string,
-  prompt?: string
+  prompt?: string,
+  provider?: AiProviderId
 ): Promise<string> {
+  const p = provider ?? getAiProvider();
   const res = await fetch(`${API_BASE}/api/generate-image`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -26,6 +47,7 @@ async function generateTryOn(
       personImageBase64,
       clothingImageBase64,
       prompt: prompt || undefined,
+      provider: p,
     }),
   });
 
@@ -46,11 +68,12 @@ async function generateTryOn(
  * Генерация видео по URL результата примерки. Один клик = один вызов backend/KIE.
  * Возвращает URL готового видео.
  */
-async function generateVideo(resultImageUrl: string): Promise<string> {
+async function generateVideo(resultImageUrl: string, provider?: AiProviderId): Promise<string> {
+  const p = provider ?? getAiProvider();
   const res = await fetch(`${API_BASE}/api/generate-video`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ imageUrl: resultImageUrl }),
+    body: JSON.stringify({ imageUrl: resultImageUrl, provider: p }),
   });
 
   const data = await res.json();

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { ImageUploader } from './components/ImageUploader';
-import { describeOutfit, generateTryOn, generateVideo } from './services/geminiService';
+import { describeOutfit, generateTryOn, generateVideo, getAiProvider, setAiProvider, type AiProviderId } from './services/geminiService';
 import { TryOnState, User, CuratedOutfit, PersonGalleryItem, HistoryItem, AppTheme, CategoryType } from './types';
 
 const INITIAL_BOUTIQUE: CuratedOutfit[] = [
@@ -54,6 +54,12 @@ const App: React.FC = () => {
   const [resultVideoUrl, setResultVideoUrl] = useState<string | null>(null);
   const [isVideoProcessing, setIsVideoProcessing] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
+  /** Выбор нейросети для примерки и видео (Основной / Резервный). Сохраняется в localStorage. */
+  const [aiProvider, setAiProviderState] = useState<AiProviderId>('default');
+  /** Видео, созданное из фото в архиве (в модалке просмотра). */
+  const [archiveVideoUrl, setArchiveVideoUrl] = useState<string | null>(null);
+  const [archiveVideoError, setArchiveVideoError] = useState<string | null>(null);
+  const [isArchiveVideoProcessing, setIsArchiveVideoProcessing] = useState(false);
 
   const initUser = () => {
     const guest: User = { 
@@ -84,6 +90,8 @@ const App: React.FC = () => {
       } else {
         initUser();
       }
+      const provider = getAiProvider();
+      setAiProviderState(provider);
     } catch (e) { 
       console.error(e);
       initUser();
@@ -480,6 +488,26 @@ const App: React.FC = () => {
             ) : (
               <div className="p-10 space-y-12 animate-in fade-in">
                 <h3 className="serif text-3xl font-black italic text-center">Настройки</h3>
+
+                <div className="space-y-3">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 text-center">Нейросеть для примерки и видео</p>
+                  <div className="flex gap-4 justify-center flex-wrap">
+                    <button
+                      onClick={() => { setAiProvider('default'); setAiProviderState('default'); }}
+                      className={`py-4 px-6 rounded-2xl border-2 text-[10px] font-black uppercase tracking-widest transition-all ${aiProvider === 'default' ? 'border-theme bg-theme/10 text-theme' : 'border-gray-200 text-gray-400'}`}
+                    >
+                      Основной
+                    </button>
+                    <button
+                      onClick={() => { setAiProvider('backup'); setAiProviderState('backup'); }}
+                      className={`py-4 px-6 rounded-2xl border-2 text-[10px] font-black uppercase tracking-widest transition-all ${aiProvider === 'backup' ? 'border-theme bg-theme/10 text-theme' : 'border-gray-200 text-gray-400'}`}
+                    >
+                      Резервный
+                    </button>
+                  </div>
+                  <p className="text-[9px] text-gray-400 text-center">Выберите, на какой сервер отправлять запросы. Можно переключать и тестировать.</p>
+                </div>
+
                 <div className="flex justify-center gap-8">
                     <button onClick={() => { const u = { ...user!, theme: 'turquoise' as AppTheme }; setUser(u); saveToStorage('user', u); document.body.className = 'theme-turquoise'; }} className={`w-14 h-14 rounded-full bg-[#0d9488] border-4 ${user?.theme === 'turquoise' ? 'border-white scale-125 shadow-2xl' : 'border-transparent opacity-30'} transition-all`}></button>
                     <button onClick={() => { const u = { ...user!, theme: 'lavender' as AppTheme }; setUser(u); saveToStorage('user', u); document.body.className = 'theme-lavender'; }} className={`w-14 h-14 rounded-full bg-[#8b5cf6] border-4 ${user?.theme === 'lavender' ? 'border-white scale-125 shadow-2xl' : 'border-transparent opacity-30'} transition-all`}></button>
@@ -549,11 +577,11 @@ const App: React.FC = () => {
 
       {/* Selected History Item Modal */}
       {selectedHistoryItem && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-white/98 backdrop-blur-3xl p-6 animate-in zoom-in-95">
-           <div className="w-full max-w-[420px] h-full flex flex-col pt-10">
-              <button onClick={() => setSelectedHistoryItem(null)} className="absolute top-10 right-8 text-gray-400"><svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
-              <div className="relative rounded-[3.5rem] overflow-hidden shadow-4xl aspect-[3/4] border-[10px] border-white ring-1 ring-gray-100 mt-10">
-                <img src={selectedHistoryItem.resultUrl} className="w-full h-full object-cover" />
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-white/98 backdrop-blur-3xl p-6 animate-in zoom-in-95 overflow-y-auto">
+           <div className="w-full max-w-[420px] min-h-full flex flex-col pt-10 pb-24">
+              <button onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }} className="absolute top-10 right-8 text-gray-400 z-10"><svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+              <div className="relative rounded-[3.5rem] overflow-hidden shadow-4xl aspect-[3/4] border-[10px] border-white ring-1 ring-gray-100 mt-10 shrink-0">
+                <img src={selectedHistoryItem.resultUrl} className="w-full h-full object-cover" alt="" />
               </div>
               <div className="mt-10 grid grid-cols-2 gap-4">
                  <button 
@@ -562,14 +590,55 @@ const App: React.FC = () => {
                  >
                    Купить в магазине
                  </button>
+                 <button
+                   onClick={async () => {
+                     setArchiveVideoUrl(null);
+                     setArchiveVideoError(null);
+                     setIsArchiveVideoProcessing(true);
+                     try {
+                       const url = await generateVideo(selectedHistoryItem!.resultUrl);
+                       setArchiveVideoUrl(url);
+                     } catch (err: unknown) {
+                       const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
+                       setArchiveVideoError(msg);
+                     } finally {
+                       setIsArchiveVideoProcessing(false);
+                     }
+                   }}
+                   disabled={isArchiveVideoProcessing}
+                   className="col-span-2 py-5 bg-white border-2 border-theme text-theme rounded-3xl font-black text-[10px] uppercase tracking-widest shadow-xl disabled:opacity-50 flex items-center justify-center gap-2"
+                 >
+                   {isArchiveVideoProcessing ? 'Создаём видео...' : 'Анимировать'}
+                 </button>
                  <button onClick={() => { 
                    const link = document.createElement('a');
                    link.href = selectedHistoryItem.resultUrl;
                    link.download = 'look.png';
                    link.click();
-                 }} className="py-4 bg-white border border-gray-100 rounded-3xl font-black text-[9px] uppercase tracking-widest">Скачать</button>
+                 }} className="py-4 bg-white border border-gray-100 rounded-3xl font-black text-[9px] uppercase tracking-widest">Скачать фото</button>
                  <button onClick={() => setSocialModal(selectedHistoryItem.resultUrl)} className="py-4 bg-white border border-gray-100 rounded-3xl font-black text-[9px] uppercase tracking-widest">Поделиться</button>
-                 <button onClick={() => setSelectedHistoryItem(null)} className="col-span-2 py-4 text-gray-400 font-black text-[9px] uppercase tracking-widest">Закрыть</button>
+                 {archiveVideoError && (
+                   <p className="col-span-2 text-red-500 text-[9px] font-bold uppercase text-center py-2">{archiveVideoError}</p>
+                 )}
+                 {archiveVideoUrl && (
+                   <>
+                     <div className="col-span-2 rounded-2xl overflow-hidden border-2 border-white shadow-xl aspect-[9/16] max-h-64 bg-black">
+                       <video src={archiveVideoUrl} className="w-full h-full object-contain" controls playsInline />
+                     </div>
+                     <button
+                       onClick={() => {
+                         const link = document.createElement('a');
+                         link.href = archiveVideoUrl;
+                         link.download = 'look.mp4';
+                         link.click();
+                       }}
+                       className="col-span-2 py-4 btn-theme rounded-3xl font-black text-[9px] uppercase tracking-widest"
+                     >
+                       Скачать видео
+                     </button>
+                   </>
+                 )}
+                 <button onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }} className="col-span-2 py-4 text-gray-400 font-black text-[9px] uppercase tracking-widest">Закрыть</button>
               </div>
            </div>
         </div>
