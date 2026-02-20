@@ -11,6 +11,7 @@
     "server": "tsx server.ts"
   },
   "dependencies": {
+    "@vercel/blob": "^0.25.0",
     "@google/genai": "^1.41.0",
     "dotenv": "^16.6.1",
     "express": "^4.22.1",

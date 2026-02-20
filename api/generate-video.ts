@@ -1,6 +1,6 @@
 /**
  * Backend-эндпоинт: генерация видео из результата примерки через KIE Veo.
- * Как в backend/kieClient: veo/generate + veo/record-info, veo3, 9:16, imageUrls.
+ * Тот же префикс, что и для картинки: https://api.kie.ai/api/v1/... (veo/generate, veo/record-info).
  * Ключ только на бэкенде (process.env.KIE_API_KEY).
  */
 

@@ -1,13 +1,32 @@
 /**
  * Backend-эндпоинт: примерка (try-on) через KIE.
  * Ключ KIE читается только здесь (process.env.KIE_API_KEY), на фронт не передаётся.
- * Один запрос = один вызов KIE: createTask (модель из KIE_IMAGE_MODEL) + опрос до готовности → возврат URL картинки.
+ * Эндпоинт: POST https://api.kie.ai/api/v1/jobs/createTask. KIE принимает в input_urls только https-URL; data/base64 загружаем в Vercel Blob.
  */
+
+import { put } from '@vercel/blob';
 
 const KIE_BASE = 'https://api.kie.ai/api/v1';
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_ATTEMPTS = 60; // ~2 минуты макс
 const MODEL_IMAGE = process.env.KIE_IMAGE_MODEL || 'flux-2/flex-image-to-image';
+
+/** Если строка не https-URL — загружаем в Blob и возвращаем URL. Иначе возвращаем как есть. */
+async function ensureHttpsUrl(value: string, filename: string): Promise<string> {
+  if (value.startsWith('https://')) return value;
+  let base64 = value;
+  if (value.startsWith('data:')) {
+    const i = value.indexOf(',');
+    if (i === -1) throw new Error('Invalid data URL');
+    base64 = value.slice(i + 1);
+  }
+  const buf = Buffer.from(base64, 'base64');
+  const blob = await put(`tryon/${Date.now()}-${filename}`, buf, { access: 'public' });
+  if (blob.url.includes('private.blob.vercel-storage.com')) {
+    console.error('[generate-image] Blob URL is private — KIE cannot fetch it. Create a PUBLIC Blob store in Vercel (Storage → Blob) and set BLOB_READ_WRITE_TOKEN from that store.');
+  }
+  return blob.url;
+}
 
 // Эндпоинт Vercel Serverless: (req, res) — типы через any, чтобы не тянуть @vercel/node
 export default async function handler(
@@ -34,18 +53,47 @@ export default async function handler(
       prompt?: string;
     };
 
+    // Лог для анализа 422/413: только размеры, без содержимого и ключей
+    console.error('[generate-image] request', {
+      personLen: personImageBase64?.length ?? 0,
+      clothingLen: clothingImageBase64?.length ?? 0,
+      promptLen: prompt?.length ?? 0,
+    });
+
     if (!personImageBase64 || !clothingImageBase64) {
       return res
         .status(400)
         .json({ error: 'Недостаточно данных для примерки.' });
     }
 
-    // 1) KIE createTask: модель flux-2/flex-image-to-image, input — строка JSON (aspect_ratio, prompt, resolution, input_urls)
+    const needUpload = !personImageBase64.startsWith('https://') || !clothingImageBase64.startsWith('https://');
+    if (needUpload && !process.env.BLOB_READ_WRITE_TOKEN) {
+      console.error('[generate-image] BLOB_READ_WRITE_TOKEN not set — add Blob Store in Vercel (Storage → Blob) and set env var');
+      return res
+        .status(503)
+        .json({ error: 'Сервис временно недоступен. Попробуйте позже.' });
+    }
+
+    let personUrl: string;
+    let clothingUrl: string;
+    try {
+      [personUrl, clothingUrl] = await Promise.all([
+        ensureHttpsUrl(personImageBase64, 'person.png'),
+        ensureHttpsUrl(clothingImageBase64, 'clothing.png'),
+      ]);
+    } catch (e) {
+      console.error('[generate-image] upload to Blob failed', e);
+      return res
+        .status(502)
+        .json({ error: 'Не удалось подготовить изображения. Попробуйте позже.' });
+    }
+
+    // 1) KIE jobs/createTask (input_urls — только https-URL)
     const inputPayload = {
       aspect_ratio: '1:1',
       prompt: prompt || 'Virtual try-on: dress the person in the outfit from the second image naturally.',
       resolution: '1K',
-      input_urls: [personImageBase64, clothingImageBase64],
+      input_urls: [personUrl, clothingUrl],
     };
     const createRes = await fetch(`${KIE_BASE}/jobs/createTask`, {
       method: 'POST',
@@ -171,14 +219,10 @@ export default async function handler(
       }
 
       if (state === 'fail') {
-        console.error(
-          '[generate-image] job state=fail',
-          jobData?.data?.failMsg,
-        );
+        // В лог — сырой текст от KIE для отладки; клиенту — только русский
+        console.error('[generate-image] job state=fail', jobData?.data?.failMsg);
         return res.status(422).json({
-          error:
-            jobData?.data?.failMsg ||
-            'Генерация не удалась. Попробуйте снова.',
+          error: 'Генерация не удалась. Попробуйте снова.',
         });
       }
 
