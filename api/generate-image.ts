@@ -1,13 +1,30 @@
 /**
  * Backend-эндпоинт: примерка (try-on) через KIE.
  * Ключ KIE читается только здесь (process.env.KIE_API_KEY), на фронт не передаётся.
- * Один запрос = один вызов KIE: createTask (модель из KIE_IMAGE_MODEL) + опрос до готовности → возврат URL картинки.
+ * Эндпоинт: POST https://api.kie.ai/api/v1/jobs/createTask (важно: префикс /api/v1/).
+ * KIE принимает в input_urls только https-URL; data/base64 загружаем в Vercel Blob и подставляем URL.
  */
+
+import { put } from '@vercel/blob';
 
 const KIE_BASE = 'https://api.kie.ai/api/v1';
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_ATTEMPTS = 60; // ~2 минуты макс
 const MODEL_IMAGE = process.env.KIE_IMAGE_MODEL || 'flux-2/flex-image-to-image';
+
+/** Если строка не https-URL — загружаем в Blob и возвращаем URL. Иначе возвращаем как есть. */
+async function ensureHttpsUrl(value: string, filename: string): Promise<string> {
+  if (value.startsWith('https://')) return value;
+  let base64 = value;
+  if (value.startsWith('data:')) {
+    const i = value.indexOf(',');
+    if (i === -1) throw new Error('Invalid data URL');
+    base64 = value.slice(i + 1);
+  }
+  const buf = Buffer.from(base64, 'base64');
+  const blob = await put(`tryon/${Date.now()}-${filename}`, buf, { access: 'public' });
+  return blob.url;
+}
 
 // Эндпоинт Vercel Serverless: (req, res) — типы через any, чтобы не тянуть @vercel/node
 export default async function handler(
@@ -40,12 +57,27 @@ export default async function handler(
         .json({ error: 'Недостаточно данных для примерки.' });
     }
 
-    // 1) KIE createTask: модель flux-2/flex-image-to-image, input — строка JSON (aspect_ratio, prompt, resolution, input_urls)
+    // KIE ждёт в input_urls только https-URL; data/base64 загружаем в Blob
+    let personUrl: string;
+    let clothingUrl: string;
+    try {
+      [personUrl, clothingUrl] = await Promise.all([
+        ensureHttpsUrl(personImageBase64, 'person.png'),
+        ensureHttpsUrl(clothingImageBase64, 'clothing.png'),
+      ]);
+    } catch (e) {
+      console.error('[generate-image] upload to Blob failed', e);
+      return res
+        .status(502)
+        .json({ error: 'Не удалось подготовить изображения. Попробуйте позже.' });
+    }
+
+    // 1) KIE jobs/createTask (важно: базовый URL с /api/v1/)
     const inputPayload = {
       aspect_ratio: '1:1',
       prompt: prompt || 'Virtual try-on: dress the person in the outfit from the second image naturally.',
       resolution: '1K',
-      input_urls: [personImageBase64, clothingImageBase64],
+      input_urls: [personUrl, clothingUrl],
     };
     const createRes = await fetch(`${KIE_BASE}/jobs/createTask`, {
       method: 'POST',
