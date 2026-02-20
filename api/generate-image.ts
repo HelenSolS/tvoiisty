@@ -22,7 +22,7 @@ async function ensureHttpsUrl(value: string, filename: string): Promise<string> 
     base64 = value.slice(i + 1);
   }
   const buf = Buffer.from(base64, 'base64');
-  const blob = await put(`tryon/${Date.now()}-${filename}`, buf, { access: 'private' });
+  const blob = await put(`tryon/${Date.now()}-${filename}`, buf, { access: 'public' });
   return blob.url;
 }
 
