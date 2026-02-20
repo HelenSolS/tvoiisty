@@ -17,7 +17,8 @@ export default async function handler(req: { method?: string; body?: Record<stri
 
   const apiKey = process.env.KIE_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: 'KIE_API_KEY не задан на сервере' });
+    console.error('[generate-image] KIE_API_KEY not set in environment');
+    return res.status(500).json({ error: 'Сервис временно недоступен. Попробуйте позже.' });
   }
 
   try {
@@ -28,7 +29,7 @@ export default async function handler(req: { method?: string; body?: Record<stri
     };
 
     if (!personImageBase64 || !clothingImageBase64) {
-      return res.status(400).json({ error: 'Нужны personImageBase64 и clothingImageBase64' });
+      return res.status(400).json({ error: 'Недостаточно данных для примерки.' });
     }
 
     // 1) Создать задачу в KIE (flux2)
@@ -47,16 +48,27 @@ export default async function handler(req: { method?: string; body?: Record<stri
       }),
     });
 
-    const createData = await createRes.json();
+    let createData: { data?: { taskId?: string }; message?: string; msg?: string } = {};
+    try {
+      createData = await createRes.json();
+    } catch (e) {
+      console.error('[generate-image] createTask response not JSON', e);
+      return res.status(502).json({ error: 'Не удалось сгенерировать изображение. Попробуйте позже.' });
+    }
     if (!createRes.ok) {
-      return res.status(createRes.status).json({
-        error: createData?.message || 'Ошибка KIE при создании задачи',
-      });
+      console.error('[generate-image] createTask HTTP', createRes.status, createData);
+      return res.status(502).json({ error: 'Не удалось сгенерировать изображение. Попробуйте позже.' });
+    }
+    const code = (createData as { code?: number }).code;
+    if (code !== undefined && code !== 200) {
+      console.error('[generate-image] createTask body code', code, createData?.msg || createData?.message);
+      return res.status(502).json({ error: 'Не удалось сгенерировать изображение. Попробуйте позже.' });
     }
 
     const taskId = createData?.data?.taskId;
     if (!taskId) {
-      return res.status(500).json({ error: 'KIE не вернул taskId' });
+      console.error('[generate-image] createTask no taskId in response', createData);
+      return res.status(502).json({ error: 'Не удалось сгенерировать изображение. Попробуйте позже.' });
     }
 
     // 2) Опрос результата: KIE — GET jobs/recordInfo?taskId=..., state: success|fail, resultJson с resultUrls
@@ -64,12 +76,15 @@ export default async function handler(req: { method?: string; body?: Record<stri
       const jobRes = await fetch(`${KIE_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
-      const jobData = await jobRes.json();
-
+      let jobData: { data?: { state?: string; resultJson?: string; failMsg?: string }; message?: string } = {};
+      try {
+        jobData = await jobRes.json();
+      } catch {
+        continue; // повторить опрос
+      }
       if (!jobRes.ok) {
-        return res.status(jobRes.status).json({
-          error: jobData?.message || 'Ошибка при получении результата',
-        });
+        console.error('[generate-image] recordInfo HTTP', jobRes.status, jobData);
+        return res.status(502).json({ error: 'Не удалось получить результат. Попробуйте позже.' });
       }
 
       const state = jobData?.data?.state;
@@ -85,9 +100,11 @@ export default async function handler(req: { method?: string; body?: Record<stri
           // ignore
         }
         if (imageUrl) return res.status(200).json({ imageUrl });
-        return res.status(500).json({ error: 'Результат без URL изображения' });
+        console.error('[generate-image] success state but no imageUrl in resultJson', jobData?.data);
+        return res.status(500).json({ error: 'Не удалось сгенерировать изображение. Попробуйте позже.' });
       }
       if (state === 'fail') {
+        console.error('[generate-image] job state=fail', jobData?.data?.failMsg);
         return res.status(422).json({
           error: jobData?.data?.failMsg || 'Генерация не удалась. Попробуйте снова.',
         });
@@ -100,7 +117,7 @@ export default async function handler(req: { method?: string; body?: Record<stri
       error: 'Превышено время ожидания. Попробуйте ещё раз.',
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Ошибка сервера';
-    return res.status(500).json({ error: message });
+    console.error('[generate-image]', err);
+    return res.status(500).json({ error: 'Сервис временно недоступен. Попробуйте позже.' });
   }
 }

@@ -1,7 +1,7 @@
 /**
- * Backend-эндпоинт: генерация видео из результата примерки через KIE.
+ * Backend-эндпоинт: генерация видео из результата примерки через KIE Veo.
+ * Как в backend/kieClient: veo/generate + veo/record-info, veo3, 9:16, imageUrls.
  * Ключ только на бэкенде (process.env.KIE_API_KEY).
- * Один запрос = один вызов KIE (видео-модель: Minimax / Hailuo / и т.д. — см. MODEL_VIDEO).
  */
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -10,9 +10,30 @@ type Res = { status: (n: number) => { json: (o: object) => void } };
 
 const KIE_BASE = 'https://api.kie.ai/api/v1';
 const POLL_INTERVAL_MS = 3000;
-const POLL_MAX_ATTEMPTS = 80; // до ~4 минут для видео
-// Модель видео в KIE — при необходимости замени на актуальную (minimax, hailuo, veo, grok и т.д.)
-const MODEL_VIDEO = 'minimax'; // первый провайдер по заданию; если у KIE другое имя — поменять
+const POLL_MAX_ATTEMPTS = 80;
+
+const DEFAULT_VIDEO_PROMPT =
+  'Cinematic fashion film, dynamic and smooth. The person from the image moves with catwalk-like grace so the outfit is clearly visible at all times. Soft diffused lighting, no harsh shadows. Beautiful textures and a refined, fitting location. Rule of thirds, hyperrealistic cinematography, film look. One beautiful environment that suits the look—e.g. minimal atelier, sunlit terrace, or urban backdrop.';
+
+function extractVideoUrl(data: unknown): string | undefined {
+  if (!data || typeof data !== 'object') return undefined;
+  const d = data as Record<string, unknown>;
+  const inner = d.data as Record<string, unknown> | undefined;
+  const target = (inner && typeof inner === 'object' ? inner : d) as Record<string, unknown>;
+
+  const output = target.output as Record<string, unknown> | undefined;
+  if (output?.video && typeof (output.video as { url?: string }).url === 'string') {
+    return (output.video as { url: string }).url;
+  }
+  const result = target.result as Record<string, unknown> | undefined;
+  if (result?.video_url && typeof result.video_url === 'string') return result.video_url as string;
+  const videos = result?.videos as Array<{ url?: string }> | undefined;
+  if (Array.isArray(videos) && videos[0]?.url) return videos[0].url;
+  const response = target.response as { result_urls?: string[]; video_url?: string } | undefined;
+  if (Array.isArray(response?.result_urls) && response.result_urls[0]) return response.result_urls[0];
+  if (response?.video_url) return response.video_url;
+  return undefined;
+}
 
 export default async function handler(req: Req, res: Res) {
   if (req.method !== 'POST') {
@@ -21,74 +42,77 @@ export default async function handler(req: Req, res: Res) {
 
   const apiKey = process.env.KIE_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: 'KIE_API_KEY не задан на сервере' });
+    console.error('[generate-video] KIE_API_KEY not set in environment');
+    return res.status(500).json({ error: 'Сервис временно недоступен. Попробуйте позже.' });
   }
 
   try {
-    const { imageUrl } = (req.body || {}) as { imageUrl?: string };
+    const { imageUrl, prompt } = (req.body || {}) as { imageUrl?: string; prompt?: string };
     if (!imageUrl) {
-      return res.status(400).json({ error: 'Нужен imageUrl (результат примерки)' });
+      return res.status(400).json({ error: 'Недостаточно данных для создания видео.' });
     }
 
-    // 1) Создать задачу на генерацию видео (image-to-video)
-    const createRes = await fetch(`${KIE_BASE}/jobs/createTask`, {
+    // 1) Veo: POST veo/generate (как в backend/kieClient)
+    const createRes = await fetch(`${KIE_BASE}/veo/generate`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: MODEL_VIDEO,
-        input: {
-          image_url: imageUrl,
-          prompt: 'Short fashion clip, person wearing the outfit, subtle motion.',
-        },
+        prompt: prompt || DEFAULT_VIDEO_PROMPT,
+        model: 'veo3',
+        aspect_ratio: '9:16',
+        imageUrls: [imageUrl],
       }),
     });
 
-    const createData = await createRes.json();
+    let createData: { data?: { taskId?: string }; message?: string; msg?: string } = {};
+    try {
+      createData = await createRes.json();
+    } catch (e) {
+      console.error('[generate-video] veo/generate response not JSON', e);
+      return res.status(502).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
+    }
     if (!createRes.ok) {
-      return res.status(createRes.status).json({
-        error: createData?.message || 'Ошибка KIE при создании видео-задачи',
-      });
+      console.error('[generate-video] veo/generate HTTP', createRes.status, createData);
+      return res.status(502).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
     }
 
     const taskId = createData?.data?.taskId;
     if (!taskId) {
-      return res.status(500).json({ error: 'KIE не вернул taskId для видео' });
+      console.error('[generate-video] veo/generate no taskId', createData);
+      return res.status(502).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
     }
 
-    // 2) Опрос до готовности: KIE jobs/recordInfo, state: success|fail, resultJson.resultUrls
+    // 2) Опрос: GET veo/record-info?taskId= (successFlag 0=generating, 1=success, 2/3=fail)
     for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
-      const jobRes = await fetch(`${KIE_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
+      const jobRes = await fetch(`${KIE_BASE}/veo/record-info?taskId=${encodeURIComponent(taskId)}`, {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
-      const jobData = await jobRes.json();
-
+      let jobData: { data?: { successFlag?: number | string }; message?: string } = {};
+      try {
+        jobData = await jobRes.json();
+      } catch {
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        continue;
+      }
       if (!jobRes.ok) {
-        return res.status(jobRes.status).json({
-          error: jobData?.message || 'Ошибка при получении видео',
-        });
+        console.error('[generate-video] veo/record-info HTTP', jobRes.status, jobData);
+        return res.status(502).json({ error: 'Не удалось получить видео. Попробуйте позже.' });
       }
 
-      const state = jobData?.data?.state;
-      if (state === 'success') {
-        let videoUrl: string | undefined;
-        try {
-          const resultJson = jobData?.data?.resultJson;
-          if (typeof resultJson === 'string') {
-            const parsed = JSON.parse(resultJson) as { resultUrls?: string[] };
-            videoUrl = Array.isArray(parsed?.resultUrls) ? parsed.resultUrls[0] : undefined;
-          }
-        } catch {
-          // ignore
-        }
+      const flag = jobData?.data?.successFlag;
+      if (flag === 1 || flag === '1') {
+        const videoUrl = extractVideoUrl(jobData?.data);
         if (videoUrl) return res.status(200).json({ videoUrl });
-        return res.status(500).json({ error: 'Результат без URL видео' });
+        console.error('[generate-video] successFlag=1 but no videoUrl', jobData?.data);
+        return res.status(500).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
       }
-      if (state === 'fail') {
+      if (flag === 2 || flag === 3 || flag === '2' || flag === '3') {
+        console.error('[generate-video] veo successFlag fail', flag);
         return res.status(422).json({
-          error: jobData?.data?.failMsg || 'Генерация видео не удалась. Попробуйте снова.',
+          error: 'Генерация видео не удалась. Попробуйте снова.',
         });
       }
 
@@ -99,7 +123,7 @@ export default async function handler(req: Req, res: Res) {
       error: 'Превышено время ожидания для видео. Попробуйте ещё раз.',
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Ошибка сервера';
-    return res.status(500).json({ error: message });
+    console.error('[generate-video]', err);
+    return res.status(500).json({ error: 'Сервис временно недоступен. Попробуйте позже.' });
   }
 }
