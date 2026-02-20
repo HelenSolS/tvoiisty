@@ -1,14 +1,15 @@
 /**
  * Backend-эндпоинт: примерка (try-on) через KIE.
  * Ключ KIE читается только здесь (process.env.KIE_API_KEY), на фронт не передаётся.
- * Один запрос = один вызов KIE: createTask (flux2) + опрос до готовности → возврат URL картинки.
+ * Один запрос = один вызов KIE: createTask (модель из KIE_IMAGE_MODEL) + опрос до готовности → возврат URL картинки.
  */
 
 // Эндпоинт Vercel Serverless: (req, res) — типы через any, чтобы не тянуть @vercel/node
 const KIE_BASE = 'https://api.kie.ai/api/v1';
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_ATTEMPTS = 60; // ~2 минуты макс
-const MODEL_IMAGE = 'flux2'; // модель примерки, как в задании
+// Модель примерки: из env KIE_IMAGE_MODEL (на Vercel задать точное имя из KIE). Раньше работало — имя могло измениться.
+const MODEL_IMAGE = process.env.KIE_IMAGE_MODEL || 'flux-2';
 
 export default async function handler(req: { method?: string; body?: Record<string, unknown> }, res: { status: (n: number) => { json: (o: object) => void } }) {
   if (req.method !== 'POST') {
@@ -32,7 +33,7 @@ export default async function handler(req: { method?: string; body?: Record<stri
       return res.status(400).json({ error: 'Недостаточно данных для примерки.' });
     }
 
-    // 1) Создать задачу в KIE (flux2)
+    // 1) Создать задачу в KIE (jobs/createTask)
     const createRes = await fetch(`${KIE_BASE}/jobs/createTask`, {
       method: 'POST',
       headers: {

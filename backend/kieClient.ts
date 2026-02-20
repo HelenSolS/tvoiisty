@@ -20,17 +20,18 @@ function authHeaders(): Record<string, string> {
   };
 }
 
-/** Создать задачу на примерку (jobs/createTask, модель flux2). Возвращает taskId. */
+/** Создать задачу на примерку (jobs/createTask). Модель из env KIE_IMAGE_MODEL или flux-2. */
 export async function createImageTask(params: {
   personImageBase64: string;
   clothingImageBase64: string;
   prompt?: string;
 }): Promise<string> {
+  const model = process.env.KIE_IMAGE_MODEL || 'flux-2';
   const res = await fetch(`${base()}/jobs/createTask`, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
-      model: 'flux2',
+      model,
       input: {
         prompt: params.prompt || 'Virtual try-on: show this person wearing this clothing naturally',
         image_urls: [params.personImageBase64, params.clothingImageBase64],
@@ -77,7 +78,7 @@ async function pollImageTask(taskId: string): Promise<string> {
 }
 
 /**
- * Примерка: один createTask (flux2) + polling. Возвращает URL готового изображения.
+ * Примерка: один createTask (модель из KIE_IMAGE_MODEL) + polling. Возвращает URL готового изображения.
  */
 export async function generateImageTryOn(
   personImageBase64: string,

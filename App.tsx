@@ -188,6 +188,23 @@ const App: React.FC = () => {
     }
   };
 
+  /** Скачать видео по URL (fetch + blob для кросс-домена). */
+  const handleDownloadVideo = async () => {
+    if (!resultVideoUrl) return;
+    try {
+      const res = await fetch(resultVideoUrl, { mode: 'cors' });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `look_video_${Date.now()}.mp4`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      window.open(resultVideoUrl, '_blank');
+    }
+  };
+
   const openInStore = (url: string) => {
     if (!url || url === '#') {
        setSuccessMsg("Ссылка на магазин не указана");
@@ -293,9 +310,14 @@ const App: React.FC = () => {
                  </p>
                )}
                {resultVideoUrl && (
-                 <div className="rounded-[2rem] overflow-hidden border-4 border-white shadow-xl aspect-video">
-                   <video src={resultVideoUrl} controls className="w-full h-full object-cover" playsInline />
-                 </div>
+                 <>
+                   <div className="rounded-[2rem] overflow-hidden border-4 border-white shadow-xl aspect-video">
+                     <video src={resultVideoUrl} controls className="w-full h-full object-cover" playsInline />
+                   </div>
+                   <button onClick={handleDownloadVideo} className="w-full py-3 bg-white border border-gray-100 rounded-2xl font-black text-[9px] uppercase tracking-widest shadow-lg active:scale-95">
+                     Скачать видео
+                   </button>
+                 </>
                )}
              </div>
 
