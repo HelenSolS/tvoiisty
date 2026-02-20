@@ -2,7 +2,7 @@
  * Backend-эндпоинт: примерка (try-on) через KIE.
  * Ключ KIE читается только здесь (process.env.KIE_API_KEY), на фронт не передаётся.
  * Эндпоинт: POST https://api.kie.ai/api/v1/jobs/createTask (важно: префикс /api/v1/).
- * KIE принимает в input_urls только https-URL; data/base64 загружаем в Vercel Blob и подставляем URL.
+ * KIE принимает в input_urls только https-URL; data/base64 загружаем в Vercel Blob и  подставляем URL.
  */
 
 import { put } from '@vercel/blob';
