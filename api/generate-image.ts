@@ -10,7 +10,7 @@ const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_ATTEMPTS = 60; // ~2 минуты макс
 const MODEL_IMAGE = 'flux2'; // модель примерки, как в задании
 
-export default async function handler(req: { method?: string; body?: Record<string, unknown> }, res: { status: (n: number) => { json: (o: object) => void }; setHeader: (a: string, b: string) => void }) {
+export default async function handler(req: { method?: string; body?: Record<string, unknown> }, res: { status: (n: number) => { json: (o: object) => void } }) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }

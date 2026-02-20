@@ -140,9 +140,13 @@ const App: React.FC = () => {
       setHistory(newHistory);
       saveToStorage('history', newHistory);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'ИИ перегружен, попробуйте снова';
+      const raw = err instanceof Error ? err.message : '';
+      const isNetwork = /failed to fetch|network error|load failed/i.test(raw) || raw === '';
+      const msg = isNetwork
+        ? 'Нет связи с сервером. Проверьте интернет и попробуйте снова.'
+        : (raw || 'ИИ перегружен, попробуйте снова');
       setState(prev => ({ ...prev, isProcessing: false, error: msg }));
-      setTimeout(() => setState(p => ({ ...p, error: null })), 4000);
+      setTimeout(() => setState(p => ({ ...p, error: null })), 5000);
     }
   };
 
