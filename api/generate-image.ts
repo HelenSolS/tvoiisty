@@ -7,11 +7,7 @@
 const KIE_BASE = 'https://api.kie.ai/api/v1';
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_ATTEMPTS = 60; // ~2 минуты макс
-
-// Модель примерки: можно переопределить в env, но по умолчанию ставим ту,
-// которая точно работает: flux-2/flex-image-to-image
-const MODEL_IMAGE =
-  process.env.KIE_IMAGE_MODEL || 'flux-2/flex-image-to-image';
+const MODEL_IMAGE = process.env.KIE_IMAGE_MODEL || 'flux-2/flex-image-to-image';
 
 // Эндпоинт Vercel Serverless: (req, res) — типы через any, чтобы не тянуть @vercel/node
 export default async function handler(
@@ -44,7 +40,13 @@ export default async function handler(
         .json({ error: 'Недостаточно данных для примерки.' });
     }
 
-    // 1) Создать задачу в KIE (jobs/createTask)
+    // 1) KIE createTask: модель flux-2/flex-image-to-image, input — строка JSON (aspect_ratio, prompt, resolution, input_urls)
+    const inputPayload = {
+      aspect_ratio: '1:1',
+      prompt: prompt || 'Virtual try-on: dress the person in the outfit from the second image naturally.',
+      resolution: '1K',
+      input_urls: [personImageBase64, clothingImageBase64],
+    };
     const createRes = await fetch(`${KIE_BASE}/jobs/createTask`, {
       method: 'POST',
       headers: {
@@ -52,19 +54,8 @@ export default async function handler(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        // ВАЖНО: корректное имя модели
         model: MODEL_IMAGE,
-        // ВАЖНО: input — СТРОКА (JSON внутри JSON), как в твоём успешном запросе
-        input: JSON.stringify({
-          aspect_ratio: '1:1',
-          resolution: '1K',
-          prompt:
-            prompt ||
-            'Virtual try-on: dress the person in the outfit from the second image naturally.',
-          // KIE ждёт input_urls, а не image_urls.
-          // ВНИМАНИЕ: здесь должны быть URL, как в логах с tempfile.redpandaai.
-          input_urls: [personImageBase64, clothingImageBase64],
-        }),
+        input: JSON.stringify(inputPayload),
       }),
     });
 
