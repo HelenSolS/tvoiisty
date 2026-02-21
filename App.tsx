@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { ImageUploader } from './components/ImageUploader';
+import { Lab } from './components/Lab';
 import { describeOutfit, generateTryOn, generateVideo, getAiProvider, setAiProvider, type AiProviderId } from './services/geminiService';
 import { TryOnState, User, CuratedOutfit, PersonGalleryItem, HistoryItem, AppTheme, CategoryType } from './types';
 
@@ -27,7 +28,7 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [merchantProducts, setMerchantProducts] = useState<CuratedOutfit[]>([]);
   const [testClothes, setTestClothes] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'home' | 'history' | 'settings' | 'showroom'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'history' | 'settings' | 'showroom' | 'lab'>('home');
   const [activeCategory, setActiveCategory] = useState<CategoryType>('all');
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -222,7 +223,7 @@ const App: React.FC = () => {
     window.open(url, '_blank');
   };
 
-  const goToTab = (tab: 'home' | 'history' | 'settings' | 'showroom') => {
+  const goToTab = (tab: 'home' | 'history' | 'settings' | 'showroom' | 'lab') => {
     setActiveTab(tab);
     if (tab === 'home') {
       setState(s => ({ ...s, resultImage: null, error: null }));
@@ -487,6 +488,8 @@ const App: React.FC = () => {
                   </div>
                 </div>
               </div>
+            ) : activeTab === 'lab' ? (
+              <Lab onBack={() => goToTab('settings')} />
             ) : (
               <div className="p-10 space-y-12 animate-in fade-in">
                 <h3 className="serif text-3xl font-black italic text-center">Настройки</h3>
@@ -522,6 +525,7 @@ const App: React.FC = () => {
                      <button onClick={() => { const u: User = { ...user!, role: 'user', isVerifiedMerchant: false }; setUser(u); saveToStorage('user', u); goToTab('home'); }} className="w-full py-2 text-red-400 text-[8px] font-black uppercase tracking-widest">Отключить кабинет</button>
                    )}
                    <button onClick={handleReset} className="w-full py-2 text-gray-300 text-[8px] font-black uppercase tracking-widest mt-10">Сбросить все данные</button>
+                  <button onClick={() => setActiveTab('lab')} className="w-full py-2 text-gray-300/80 text-[8px] font-black uppercase tracking-widest mt-4 opacity-70">⚗️ Lab</button>
                 </div>
               </div>
             )}
