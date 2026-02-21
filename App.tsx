@@ -319,8 +319,10 @@ const App: React.FC = () => {
                )}
                {resultVideoUrl && (
                  <>
-                   <div className="rounded-[2rem] overflow-hidden border-4 border-white shadow-xl aspect-video">
-                     <video src={resultVideoUrl} controls className="w-full h-full object-cover" playsInline />
+                   <div className="rounded-[3rem] overflow-hidden border-4 border-white shadow-xl bg-black">
+                     <div className="aspect-[9/16] max-h-[70vh] w-full mx-auto">
+                       <video src={resultVideoUrl} controls className="w-full h-full object-contain" playsInline />
+                     </div>
                    </div>
                    <button onClick={handleDownloadVideo} className="w-full py-3 bg-white border border-gray-100 rounded-2xl font-black text-[9px] uppercase tracking-widest shadow-lg active:scale-95">
                      Скачать видео

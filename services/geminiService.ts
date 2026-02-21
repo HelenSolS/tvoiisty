@@ -51,7 +51,12 @@ async function generateTryOn(
     }),
   });
 
-  const data = await res.json();
+  let data: { error?: string; imageUrl?: string };
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error('Сервис вернул неверный ответ. Попробуйте позже.');
+  }
 
   if (!res.ok) {
     throw new Error(data?.error ?? 'Ошибка генерации изображения');
@@ -76,7 +81,12 @@ async function generateVideo(resultImageUrl: string, provider?: AiProviderId): P
     body: JSON.stringify({ imageUrl: resultImageUrl, provider: p }),
   });
 
-  const data = await res.json();
+  let data: { error?: string; videoUrl?: string };
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error('Сервис вернул неверный ответ. Попробуйте позже.');
+  }
 
   if (!res.ok) {
     throw new Error(data?.error ?? 'Ошибка генерации видео');
