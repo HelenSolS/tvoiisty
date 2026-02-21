@@ -29,7 +29,12 @@ async function generateTryOn(
     }),
   });
 
-  const data = await res.json();
+  let data: { error?: string; imageUrl?: string };
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error('Сервис вернул неверный ответ. Попробуйте позже.');
+  }
 
   if (!res.ok) {
     throw new Error(data?.error ?? 'Ошибка генерации изображения');
@@ -53,7 +58,12 @@ async function generateVideo(resultImageUrl: string): Promise<string> {
     body: JSON.stringify({ imageUrl: resultImageUrl }),
   });
 
-  const data = await res.json();
+  let data: { error?: string; videoUrl?: string };
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error('Сервис вернул неверный ответ. Попробуйте позже.');
+  }
 
   if (!res.ok) {
     throw new Error(data?.error ?? 'Ошибка генерации видео');
