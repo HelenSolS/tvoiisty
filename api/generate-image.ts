@@ -1,33 +1,36 @@
 /**
  * Backend-эндпоинт: примерка (try-on) через KIE.
- * Ключ KIE читается только здесь (process.env.KIE_API_KEY), на фронт не передаётся.
- * Эндпоинт: POST https://api.kie.ai/api/v1/jobs/createTask. KIE принимает в input_urls только https-URL; data/base64 загружаем в Vercel Blob.
+ * POST /api/v1/jobs/createTask. KIE принимает в input_urls только https-URL; data/base64 загружаем в Vercel Blob.
+ * Лаборатория (dev): принимает model из body и выбирает из пула. Production: один ключ, модель из env или по умолчанию.
  */
 
 import { put } from '@vercel/blob';
 
 const DEFAULT_KIE_BASE = 'https://api.kie.ai/api/v1';
 const POLL_INTERVAL_MS = 2000;
+const POLL_MAX_ATTEMPTS = 60; // ~2 минуты макс
 
-/** Промпт по умолчанию для примерки (subject, setting, style, lighting, composition, camera). */
+/** Пул моделей для изображений (Lab dev). Production использует KIE_IMAGE_MODEL или первую из списка. */
+const IMAGE_MODEL_POOL = [
+  'flux-2/flex-image-to-image',
+  'google/nano-banana-edit',
+  'gpt-image/1.5-image-to-image',
+  'qwen/image-edit',
+  'grok-imagine/image-to-image',
+  'ideogram/v3-edit',
+] as const;
+
+const DEFAULT_IMAGE_MODEL = process.env.KIE_IMAGE_MODEL || 'flux-2/flex-image-to-image';
+
+/** Промпт по умолчанию для примерки. */
 const DEFAULT_IMAGE_PROMPT =
   'Person from uploaded photos wearing new outfit. Preserve full identity and body proportions, natural confident fashion pose. Setting: neutral premium minimalist interior. Background: soft beige-gray or light concrete, clean and distraction-free. Style: hyper-realistic high-end fashion photography. Lighting: soft directional side light with subtle rim light. Mood: premium, confident, modern. Composition: rule of thirds, subject centered, vertical frame. Camera: Sony A7R V, 85mm f/1.8. Format: vertical.';
 
-type ProviderId = 'default' | 'backup';
-
-function getKieConfig(provider: ProviderId): { base: string; apiKey: string | undefined } {
-  if (provider === 'backup') {
-    const base = process.env.KIE_BACKUP_BASE_URL;
-    const apiKey = process.env.KIE_BACKUP_API_KEY;
-    if (base && apiKey) return { base: base.replace(/\/$/, ''), apiKey };
-  }
-  return {
-    base: (process.env.KIE_BASE_URL || DEFAULT_KIE_BASE).replace(/\/$/, ''),
-    apiKey: process.env.KIE_API_KEY,
-  };
+function resolveImageModel(bodyModel: unknown): string {
+  if (typeof bodyModel === 'string' && (IMAGE_MODEL_POOL as readonly string[]).includes(bodyModel))
+    return bodyModel;
+  return DEFAULT_IMAGE_MODEL;
 }
-const POLL_MAX_ATTEMPTS = 60; // ~2 минуты макс
-const MODEL_IMAGE = process.env.KIE_IMAGE_MODEL || 'flux-2/flex-image-to-image';
 
 /** Если строка не https-URL — загружаем в Blob и возвращаем URL. Иначе возвращаем как есть. */
 async function ensureHttpsUrl(value: string, filename: string): Promise<string> {
@@ -55,26 +58,28 @@ export default async function handler(
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const provider = ((req.body as Record<string, unknown>)?.provider === 'backup' ? 'backup' : 'default') as ProviderId;
-  const { base: KIE_BASE, apiKey } = getKieConfig(provider);
+  const KIE_BASE = (process.env.KIE_BASE_URL || DEFAULT_KIE_BASE).replace(/\/$/, '');
+  const apiKey = process.env.KIE_API_KEY;
   if (!apiKey) {
-    console.error('[generate-image] API key not set for provider', provider);
+    console.error('[generate-image] KIE_API_KEY not set');
     return res
       .status(500)
       .json({ error: 'Сервис временно недоступен. Попробуйте позже.' });
   }
-  console.error('[generate-image] provider', provider, 'base', KIE_BASE);
+
+  const body = (req.body || {}) as Record<string, unknown>;
+  const model = resolveImageModel(body.model);
+  const startTs = Date.now();
 
   try {
-    const { personImageBase64, clothingImageBase64, prompt } = (req.body ||
-      {}) as {
+    const { personImageBase64, clothingImageBase64, prompt } = body as {
       personImageBase64?: string;
       clothingImageBase64?: string;
       prompt?: string;
     };
 
-    // Лог для анализа 422/413: только размеры, без содержимого и ключей
     console.error('[generate-image] request', {
+      model,
       personLen: personImageBase64?.length ?? 0,
       clothingLen: clothingImageBase64?.length ?? 0,
       promptLen: prompt?.length ?? 0,
@@ -122,13 +127,13 @@ export default async function handler(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: MODEL_IMAGE,
+        model,
         input: JSON.stringify(inputPayload),
       }),
     });
 
     let createData: {
-      data?: { taskId?: string };
+      data?: { taskId?: string; creditsUsed?: number };
       message?: string;
       msg?: string;
       code?: number;
@@ -136,18 +141,19 @@ export default async function handler(
     try {
       createData = (await createRes.json()) as typeof createData;
     } catch (e) {
-      console.error('[generate-image] createTask response not JSON', e);
+      const endTs = Date.now();
+      console.error('[generate-image] createTask', { model, startTs, endTs, durationMs: endTs - startTs, httpStatus: createRes.status, error: 'response not JSON' });
       return res
         .status(502)
         .json({ error: 'Не удалось сгенерировать изображение. Попробуйте позже.' });
     }
 
+    const endTs = Date.now();
+    const durationMs = endTs - startTs;
+    const creditsUsed = createData?.data?.creditsUsed;
+    console.error('[generate-image] createTask', { model, startTs, endTs, durationMs, httpStatus: createRes.status, creditsUsed, ...(createData?.msg ? { msg: createData.msg } : {}), ...(createData?.message ? { message: createData.message } : {}) });
+
     if (!createRes.ok) {
-      console.error(
-        '[generate-image] createTask HTTP',
-        createRes.status,
-        createData,
-      );
       return res
         .status(502)
         .json({ error: 'Не удалось сгенерировать изображение. Попробуйте позже.' });
@@ -155,11 +161,6 @@ export default async function handler(
 
     const code = createData.code;
     if (code !== undefined && code !== 200) {
-      console.error(
-        '[generate-image] createTask body code',
-        code,
-        createData?.msg || createData?.message,
-      );
       return res
         .status(502)
         .json({ error: 'Не удалось сгенерировать изображение. Попробуйте позже.' });
@@ -167,10 +168,6 @@ export default async function handler(
 
     const taskId = createData?.data?.taskId;
     if (!taskId) {
-      console.error(
-        '[generate-image] createTask no taskId in response',
-        createData,
-      );
       return res
         .status(502)
         .json({ error: 'Не удалось сгенерировать изображение. Попробуйте позже.' });
@@ -226,6 +223,8 @@ export default async function handler(
         }
 
         if (imageUrl) {
+          const totalMs = Date.now() - startTs;
+          console.error('[generate-image] success', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 200 });
           return res.status(200).json({ imageUrl });
         }
 
@@ -239,8 +238,8 @@ export default async function handler(
       }
 
       if (state === 'fail') {
-        // В лог — сырой текст от KIE для отладки; клиенту — только русский
-        console.error('[generate-image] job state=fail', jobData?.data?.failMsg);
+        const totalMs = Date.now() - startTs;
+        console.error('[generate-image] job state=fail', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 422, errorMessage: jobData?.data?.failMsg });
         return res.status(422).json({
           error: 'Генерация не удалась. Попробуйте снова.',
         });
@@ -250,11 +249,14 @@ export default async function handler(
       await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
     }
 
+    const totalMs = Date.now() - startTs;
+    console.error('[generate-image] timeout', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 408 });
     return res.status(408).json({
       error: 'Превышено время ожидания. Попробуйте ещё раз.',
     });
   } catch (err: unknown) {
-    console.error('[generate-image]', err);
+    const totalMs = Date.now() - startTs;
+    console.error('[generate-image] error', { model, startTs, endTs: Date.now(), durationMs: totalMs, errorMessage: err instanceof Error ? err.message : String(err) });
     return res
       .status(500)
       .json({ error: 'Сервис временно недоступен. Попробуйте позже.' });

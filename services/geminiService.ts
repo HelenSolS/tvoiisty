@@ -1,28 +1,29 @@
 /**
  * Сервис примерки и видео. Вызывает только наш backend (/api/...).
- * Ключи KIE на фронте не используются и не передаются.
- * Провайдер (нейросеть) выбирается в настройках и передаётся в теле запроса.
+ * Production: без model (бэкенд подставляет по умолчанию). Lab (dev): передаёт model из выпадающего списка.
  */
 
-const API_BASE = ''; // тот же origin: Vercel отдаёт и SPA, и /api
+const API_BASE = '';
 
-export type AiProviderId = 'default' | 'backup';
+/** Пул моделей для изображений (Lab). */
+export const IMAGE_MODEL_POOL = [
+  'flux-2/flex-image-to-image',
+  'google/nano-banana-edit',
+  'gpt-image/1.5-image-to-image',
+  'qwen/image-edit',
+  'grok-imagine/image-to-image',
+  'ideogram/v3-edit',
+] as const;
 
-const PROVIDER_STORAGE_KEY = 'tvoisty_ai_provider';
-
-export function getAiProvider(): AiProviderId {
-  try {
-    const v = localStorage.getItem(PROVIDER_STORAGE_KEY);
-    if (v === 'backup' || v === 'default') return v;
-  } catch {}
-  return 'default';
-}
-
-export function setAiProvider(provider: AiProviderId): void {
-  try {
-    localStorage.setItem(PROVIDER_STORAGE_KEY, provider);
-  } catch {}
-}
+/** Пул моделей для видео (Lab). */
+export const VIDEO_MODEL_POOL = [
+  'kling/v2-1-standard',
+  'veo-3-1',
+  'runway/gen-3-alpha-turbo',
+  'hailuo/2-3-image-to-video-standard',
+  'wan/2-2-a14b-image-to-video-turbo',
+  'grok-imagine/image-to-video',
+] as const;
 
 /** Описание образа для подсказки KIE (пока заглушка). */
 async function describeOutfit(_imageUrl: string): Promise<string> {
@@ -30,16 +31,15 @@ async function describeOutfit(_imageUrl: string): Promise<string> {
 }
 
 /**
- * Примерка: один вызов backend → один вызов KIE (createTask + poll).
- * Возвращает URL готового изображения.
+ * Примерка. Один вызов backend → один вызов KIE.
+ * model — только для Lab; в production не передаётся.
  */
 async function generateTryOn(
   personImageBase64: string,
   clothingImageBase64: string,
   prompt?: string,
-  provider?: AiProviderId
+  options?: { model?: string }
 ): Promise<string> {
-  const p = provider ?? getAiProvider();
   const res = await fetch(`${API_BASE}/api/generate-image`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -47,7 +47,7 @@ async function generateTryOn(
       personImageBase64,
       clothingImageBase64,
       prompt: prompt || undefined,
-      provider: p,
+      ...(options?.model ? { model: options.model } : {}),
     }),
   });
 
@@ -70,15 +70,17 @@ async function generateTryOn(
 }
 
 /**
- * Генерация видео по URL результата примерки. Один клик = один вызов backend/KIE.
- * Возвращает URL готового видео.
+ * Генерация видео. Один клик = один вызов backend/KIE.
+ * model — только для Lab; в production не передаётся (бэкенд использует veo-3-1).
  */
-async function generateVideo(resultImageUrl: string, provider?: AiProviderId): Promise<string> {
-  const p = provider ?? getAiProvider();
+async function generateVideo(resultImageUrl: string, options?: { model?: string }): Promise<string> {
   const res = await fetch(`${API_BASE}/api/generate-video`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ imageUrl: resultImageUrl, provider: p }),
+    body: JSON.stringify({
+      imageUrl: resultImageUrl,
+      ...(options?.model ? { model: options.model } : {}),
+    }),
   });
 
   let data: { error?: string; videoUrl?: string };

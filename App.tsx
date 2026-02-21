@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ImageUploader } from './components/ImageUploader';
 import { Lab } from './components/Lab';
-import { describeOutfit, generateTryOn, generateVideo, getAiProvider, setAiProvider, type AiProviderId } from './services/geminiService';
+import { describeOutfit, generateTryOn, generateVideo } from './services/geminiService';
 import { TryOnState, User, CuratedOutfit, PersonGalleryItem, HistoryItem, AppTheme, CategoryType } from './types';
 
 const INITIAL_BOUTIQUE: CuratedOutfit[] = [
@@ -56,7 +56,6 @@ const App: React.FC = () => {
   const [isVideoProcessing, setIsVideoProcessing] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
   /** Выбор нейросети для примерки и видео (Основной / Резервный). Сохраняется в localStorage. */
-  const [aiProvider, setAiProviderState] = useState<AiProviderId>('default');
   /** Видео, созданное из фото в архиве (в модалке просмотра). */
   const [archiveVideoUrl, setArchiveVideoUrl] = useState<string | null>(null);
   const [archiveVideoError, setArchiveVideoError] = useState<string | null>(null);
@@ -91,8 +90,6 @@ const App: React.FC = () => {
       } else {
         initUser();
       }
-      const provider = getAiProvider();
-      setAiProviderState(provider);
     } catch (e) { 
       console.error(e);
       initUser();
@@ -488,30 +485,11 @@ const App: React.FC = () => {
                   </div>
                 </div>
               </div>
-            ) : activeTab === 'lab' ? (
+            ) : import.meta.env.DEV && activeTab === 'lab' ? (
               <Lab onBack={() => goToTab('settings')} />
             ) : (
               <div className="p-10 space-y-12 animate-in fade-in">
                 <h3 className="serif text-3xl font-black italic text-center">Настройки</h3>
-
-                <div className="space-y-3">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 text-center">Нейросеть для примерки и видео</p>
-                  <div className="flex gap-4 justify-center flex-wrap">
-                    <button
-                      onClick={() => { setAiProvider('default'); setAiProviderState('default'); }}
-                      className={`py-4 px-6 rounded-2xl border-2 text-[10px] font-black uppercase tracking-widest transition-all ${aiProvider === 'default' ? 'border-theme bg-theme/10 text-theme' : 'border-gray-200 text-gray-400'}`}
-                    >
-                      Основной
-                    </button>
-                    <button
-                      onClick={() => { setAiProvider('backup'); setAiProviderState('backup'); }}
-                      className={`py-4 px-6 rounded-2xl border-2 text-[10px] font-black uppercase tracking-widest transition-all ${aiProvider === 'backup' ? 'border-theme bg-theme/10 text-theme' : 'border-gray-200 text-gray-400'}`}
-                    >
-                      Резервный
-                    </button>
-                  </div>
-                  <p className="text-[9px] text-gray-400 text-center">Выберите, на какой сервер отправлять запросы. Можно переключать и тестировать.</p>
-                </div>
 
                 <div className="flex justify-center gap-8">
                     <button onClick={() => { const u = { ...user!, theme: 'turquoise' as AppTheme }; setUser(u); saveToStorage('user', u); document.body.className = 'theme-turquoise'; }} className={`w-14 h-14 rounded-full bg-[#0d9488] border-4 ${user?.theme === 'turquoise' ? 'border-white scale-125 shadow-2xl' : 'border-transparent opacity-30'} transition-all`}></button>
@@ -525,7 +503,9 @@ const App: React.FC = () => {
                      <button onClick={() => { const u: User = { ...user!, role: 'user', isVerifiedMerchant: false }; setUser(u); saveToStorage('user', u); goToTab('home'); }} className="w-full py-2 text-red-400 text-[8px] font-black uppercase tracking-widest">Отключить кабинет</button>
                    )}
                    <button onClick={handleReset} className="w-full py-2 text-gray-300 text-[8px] font-black uppercase tracking-widest mt-10">Сбросить все данные</button>
-                  <button onClick={() => setActiveTab('lab')} className="w-full py-2 text-gray-300/80 text-[8px] font-black uppercase tracking-widest mt-4 opacity-70">⚗️ Lab</button>
+                  {import.meta.env.DEV && (
+                    <button onClick={() => setActiveTab('lab')} className="w-full py-2 text-gray-300/80 text-[8px] font-black uppercase tracking-widest mt-4 opacity-70">⚗️ Lab</button>
+                  )}
                 </div>
               </div>
             )}
