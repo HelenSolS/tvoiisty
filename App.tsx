@@ -485,7 +485,7 @@ const App: React.FC = () => {
                   </div>
                 </div>
               </div>
-            ) : import.meta.env.DEV && activeTab === 'lab' ? (
+            ) : activeTab === 'lab' ? (
               <Lab onBack={() => goToTab('settings')} />
             ) : (
               <div className="p-10 space-y-12 animate-in fade-in">
@@ -503,9 +503,7 @@ const App: React.FC = () => {
                      <button onClick={() => { const u: User = { ...user!, role: 'user', isVerifiedMerchant: false }; setUser(u); saveToStorage('user', u); goToTab('home'); }} className="w-full py-2 text-red-400 text-[8px] font-black uppercase tracking-widest">Отключить кабинет</button>
                    )}
                    <button onClick={handleReset} className="w-full py-2 text-gray-300 text-[8px] font-black uppercase tracking-widest mt-10">Сбросить все данные</button>
-                  {import.meta.env.DEV && (
-                    <button onClick={() => setActiveTab('lab')} className="w-full py-2 text-gray-300/80 text-[8px] font-black uppercase tracking-widest mt-4 opacity-70">⚗️ Lab</button>
-                  )}
+                  <button onClick={() => setActiveTab('lab')} className="w-full py-2 text-gray-300/80 text-[8px] font-black uppercase tracking-widest mt-4 opacity-70">⚗️ Lab</button>
                 </div>
               </div>
             )}
