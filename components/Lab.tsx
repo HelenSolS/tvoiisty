@@ -12,6 +12,50 @@ import type { LabTryOnExperiment, LabVideoExperiment } from '../types';
 const LAB_STORAGE_KEY = 'tvoisty_lab_tryon';
 const LAB_VIDEO_STORAGE_KEY = 'tvoisty_lab_video';
 
+const MAX_IMAGE_PX = 1024;
+const JPEG_QUALITY = 0.82;
+
+/** Сжимает data URL: макс. сторона MAX_IMAGE_PX, JPEG. Уменьшает размер для KIE и снижает ошибки «internal error». */
+function compressImageDataUrl(dataUrl: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!dataUrl.startsWith('data:')) {
+      resolve(dataUrl);
+      return;
+    }
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let w = img.width;
+      let h = img.height;
+      if (w > MAX_IMAGE_PX || h > MAX_IMAGE_PX) {
+        if (w > h) {
+          h = Math.round((h * MAX_IMAGE_PX) / w);
+          w = MAX_IMAGE_PX;
+        } else {
+          w = Math.round((w * MAX_IMAGE_PX) / h);
+          h = MAX_IMAGE_PX;
+        }
+      }
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(dataUrl);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      try {
+        resolve(canvas.toDataURL('image/jpeg', JPEG_QUALITY));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    img.onerror = () => reject(new Error('Ошибка загрузки изображения'));
+    img.src = dataUrl;
+  });
+}
+
 export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [step, setStep] = useState<'tryon' | 'video'>('tryon');
 
@@ -58,7 +102,11 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setTryonLoading(true);
     const start = Date.now();
     try {
-      const imageUrl = await generateTryOn(personImage, outfitImage, undefined, { model: imageModel });
+      const [personCompressed, outfitCompressed] = await Promise.all([
+        compressImageDataUrl(personImage),
+        compressImageDataUrl(outfitImage),
+      ]);
+      const imageUrl = await generateTryOn(personCompressed, outfitCompressed, undefined, { model: imageModel });
       const durationMs = Date.now() - start;
       setTryonResult({ imageUrl, durationMs, model: imageModel });
     } catch (e: unknown) {
@@ -127,10 +175,10 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           <section>
             <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-3">Человек + образ</h3>
             <div className="grid grid-cols-2 gap-4">
-              <div className="aspect-[3/4] rounded-2xl overflow-hidden border-2 border-white shadow-xl">
+              <div className="aspect-[9/16] rounded-2xl overflow-hidden border-2 border-white shadow-xl">
                 <ImageUploader label="Человек" image={personImage} onImageSelect={setPersonImage} icon={<span className="text-2xl">👤</span>} />
               </div>
-              <div className="aspect-[3/4] rounded-2xl overflow-hidden border-2 border-white shadow-xl">
+              <div className="aspect-[9/16] rounded-2xl overflow-hidden border-2 border-white shadow-xl">
                 <ImageUploader label="Образ" image={outfitImage} onImageSelect={setOutfitImage} icon={<span className="text-2xl">👗</span>} />
               </div>
             </div>
@@ -154,7 +202,7 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           {tryonResult && (
             <section className="space-y-2">
               <p className="text-[9px] font-black uppercase text-gray-500">Результат · {tryonResult.model} · {(tryonResult.durationMs / 1000).toFixed(1)} сек</p>
-              <div className="rounded-2xl overflow-hidden border-2 border-white shadow-xl aspect-[3/4]">
+              <div className="rounded-2xl overflow-hidden border-2 border-white shadow-xl aspect-[9/16]">
                 <img src={tryonResult.imageUrl} alt="Результат" className="w-full h-full object-cover" />
               </div>
               <button onClick={saveExperiment} className="w-full py-2.5 bg-white border border-theme text-theme rounded-xl text-[10px] font-black uppercase tracking-widest">Сохранить эксперимент</button>
@@ -166,7 +214,7 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Сохранённые эксперименты</h3>
               <div className="grid grid-cols-3 gap-2">
                 {savedTryons.slice(0, 9).map(exp => (
-                  <button key={exp.id} onClick={() => loadExperimentIntoSlots(exp)} className="rounded-xl overflow-hidden border border-white shadow-lg aspect-[3/4] block">
+                  <button key={exp.id} onClick={() => loadExperimentIntoSlots(exp)} className="rounded-xl overflow-hidden border border-white shadow-lg aspect-[9/16] block">
                     <img src={exp.resultUrl} className="w-full h-full object-cover" alt="" />
                     <span className="block text-[8px] font-bold text-gray-500 truncate px-1">{(exp.durationMs / 1000).toFixed(1)}s · {exp.provider}</span>
                   </button>
@@ -183,12 +231,12 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-3">Источник картинки для видео</h3>
             <div className="grid grid-cols-3 gap-2 mb-4">
               {allResultImages.slice(0, 6).map((url, i) => (
-                <button key={i} onClick={() => setVideoSourceUrl(url)} className={`rounded-xl overflow-hidden border-2 aspect-[3/4] ${videoSourceUrl === url ? 'border-theme ring-2 ring-theme' : 'border-white'}`}>
+                <button key={i} onClick={() => setVideoSourceUrl(url)} className={`rounded-xl overflow-hidden border-2 aspect-[9/16] ${videoSourceUrl === url ? 'border-theme ring-2 ring-theme' : 'border-white'}`}>
                   <img src={url} className="w-full h-full object-cover" alt="" />
                 </button>
               ))}
             </div>
-            <div className="aspect-[3/4] max-h-48 rounded-2xl overflow-hidden border-2 border-white shadow-xl">
+            <div className="aspect-[9/16] max-h-48 rounded-2xl overflow-hidden border-2 border-white shadow-xl">
               <ImageUploader label="Или загрузить новую" image={videoSourceUrl && !allResultImages.includes(videoSourceUrl) ? videoSourceUrl : null} onImageSelect={setVideoSourceUrl} icon={<span className="text-xl">🖼</span>} />
             </div>
           </section>

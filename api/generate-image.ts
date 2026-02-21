@@ -115,7 +115,7 @@ export default async function handler(
 
     // 1) KIE jobs/createTask (input_urls — только https-URL)
     const inputPayload = {
-      aspect_ratio: '1:1',
+      aspect_ratio: '9:16',
       prompt: prompt || DEFAULT_IMAGE_PROMPT,
       resolution: '1K',
       input_urls: [personUrl, clothingUrl],
@@ -241,10 +241,13 @@ export default async function handler(
         const totalMs = Date.now() - startTs;
         const failMsg = jobData?.data?.failMsg;
         console.error('[generate-image] job state=fail', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 422, errorMessage: failMsg });
-        const userMessage =
+        let userMessage =
           failMsg && failMsg.trim()
             ? failMsg.trim()
             : 'Генерация не удалась. Попробуйте снова.';
+        if (/internal error, please try again later/i.test(userMessage)) {
+          userMessage = 'Сервис перегружен или не принял изображения. Уменьшите размер фото (до ~1 МБ) и попробуйте снова.';
+        }
         return res.status(422).json({ error: userMessage });
       }
 

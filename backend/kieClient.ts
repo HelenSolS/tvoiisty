@@ -25,10 +25,11 @@ export async function createImageTask(params: {
   personImageBase64: string;
   clothingImageBase64: string;
   prompt?: string;
+  model?: string;
 }): Promise<string> {
-  const model = process.env.KIE_IMAGE_MODEL || 'flux-2/flex-image-to-image';
+  const model = params.model || process.env.KIE_IMAGE_MODEL || 'flux-2/flex-image-to-image';
   const inputPayload = {
-    aspect_ratio: '1:1',
+    aspect_ratio: '9:16',
     prompt: params.prompt || 'Virtual try-on: dress the person in the outfit from the second image naturally.',
     resolution: '1K',
     input_urls: [params.personImageBase64, params.clothingImageBase64],
@@ -38,7 +39,7 @@ export async function createImageTask(params: {
     headers: authHeaders(),
     body: JSON.stringify({
       model,
-      input: JSON.stringify(inputPayload),
+      input: inputPayload,
     }),
   });
   const data = (await res.json()) as KieTaskCreateResponse;
@@ -81,14 +82,15 @@ async function pollImageTask(taskId: string): Promise<string> {
 }
 
 /**
- * Примерка: один createTask (модель из KIE_IMAGE_MODEL) + polling. Возвращает URL готового изображения.
+ * Примерка: один createTask + polling. Модель из params.model или KIE_IMAGE_MODEL.
  */
 export async function generateImageTryOn(
   personImageBase64: string,
   clothingImageBase64: string,
-  prompt?: string
+  prompt?: string,
+  model?: string
 ): Promise<string> {
-  const taskId = await createImageTask({ personImageBase64, clothingImageBase64, prompt });
+  const taskId = await createImageTask({ personImageBase64, clothingImageBase64, prompt, model });
   return pollImageTask(taskId);
 }
 
@@ -99,11 +101,12 @@ const VIDEO_ASPECT_RATIO = '9:16' as const;
 const DEFAULT_VIDEO_PROMPT =
   'Cinematic fashion film, dynamic and smooth. The person from the image moves with catwalk-like grace so the outfit is clearly visible at all times. Soft diffused lighting, no harsh shadows. Beautiful textures and a refined, fitting location. Rule of thirds, hyperrealistic cinematography, film look. One beautiful environment that suits the look—e.g. minimal atelier, sunlit terrace, or urban backdrop.';
 
-/** Создать задачу на видео (Veo): POST veo/generate, image-to-video. Всегда 9:16. Используется созданное фото + киношная атмосфера. */
-export async function createVideoTask(params: { imageUrl: string; prompt?: string }): Promise<string> {
+/** Создать задачу на видео (Veo): POST veo/generate, image-to-video. Всегда 9:16. model из params (veo-3-1 → veo3 для KIE). */
+export async function createVideoTask(params: { imageUrl: string; prompt?: string; model?: string }): Promise<string> {
+  const veoModel = params.model && params.model.startsWith('veo') ? (params.model === 'veo-3-1' ? 'veo3' : params.model) : 'veo3';
   const payload = {
     prompt: params.prompt || DEFAULT_VIDEO_PROMPT,
-    model: 'veo3',
+    model: veoModel,
     aspect_ratio: VIDEO_ASPECT_RATIO,
     imageUrls: [params.imageUrl],
   };
@@ -166,9 +169,9 @@ async function pollVideoTask(taskId: string): Promise<string> {
 }
 
 /**
- * Видео по URL картинки: один createTask (Veo) + polling. Возвращает URL видео.
+ * Видео по URL картинки: один createTask (Veo) + polling. model передаётся в createVideoTask (для Veo подставляется в запрос).
  */
-export async function generateVideoFromImage(imageUrl: string, prompt?: string): Promise<string> {
-  const taskId = await createVideoTask({ imageUrl, prompt });
+export async function generateVideoFromImage(imageUrl: string, prompt?: string, model?: string): Promise<string> {
+  const taskId = await createVideoTask({ imageUrl, prompt, model });
   return pollVideoTask(taskId);
 }

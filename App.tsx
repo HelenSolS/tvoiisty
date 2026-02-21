@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ImageUploader } from './components/ImageUploader';
 import { Lab } from './components/Lab';
-import { describeOutfit, generateTryOn, generateVideo } from './services/geminiService';
+import { describeOutfit, generateTryOn, generateVideo, IMAGE_MODEL_POOL, VIDEO_MODEL_POOL } from './services/geminiService';
 import { TryOnState, User, CuratedOutfit, PersonGalleryItem, HistoryItem, AppTheme, CategoryType } from './types';
 
 const INITIAL_BOUTIQUE: CuratedOutfit[] = [
@@ -55,7 +55,9 @@ const App: React.FC = () => {
   const [resultVideoUrl, setResultVideoUrl] = useState<string | null>(null);
   const [isVideoProcessing, setIsVideoProcessing] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
-  /** Выбор нейросети для примерки и видео (Основной / Резервный). Сохраняется в localStorage. */
+  /** Модель для примерки и для видео — выбор перед генерацией (как в ишью). */
+  const [selectedImageModel, setSelectedImageModel] = useState<string>(IMAGE_MODEL_POOL[0]);
+  const [selectedVideoModel, setSelectedVideoModel] = useState<string>(VIDEO_MODEL_POOL[0]);
   /** Видео, созданное из фото в архиве (в модалке просмотра). */
   const [archiveVideoUrl, setArchiveVideoUrl] = useState<string | null>(null);
   const [archiveVideoError, setArchiveVideoError] = useState<string | null>(null);
@@ -139,7 +141,7 @@ const App: React.FC = () => {
       const outfitBase64 = await urlToBase64(outfitUrl);
       const description = await describeOutfit(outfitBase64);
       setState(prev => ({ ...prev, status: 'Примеряем образ...' }));
-      const imageUrl = await generateTryOn(personBase64, outfitBase64, description);
+      const imageUrl = await generateTryOn(personBase64, outfitBase64, description, { model: selectedImageModel });
       setState(prev => ({ ...prev, resultImage: imageUrl, isProcessing: false, status: '' }));
       const newItem: HistoryItem = { id: `h_${Date.now()}`, resultUrl: imageUrl, outfitUrl, shopUrl, timestamp: Date.now() };
       const newHistory = [newItem, ...history].slice(0, 20);
@@ -184,7 +186,7 @@ const App: React.FC = () => {
     setIsVideoProcessing(true);
     setVideoError(null);
     try {
-      const videoUrl = await generateVideo(state.resultImage);
+      const videoUrl = await generateVideo(state.resultImage, { model: selectedVideoModel });
       setResultVideoUrl(videoUrl);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
@@ -288,13 +290,19 @@ const App: React.FC = () => {
       <div className="flex-1 overflow-y-auto no-scrollbar pb-20">
         {state.resultImage ? (
           <div className="p-7 space-y-8 animate-in slide-in-from-bottom-10">
-             {/* Результат примерки — фото пользователя и образ */}
-             <div className="relative rounded-[3.5rem] overflow-hidden shadow-4xl aspect-[3/4] border-[10px] border-white ring-1 ring-gray-100">
+             {/* Результат примерки — 9:16 (вертикальный формат под телефон) */}
+             <div className="relative rounded-[3.5rem] overflow-hidden shadow-4xl aspect-[9/16] border-[10px] border-white ring-1 ring-gray-100">
                 <img src={state.resultImage} className="w-full h-full object-cover" alt="Результат примерки" />
              </div>
 
-             {/* Кнопка «Создать видео»: один клик = один вызов API */}
+             {/* Выбор модели для видео и кнопка «Создать видео» */}
              <div className="space-y-3">
+               <div>
+                 <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Модель для видео</label>
+                 <select value={selectedVideoModel} onChange={e => setSelectedVideoModel(e.target.value)} className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme">
+                   {VIDEO_MODEL_POOL.map(m => <option key={m} value={m}>{m}</option>)}
+                 </select>
+               </div>
                <button
                  onClick={handleCreateVideo}
                  disabled={isVideoProcessing}
@@ -367,7 +375,13 @@ const App: React.FC = () => {
                 {/* Step 2: Catalog with Search & Filter */}
                 <div className="space-y-6">
                   <div className="flex justify-between items-end px-1"><h3 className="serif text-2xl font-black italic">Витрина</h3><span className="text-[9px] font-black text-gray-300 uppercase tracking-widest">Шаг 02</span></div>
-                  
+                  {/* Выбор модели перед примеркой — без лишних кнопок */}
+                  <div>
+                    <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Модель для примерки</label>
+                    <select value={selectedImageModel} onChange={e => setSelectedImageModel(e.target.value)} className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme">
+                      {IMAGE_MODEL_POOL.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
                   {/* Search Bar */}
                   <div className="relative">
                     <input 
@@ -496,12 +510,14 @@ const App: React.FC = () => {
                 </div>
                 
                 <div className="pt-8 space-y-5 text-center">
+                   <button onClick={() => setActiveTab('lab')} className="w-full py-5 bg-theme/90 text-white rounded-[2rem] text-[11px] font-black uppercase tracking-widest shadow-xl active:scale-95 flex items-center justify-center gap-2">
+                     <span>⚗️</span> Лаборатория — выбор моделей
+                   </button>
                    <button onClick={() => setVerificationModal(true)} className="w-full py-5 bg-white border-2 border-theme text-theme rounded-[2rem] text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95">Бизнес кабинет</button>
                    {user?.isVerifiedMerchant && (
                      <button onClick={() => { const u: User = { ...user!, role: 'user', isVerifiedMerchant: false }; setUser(u); saveToStorage('user', u); goToTab('home'); }} className="w-full py-2 text-red-400 text-[8px] font-black uppercase tracking-widest">Отключить кабинет</button>
                    )}
                    <button onClick={handleReset} className="w-full py-2 text-gray-300 text-[8px] font-black uppercase tracking-widest mt-10">Сбросить все данные</button>
-                  <button onClick={() => setActiveTab('lab')} className="w-full py-2 text-gray-300/80 text-[8px] font-black uppercase tracking-widest mt-4 opacity-70">⚗️ Lab</button>
                 </div>
               </div>
             )}
@@ -562,7 +578,7 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-white/98 backdrop-blur-3xl p-6 animate-in zoom-in-95 overflow-y-auto">
            <div className="w-full max-w-[420px] min-h-full flex flex-col pt-10 pb-24">
               <button onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }} className="absolute top-10 right-8 text-gray-400 z-10"><svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
-              <div className="relative rounded-[3.5rem] overflow-hidden shadow-4xl aspect-[3/4] border-[10px] border-white ring-1 ring-gray-100 mt-10 shrink-0">
+              <div className="relative rounded-[3.5rem] overflow-hidden shadow-4xl aspect-[9/16] border-[10px] border-white ring-1 ring-gray-100 mt-10 shrink-0">
                 <img src={selectedHistoryItem.resultUrl} className="w-full h-full object-cover" alt="" />
               </div>
               <div className="mt-10 grid grid-cols-2 gap-4">
@@ -578,7 +594,7 @@ const App: React.FC = () => {
                      setArchiveVideoError(null);
                      setIsArchiveVideoProcessing(true);
                      try {
-                       const url = await generateVideo(selectedHistoryItem!.resultUrl);
+                       const url = await generateVideo(selectedHistoryItem!.resultUrl, { model: selectedVideoModel });
                        setArchiveVideoUrl(url);
                      } catch (err: unknown) {
                        const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
