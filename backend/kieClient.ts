@@ -29,7 +29,7 @@ export async function createImageTask(params: {
   const model = process.env.KIE_IMAGE_MODEL || 'flux-2/flex-image-to-image';
   const inputPayload = {
     aspect_ratio: '1:1',
-    prompt: params.prompt || 'Virtual try-on: dress the person in the outfit from the second image naturally.',
+    prompt: params.prompt || 'Virtual try-on.',
     resolution: '1K',
     input_urls: [params.personImageBase64, params.clothingImageBase64],
   };
@@ -95,9 +95,8 @@ export async function generateImageTryOn(
 /** Reels/Shorts: только вертикальное видео 9:16. Без переключателей и 16:9. */
 const VIDEO_ASPECT_RATIO = '9:16' as const;
 
-/** Промпт для видео по фото примерки: персонаж и одежда сохранены, киношно и динамично, подиумные движения, без жёстких теней, красивые текстуры и окружение, правило третей, гиперреализм. */
-const DEFAULT_VIDEO_PROMPT =
-  'Cinematic fashion film, dynamic and smooth. The person from the image moves with catwalk-like grace so the outfit is clearly visible at all times. Soft diffused lighting, no harsh shadows. Beautiful textures and a refined, fitting location. Rule of thirds, hyperrealistic cinematography, film look. One beautiful environment that suits the look—e.g. minimal atelier, sunlit terrace, or urban backdrop.';
+/** Короткий промпт для видео по фото примерки. */
+const DEFAULT_VIDEO_PROMPT = 'Fashion film, person moves, outfit visible. Soft lighting, cinematic.';
 
 /** Создать задачу на видео (Veo): POST veo/generate, image-to-video. Всегда 9:16. Используется созданное фото + киношная атмосфера. */
 export async function createVideoTask(params: { imageUrl: string; prompt?: string }): Promise<string> {

@@ -1,5 +1,5 @@
-
 import React, { useRef } from 'react';
+import { compressImageForTryOn } from '../utils/imageCompression';
 
 interface ImageUploaderProps {
   label: string;
@@ -11,9 +11,14 @@ interface ImageUploaderProps {
 export const ImageUploader: React.FC<ImageUploaderProps> = ({ label, image, onImageSelect, icon }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (!file) return;
+    e.target.value = '';
+    try {
+      const compressed = await compressImageForTryOn(file);
+      onImageSelect(compressed);
+    } catch {
       const reader = new FileReader();
       reader.onloadend = () => onImageSelect(reader.result as string);
       reader.readAsDataURL(file);

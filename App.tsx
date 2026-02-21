@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ImageUploader } from './components/ImageUploader';
 import { describeOutfit, generateTryOn, generateVideo } from './services/geminiService';
+import { compressImageForTryOn } from './utils/imageCompression';
 import { TryOnState, User, CuratedOutfit, PersonGalleryItem, HistoryItem, AppTheme, CategoryType } from './types';
 
 const INITIAL_BOUTIQUE: CuratedOutfit[] = [
@@ -131,6 +132,16 @@ const App: React.FC = () => {
     try {
       const personBase64 = await urlToBase64(state.personImage!);
       const outfitBase64 = await urlToBase64(outfitUrl);
+      const totalSize = personBase64.length + outfitBase64.length;
+      if (totalSize > 4_000_000) {
+        setState(prev => ({
+          ...prev,
+          isProcessing: false,
+          error: 'Изображения слишком большие. Выберите фото меньшего размера (рекомендуется до 10 МБ).',
+        }));
+        setTimeout(() => setState(p => ({ ...p, error: null })), 6000);
+        return;
+      }
       const description = await describeOutfit(outfitBase64);
       setState(prev => ({ ...prev, status: 'Примеряем образ...' }));
       const imageUrl = await generateTryOn(personBase64, outfitBase64, description);
@@ -150,27 +161,8 @@ const App: React.FC = () => {
     }
   };
 
-  const urlToBase64 = (url: string): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      if (url.startsWith('data:')) return resolve(url);
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1024;
-        let width = img.width, height = img.height;
-        if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
-        canvas.width = width; canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          try { resolve(canvas.toDataURL('image/png', 0.8)); } catch (e) { reject(e); }
-        }
-      };
-      img.onerror = () => reject(new Error('Ошибка загрузки'));
-      img.src = url;
-    });
-  };
+  const urlToBase64 = (url: string): Promise<string> =>
+    compressImageForTryOn(url);
 
   /** Один клик = один вызов API генерации видео. Без авто-повторов. */
   const handleCreateVideo = async () => {

@@ -5,9 +5,9 @@
 
 const API_BASE = ''; // тот же origin: Vercel отдаёт и SPA, и /api
 
-/** Описание образа для подсказки KIE (пока заглушка). */
+/** Короткая подсказка для KIE (минимальный промпт — меньше шанс 413). */
 async function describeOutfit(_imageUrl: string): Promise<string> {
-  return 'outfit description';
+  return 'Try on';
 }
 
 /**
@@ -28,6 +28,12 @@ async function generateTryOn(
       prompt: prompt || undefined,
     }),
   });
+
+  if (res.status === 413) {
+    throw new Error(
+      'Изображения слишком большие. Выберите фото меньшего размера или сожмите их (рекомендуется до 10 МБ).'
+    );
+  }
 
   let data: { error?: string; imageUrl?: string };
   try {

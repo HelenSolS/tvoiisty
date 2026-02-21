@@ -75,7 +75,7 @@ export default async function handler(
     // 1) KIE jobs/createTask (важно: базовый URL с /api/v1/)
     const inputPayload = {
       aspect_ratio: '1:1',
-      prompt: prompt || 'Virtual try-on: dress the person in the outfit from the second image naturally.',
+      prompt: prompt || 'Virtual try-on.',
       resolution: '1K',
       input_urls: [personUrl, clothingUrl],
     };
