@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ImageUploader } from './components/ImageUploader';
 import { Lab } from './components/Lab';
-import { describeOutfit, generateTryOn, generateVideo, IMAGE_MODEL_POOL, VIDEO_MODEL_POOL } from './services/geminiService';
+import { describeOutfit, generateTryOn, generateVideo } from './services/geminiService';
 import { TryOnState, User, CuratedOutfit, PersonGalleryItem, HistoryItem, AppTheme, CategoryType } from './types';
 
 const INITIAL_BOUTIQUE: CuratedOutfit[] = [
@@ -55,9 +55,6 @@ const App: React.FC = () => {
   const [resultVideoUrl, setResultVideoUrl] = useState<string | null>(null);
   const [isVideoProcessing, setIsVideoProcessing] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
-  /** Модель для примерки и для видео — выбор перед генерацией (как в ишью). */
-  const [selectedImageModel, setSelectedImageModel] = useState<string>(IMAGE_MODEL_POOL[0]);
-  const [selectedVideoModel, setSelectedVideoModel] = useState<string>(VIDEO_MODEL_POOL[0]);
   /** Видео, созданное из фото в архиве (в модалке просмотра). */
   const [archiveVideoUrl, setArchiveVideoUrl] = useState<string | null>(null);
   const [archiveVideoError, setArchiveVideoError] = useState<string | null>(null);
@@ -141,18 +138,19 @@ const App: React.FC = () => {
       const outfitBase64 = await urlToBase64(outfitUrl);
       const description = await describeOutfit(outfitBase64);
       setState(prev => ({ ...prev, status: 'Примеряем образ...' }));
-      const imageUrl = await generateTryOn(personBase64, outfitBase64, description, { model: selectedImageModel });
+      const imageUrl = await generateTryOn(personBase64, outfitBase64, description);
       setState(prev => ({ ...prev, resultImage: imageUrl, isProcessing: false, status: '' }));
       const newItem: HistoryItem = { id: `h_${Date.now()}`, resultUrl: imageUrl, outfitUrl, shopUrl, timestamp: Date.now() };
       const newHistory = [newItem, ...history].slice(0, 20);
       setHistory(newHistory);
       saveToStorage('history', newHistory);
     } catch (err: unknown) {
-      const raw = err instanceof Error ? err.message : '';
+      const raw = err instanceof Error ? err.message : String(err);
       const isNetwork = /failed to fetch|network error|load failed/i.test(raw) || raw === '';
+      const short = raw.length <= 80 ? raw : '';
       const msg = isNetwork
-        ? 'Нет связи с сервером. Проверьте интернет и попробуйте снова.'
-        : (raw || 'ИИ перегружен, попробуйте снова');
+        ? 'Нет связи. Проверьте интернет.'
+        : (short || 'Сервис недоступен. Попробуйте другую модель или позже.');
       setState(prev => ({ ...prev, isProcessing: false, error: msg }));
       setTimeout(() => setState(p => ({ ...p, error: null })), 5000);
     }
@@ -186,11 +184,12 @@ const App: React.FC = () => {
     setIsVideoProcessing(true);
     setVideoError(null);
     try {
-      const videoUrl = await generateVideo(state.resultImage, { model: selectedVideoModel });
+      const videoUrl = await generateVideo(state.resultImage);
       setResultVideoUrl(videoUrl);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
-      setVideoError(msg);
+      const raw = err instanceof Error ? err.message : '';
+      const msg = raw.length <= 80 ? raw : 'Сервис недоступен. Попробуйте другую модель или позже.';
+      setVideoError(msg || 'Не удалось создать видео.');
     } finally {
       setIsVideoProcessing(false);
     }
@@ -295,14 +294,8 @@ const App: React.FC = () => {
                 <img src={state.resultImage} className="w-full h-full object-cover" alt="Результат примерки" />
              </div>
 
-             {/* Выбор модели для видео и кнопка «Создать видео» */}
+             {/* Кнопка «Создать видео» — бэкенд сам подберёт модель (основная + резервы) */}
              <div className="space-y-3">
-               <div>
-                 <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Модель для видео</label>
-                 <select value={selectedVideoModel} onChange={e => setSelectedVideoModel(e.target.value)} className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme">
-                   {VIDEO_MODEL_POOL.map(m => <option key={m} value={m}>{m}</option>)}
-                 </select>
-               </div>
                <button
                  onClick={handleCreateVideo}
                  disabled={isVideoProcessing}
@@ -375,13 +368,6 @@ const App: React.FC = () => {
                 {/* Step 2: Catalog with Search & Filter */}
                 <div className="space-y-6">
                   <div className="flex justify-between items-end px-1"><h3 className="serif text-2xl font-black italic">Витрина</h3><span className="text-[9px] font-black text-gray-300 uppercase tracking-widest">Шаг 02</span></div>
-                  {/* Выбор модели перед примеркой — без лишних кнопок */}
-                  <div>
-                    <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Модель для примерки</label>
-                    <select value={selectedImageModel} onChange={e => setSelectedImageModel(e.target.value)} className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme">
-                      {IMAGE_MODEL_POOL.map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                  </div>
                   {/* Search Bar */}
                   <div className="relative">
                     <input 
@@ -594,11 +580,11 @@ const App: React.FC = () => {
                      setArchiveVideoError(null);
                      setIsArchiveVideoProcessing(true);
                      try {
-                       const url = await generateVideo(selectedHistoryItem!.resultUrl, { model: selectedVideoModel });
+                       const url = await generateVideo(selectedHistoryItem!.resultUrl);
                        setArchiveVideoUrl(url);
                      } catch (err: unknown) {
-                       const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
-                       setArchiveVideoError(msg);
+                       const msg = err instanceof Error ? err.message : '';
+                       setArchiveVideoError(msg.length <= 80 ? msg : 'Сервис недоступен. Попробуйте позже.');
                      } finally {
                        setIsArchiveVideoProcessing(false);
                      }

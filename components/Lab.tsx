@@ -161,7 +161,10 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   return (
     <div className="p-6 pb-28 space-y-10 animate-in fade-in">
       <div className="flex items-center justify-between">
-        <h2 className="serif text-2xl font-black italic">Лаборатория</h2>
+        <div>
+          <h2 className="serif text-2xl font-black italic">Лаборатория</h2>
+          <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mt-1">Выбор модели для тестирования</p>
+        </div>
         <button onClick={onBack} className="text-gray-400 text-[10px] font-black uppercase tracking-widest">← Назад</button>
       </div>
 

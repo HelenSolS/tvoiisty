@@ -51,15 +51,22 @@ async function generateTryOn(
     }),
   });
 
-  const data = await res.json();
+  let data: { error?: string; imageUrl?: string } = {};
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error('Сервис недоступен. Попробуйте позже.');
+  }
 
   if (!res.ok) {
-    throw new Error(data?.error ?? 'Ошибка генерации изображения');
+    const raw = typeof data?.error === 'string' ? data.error : '';
+    const short = raw.length <= 80 ? raw : '';
+    throw new Error(short || 'Сервис недоступен. Попробуйте позже или другую модель.');
   }
 
   const imageUrl = data?.imageUrl;
   if (typeof imageUrl !== 'string') {
-    throw new Error('Нет URL изображения в ответе');
+    throw new Error('Сервис недоступен. Попробуйте позже.');
   }
   return imageUrl;
 }
@@ -78,15 +85,22 @@ async function generateVideo(resultImageUrl: string, options?: { model?: string 
     }),
   });
 
-  const data = await res.json();
+  let data: { error?: string; videoUrl?: string } = {};
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error('Сервис недоступен. Попробуйте позже.');
+  }
 
   if (!res.ok) {
-    throw new Error(data?.error ?? 'Ошибка генерации видео');
+    const raw = typeof data?.error === 'string' ? data.error : '';
+    const short = raw.length <= 80 ? raw : '';
+    throw new Error(short || 'Сервис недоступен. Попробуйте позже или другую модель.');
   }
 
   const videoUrl = data?.videoUrl;
   if (typeof videoUrl !== 'string') {
-    throw new Error('Нет URL видео в ответе');
+    throw new Error('Сервис недоступен. Попробуйте позже.');
   }
   return videoUrl;
 }
