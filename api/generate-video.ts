@@ -70,9 +70,12 @@ function extractVideoUrl(data: unknown): string | undefined {
   if (result?.video_url && typeof result.video_url === 'string') return result.video_url as string;
   const videos = result?.videos as Array<{ url?: string }> | undefined;
   if (Array.isArray(videos) && videos[0]?.url) return videos[0].url;
-  const response = target.response as { result_urls?: string[]; video_url?: string } | undefined;
-  if (Array.isArray(response?.result_urls) && response.result_urls[0]) return response.result_urls[0];
-  if (response?.video_url) return response.video_url;
+  const response = target.response as Record<string, unknown> | undefined;
+  if (response && typeof response === 'object') {
+    if (Array.isArray(response.resultUrls) && response.resultUrls[0] && typeof response.resultUrls[0] === 'string') return response.resultUrls[0] as string;
+    if (Array.isArray(response.result_urls) && response.result_urls[0]) return response.result_urls[0] as string;
+    if (typeof response.video_url === 'string') return response.video_url;
+  }
   return undefined;
 }
 
