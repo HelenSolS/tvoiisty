@@ -1,7 +1,7 @@
 /**
- * Backend-эндпоинт: генерация видео из результата примерки через KIE Veo.
- * Тот же префикс, что и для картинки: https://api.kie.ai/api/v1/... (veo/generate, veo/record-info).
- * Ключ только на бэкенде (process.env.KIE_API_KEY).
+ * Backend-эндпоинт: генерация видео через KIE.
+ * Veo: POST /api/v1/veo/generate, опрос veo/record-info. Всегда 9:16.
+ * По умолчанию veo-3-1 (дешевле; везде заменить veo3 на veo-3-1). Лаборатория: выбор модели из пула.
  */
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -10,24 +10,28 @@ type Res = { status: (n: number) => { json: (o: object) => void } };
 
 const DEFAULT_KIE_BASE = 'https://api.kie.ai/api/v1';
 const POLL_INTERVAL_MS = 3000;
-
-type ProviderId = 'default' | 'backup';
-
-function getKieConfig(provider: ProviderId): { base: string; apiKey: string | undefined } {
-  if (provider === 'backup') {
-    const base = process.env.KIE_BACKUP_BASE_URL;
-    const apiKey = process.env.KIE_BACKUP_API_KEY;
-    if (base && apiKey) return { base: base.replace(/\/$/, ''), apiKey };
-  }
-  return {
-    base: (process.env.KIE_BASE_URL || DEFAULT_KIE_BASE).replace(/\/$/, ''),
-    apiKey: process.env.KIE_API_KEY,
-  };
-}
 const POLL_MAX_ATTEMPTS = 80;
 
-/** Промпт по умолчанию для видео (позже — выбор из набора для разнообразия). */
-const DEFAULT_VIDEO_PROMPT = `Create a short high-end fashion advertisement video based on the provided image.
+/** Пул моделей для видео (Lab dev). Production: только veo-3-1. */
+const VIDEO_MODEL_POOL = [
+  'kling/v2-1-standard',
+  'veo-3-1',
+  'runway/gen-3-alpha-turbo',
+  'hailuo/2-3-image-to-video-standard',
+  'wan/2-2-a14b-image-to-video-turbo',
+  'grok-imagine/image-to-video',
+] as const;
+
+const DEFAULT_VIDEO_MODEL = 'veo-3-1';
+
+function resolveVideoModel(bodyModel: unknown): string {
+  if (typeof bodyModel === 'string' && (VIDEO_MODEL_POOL as readonly string[]).includes(bodyModel))
+    return bodyModel;
+  return DEFAULT_VIDEO_MODEL;
+}
+
+/** Расширенный промпт для Veo (duration, aspect, по KIE_Video_API_Reference). */
+const VEO_EXTENDED_PROMPT = `Create a short high-end fashion advertisement video based on the provided image.
 
 The character must preserve full facial identity and body proportions.
 The outfit must remain identical in color, fit, and texture.
@@ -55,6 +59,9 @@ Cinematic smooth dolly camera movement.
 
 Atmosphere: modern fashion brand advertisement.
 Clean, stylish, minimal environment.`;
+
+/** Короткий промпт для не-Veo моделей. */
+const DEFAULT_VIDEO_PROMPT = 'Fashion film, person moves, outfit visible. Soft lighting, cinematic.';
 
 function extractVideoUrl(data: unknown): string | undefined {
   if (!data || typeof data !== 'object') return undefined;
@@ -84,54 +91,66 @@ export default async function handler(req: Req, res: Res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const provider = (req.body?.provider === 'backup' ? 'backup' : 'default') as ProviderId;
-  const { base: KIE_BASE, apiKey } = getKieConfig(provider);
+  const KIE_BASE = (process.env.KIE_BASE_URL || DEFAULT_KIE_BASE).replace(/\/$/, '');
+  const apiKey = process.env.KIE_API_KEY;
   if (!apiKey) {
-    console.error('[generate-video] API key not set for provider', provider);
+    console.error('[generate-video] KIE_API_KEY not set');
     return res.status(500).json({ error: 'Сервис временно недоступен. Попробуйте позже.' });
   }
-  console.error('[generate-video] provider', provider);
+
+  const body = (req.body || {}) as Record<string, unknown>;
+  const model = resolveVideoModel(body.model);
+  const startTs = Date.now();
 
   try {
-    const { imageUrl, prompt } = (req.body || {}) as { imageUrl?: string; prompt?: string };
+    const { imageUrl, prompt } = body as { imageUrl?: string; prompt?: string };
     if (!imageUrl) {
       return res.status(400).json({ error: 'Недостаточно данных для создания видео.' });
     }
 
-    // 1) Veo: POST veo/generate (как в backend/kieClient)
+    const isVeo = model.startsWith('veo');
+    const videoPrompt = prompt || (isVeo ? VEO_EXTENDED_PROMPT : DEFAULT_VIDEO_PROMPT);
+    const payload: Record<string, unknown> = {
+      prompt: videoPrompt,
+      model,
+      aspect_ratio: '9:16',
+      imageUrls: [imageUrl],
+    };
+    if (isVeo) {
+      payload.duration = 8;
+    }
+
     const createRes = await fetch(`${KIE_BASE}/veo/generate`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        prompt: prompt || DEFAULT_VIDEO_PROMPT,
-        model: 'veo3',
-        aspect_ratio: '9:16',
-        imageUrls: [imageUrl],
-      }),
+      body: JSON.stringify(payload),
     });
 
-    let createData: { data?: { taskId?: string }; message?: string; msg?: string } = {};
+    let createData: { data?: { taskId?: string; creditsUsed?: number }; message?: string; msg?: string } = {};
     try {
       createData = await createRes.json();
     } catch (e) {
-      console.error('[generate-video] veo/generate response not JSON', e);
+      const endTs = Date.now();
+      console.error('[generate-video] veo/generate', { model, startTs, endTs, durationMs: endTs - startTs, httpStatus: createRes.status, error: 'response not JSON' });
       return res.status(502).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
     }
+
+    const endTs = Date.now();
+    const creditsUsed = createData?.data?.creditsUsed;
+    console.error('[generate-video] veo/generate', { model, startTs, endTs, durationMs: endTs - startTs, httpStatus: createRes.status, creditsUsed, ...(createData?.msg ? { msg: createData.msg } : {}) });
+
     if (!createRes.ok) {
-      console.error('[generate-video] veo/generate HTTP', createRes.status, createData);
       return res.status(502).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
     }
 
     const taskId = createData?.data?.taskId;
     if (!taskId) {
-      console.error('[generate-video] veo/generate no taskId', createData);
       return res.status(502).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
     }
 
-    // 2) Опрос: GET veo/record-info?taskId= (successFlag 0=generating, 1=success, 2/3=fail)
     for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
       const jobRes = await fetch(`${KIE_BASE}/veo/record-info?taskId=${encodeURIComponent(taskId)}`, {
         headers: { Authorization: `Bearer ${apiKey}` },
@@ -144,19 +163,26 @@ export default async function handler(req: Req, res: Res) {
         continue;
       }
       if (!jobRes.ok) {
-        console.error('[generate-video] veo/record-info HTTP', jobRes.status, jobData);
+        const totalMs = Date.now() - startTs;
+        console.error('[generate-video] veo/record-info', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: jobRes.status });
         return res.status(502).json({ error: 'Не удалось получить видео. Попробуйте позже.' });
       }
 
       const flag = jobData?.data?.successFlag;
       if (flag === 1 || flag === '1') {
         const videoUrl = extractVideoUrl(jobData?.data);
-        if (videoUrl) return res.status(200).json({ videoUrl });
-        console.error('[generate-video] successFlag=1 but no videoUrl', jobData?.data);
+        if (videoUrl) {
+          const totalMs = Date.now() - startTs;
+          console.error('[generate-video] success', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 200 });
+          return res.status(200).json({ videoUrl });
+        }
+        const totalMs = Date.now() - startTs;
+        console.error('[generate-video] successFlag=1 but no videoUrl', { model, startTs, endTs: Date.now(), durationMs: totalMs });
         return res.status(500).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
       }
       if (flag === 2 || flag === 3 || flag === '2' || flag === '3') {
-        console.error('[generate-video] veo successFlag fail', flag);
+        const totalMs = Date.now() - startTs;
+        console.error('[generate-video] fail', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 422, successFlag: flag });
         return res.status(422).json({
           error: 'Генерация видео не удалась. Попробуйте снова.',
         });
@@ -165,11 +191,14 @@ export default async function handler(req: Req, res: Res) {
       await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
     }
 
+    const totalMs = Date.now() - startTs;
+    console.error('[generate-video] timeout', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 408 });
     return res.status(408).json({
       error: 'Превышено время ожидания для видео. Попробуйте ещё раз.',
     });
   } catch (err: unknown) {
-    console.error('[generate-video]', err);
+    const totalMs = Date.now() - startTs;
+    console.error('[generate-video] error', { model: body?.model ?? DEFAULT_VIDEO_MODEL, startTs, endTs: Date.now(), durationMs: totalMs, errorMessage: err instanceof Error ? err.message : String(err) });
     return res.status(500).json({ error: 'Сервис временно недоступен. Попробуйте позже.' });
   }
 }

@@ -1,20 +1,16 @@
 /**
- * Лаборатория: тестирование примерки и видео на разных провайдерах (KIE основной/резервный).
- * Сохранение экспериментов, замер времени, понятно куда отправляем и откуда результат.
+ * Лаборатория (dev): тестирование примерки и видео по пулу моделей KIE.
+ * Один клик → одна модель. Выбор модели из выпадающего списка.
+ * В production UI скрыт (NODE_ENV / import.meta.env.DEV).
  */
 
 import React, { useState, useEffect } from 'react';
 import { ImageUploader } from './ImageUploader';
-import { generateTryOn, generateVideo, type AiProviderId } from '../services/geminiService';
+import { generateTryOn, generateVideo, IMAGE_MODEL_POOL, VIDEO_MODEL_POOL } from '../services/geminiService';
 import type { LabTryOnExperiment, LabVideoExperiment } from '../types';
 
 const LAB_STORAGE_KEY = 'tvoisty_lab_tryon';
 const LAB_VIDEO_STORAGE_KEY = 'tvoisty_lab_video';
-
-const PROVIDERS: { id: AiProviderId; label: string }[] = [
-  { id: 'default', label: 'KIE основной' },
-  { id: 'backup', label: 'KIE резервный' },
-];
 
 export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [step, setStep] = useState<'tryon' | 'video'>('tryon');
@@ -22,18 +18,18 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   // Шаг 1 — Примерка
   const [personImage, setPersonImage] = useState<string | null>(null);
   const [outfitImage, setOutfitImage] = useState<string | null>(null);
-  const [tryonProvider, setTryonProvider] = useState<AiProviderId>('default');
+  const [imageModel, setImageModel] = useState<string>(IMAGE_MODEL_POOL[0]);
   const [tryonLoading, setTryonLoading] = useState(false);
   const [tryonError, setTryonError] = useState<string | null>(null);
-  const [tryonResult, setTryonResult] = useState<{ imageUrl: string; durationMs: number; provider: string } | null>(null);
+  const [tryonResult, setTryonResult] = useState<{ imageUrl: string; durationMs: number; model: string } | null>(null);
   const [savedTryons, setSavedTryons] = useState<LabTryOnExperiment[]>([]);
 
   // Шаг 2 — Видео
   const [videoSourceUrl, setVideoSourceUrl] = useState<string | null>(null);
-  const [videoProvider, setVideoProvider] = useState<AiProviderId>('default');
+  const [videoModel, setVideoModel] = useState<string>(VIDEO_MODEL_POOL[0]);
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
-  const [videoResult, setVideoResult] = useState<{ videoUrl: string; durationMs: number; provider: string } | null>(null);
+  const [videoResult, setVideoResult] = useState<{ videoUrl: string; durationMs: number; model: string } | null>(null);
   const [savedVideos, setSavedVideos] = useState<LabVideoExperiment[]>([]);
 
   useEffect(() => {
@@ -62,9 +58,9 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setTryonLoading(true);
     const start = Date.now();
     try {
-      const imageUrl = await generateTryOn(personImage, outfitImage, undefined, tryonProvider);
+      const imageUrl = await generateTryOn(personImage, outfitImage, undefined, { model: imageModel });
       const durationMs = Date.now() - start;
-      setTryonResult({ imageUrl, durationMs, provider: PROVIDERS.find(p => p.id === tryonProvider)?.label || tryonProvider });
+      setTryonResult({ imageUrl, durationMs, model: imageModel });
     } catch (e: unknown) {
       setTryonError(e instanceof Error ? e.message : 'Ошибка примерки');
     } finally {
@@ -79,7 +75,7 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       personUrl: personImage,
       outfitUrl: outfitImage,
       resultUrl: tryonResult.imageUrl,
-      provider: tryonResult.provider,
+      provider: tryonResult.model,
       durationMs: tryonResult.durationMs,
       timestamp: Date.now(),
     };
@@ -101,11 +97,10 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setVideoLoading(true);
     const start = Date.now();
     try {
-      const videoUrl = await generateVideo(source, videoProvider);
+      const videoUrl = await generateVideo(source, { model: videoModel });
       const durationMs = Date.now() - start;
-      const providerLabel = PROVIDERS.find(p => p.id === videoProvider)?.label || videoProvider;
-      setVideoResult({ videoUrl, durationMs, provider: providerLabel });
-      saveVideos([{ id: `v_${Date.now()}`, sourceImageUrl: source, videoUrl, provider: providerLabel, durationMs, timestamp: Date.now() }, ...savedVideos].slice(0, 20));
+      setVideoResult({ videoUrl, durationMs, model: videoModel });
+      saveVideos([{ id: `v_${Date.now()}`, sourceImageUrl: source, videoUrl, provider: videoModel, durationMs, timestamp: Date.now() }, ...savedVideos].slice(0, 20));
     } catch (e: unknown) {
       setVideoError(e instanceof Error ? e.message : 'Ошибка создания видео');
     } finally {
@@ -130,7 +125,7 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       {step === 'tryon' && (
         <>
           <section>
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-3">Человек + образ (загрузите или выберите из сохранённых)</h3>
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-3">Человек + образ</h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="aspect-[3/4] rounded-2xl overflow-hidden border-2 border-white shadow-xl">
                 <ImageUploader label="Человек" image={personImage} onImageSelect={setPersonImage} icon={<span className="text-2xl">👤</span>} />
@@ -142,23 +137,23 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           </section>
 
           <section>
-            <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Куда отправить</p>
-            <div className="flex gap-2 flex-wrap">
-              {PROVIDERS.map(p => (
-                <button key={p.id} onClick={() => setTryonProvider(p.id)} className={`py-2.5 px-4 rounded-full text-[10px] font-black uppercase tracking-widest ${tryonProvider === p.id ? 'bg-theme text-white' : 'bg-white text-gray-300 border'}`}>{p.label}</button>
+            <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Модель (image)</p>
+            <select value={imageModel} onChange={e => setImageModel(e.target.value)} className="w-full py-2.5 px-4 rounded-xl border-2 border-white bg-white text-gray-800 text-[11px] font-bold uppercase tracking-wide">
+              {IMAGE_MODEL_POOL.map(m => (
+                <option key={m} value={m}>{m}</option>
               ))}
-            </div>
+            </select>
           </section>
 
           <button onClick={runTryOn} disabled={tryonLoading || !personImage || !outfitImage} className="w-full py-4 bg-theme text-white rounded-2xl font-black text-[11px] uppercase tracking-widest disabled:opacity-50">
-            {tryonLoading ? 'Отправка в ' + (PROVIDERS.find(p => p.id === tryonProvider)?.label || tryonProvider) + '...' : 'Запустить примерку'}
+            {tryonLoading ? `Отправка в ${imageModel}...` : 'Generate Image'}
           </button>
 
           {tryonError && <p className="text-red-500 text-[10px] font-bold">{tryonError}</p>}
 
           {tryonResult && (
             <section className="space-y-2">
-              <p className="text-[9px] font-black uppercase text-gray-500">Результат · {tryonResult.provider} · {(tryonResult.durationMs / 1000).toFixed(1)} сек</p>
+              <p className="text-[9px] font-black uppercase text-gray-500">Результат · {tryonResult.model} · {(tryonResult.durationMs / 1000).toFixed(1)} сек</p>
               <div className="rounded-2xl overflow-hidden border-2 border-white shadow-xl aspect-[3/4]">
                 <img src={tryonResult.imageUrl} alt="Результат" className="w-full h-full object-cover" />
               </div>
@@ -168,7 +163,7 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
           {savedTryons.length > 0 && (
             <section>
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Сохранённые эксперименты (подставить в слоты)</h3>
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Сохранённые эксперименты</h3>
               <div className="grid grid-cols-3 gap-2">
                 {savedTryons.slice(0, 9).map(exp => (
                   <button key={exp.id} onClick={() => loadExperimentIntoSlots(exp)} className="rounded-xl overflow-hidden border border-white shadow-lg aspect-[3/4] block">
@@ -186,7 +181,6 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         <>
           <section>
             <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-3">Источник картинки для видео</h3>
-            <p className="text-[9px] text-gray-500 mb-2">Выберите результат примерки или загрузите свою</p>
             <div className="grid grid-cols-3 gap-2 mb-4">
               {allResultImages.slice(0, 6).map((url, i) => (
                 <button key={i} onClick={() => setVideoSourceUrl(url)} className={`rounded-xl overflow-hidden border-2 aspect-[3/4] ${videoSourceUrl === url ? 'border-theme ring-2 ring-theme' : 'border-white'}`}>
@@ -200,23 +194,23 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           </section>
 
           <section>
-            <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Куда отправить видео</p>
-            <div className="flex gap-2 flex-wrap">
-              {PROVIDERS.map(p => (
-                <button key={p.id} onClick={() => setVideoProvider(p.id)} className={`py-2.5 px-4 rounded-full text-[10px] font-black uppercase tracking-widest ${videoProvider === p.id ? 'bg-theme text-white' : 'bg-white text-gray-300 border'}`}>{p.label}</button>
+            <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Модель (video)</p>
+            <select value={videoModel} onChange={e => setVideoModel(e.target.value)} className="w-full py-2.5 px-4 rounded-xl border-2 border-white bg-white text-gray-800 text-[11px] font-bold uppercase tracking-wide">
+              {VIDEO_MODEL_POOL.map(m => (
+                <option key={m} value={m}>{m}</option>
               ))}
-            </div>
+            </select>
           </section>
 
           <button onClick={runVideo} disabled={videoLoading || !(videoSourceUrl || tryonResult?.imageUrl)} className="w-full py-4 bg-theme text-white rounded-2xl font-black text-[11px] uppercase tracking-widest disabled:opacity-50">
-            {videoLoading ? 'Отправка в ' + (PROVIDERS.find(p => p.id === videoProvider)?.label || videoProvider) + '...' : 'Создать видео'}
+            {videoLoading ? `Отправка в ${videoModel}...` : 'Generate Video'}
           </button>
 
           {videoError && <p className="text-red-500 text-[10px] font-bold">{videoError}</p>}
 
           {videoResult && (
             <section className="space-y-2">
-              <p className="text-[9px] font-black uppercase text-gray-500">Результат · {videoResult.provider} · {(videoResult.durationMs / 1000).toFixed(1)} сек</p>
+              <p className="text-[9px] font-black uppercase text-gray-500">Результат · {videoResult.model} · {(videoResult.durationMs / 1000).toFixed(1)} сек</p>
               <div className="rounded-2xl overflow-hidden border-2 border-white shadow-xl aspect-[9/16] max-h-[50vh] bg-black">
                 <video src={videoResult.videoUrl} controls className="w-full h-full object-contain" playsInline />
               </div>
