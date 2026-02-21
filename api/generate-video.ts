@@ -1,7 +1,8 @@
 /**
  * Backend-эндпоинт: генерация видео через KIE.
- * Veo: POST /api/v1/veo/generate, опрос veo/record-info. Всегда 9:16.
- * По умолчанию veo-3-1 (дешевле; везде заменить veo3 на veo-3-1). Лаборатория: выбор модели из пула.
+ * Veo: POST /api/v1/veo/generate, опрос veo/record-info.
+ * Runway: POST /api/v1/runway/generate, опрос runway/record-detail (state → videoInfo.videoUrl).
+ * Kling, Hailuo, Wan, Grok: POST /api/v1/jobs/createTask, опрос jobs/recordInfo. Всегда 9:16 где применимо.
  */
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -11,6 +12,62 @@ type Res = { status: (n: number) => { json: (o: object) => void } };
 const DEFAULT_KIE_BASE = 'https://api.kie.ai/api/v1';
 const POLL_INTERVAL_MS = 3000;
 const POLL_MAX_ATTEMPTS = 80;
+
+function isVeoModel(model: string): boolean {
+  return model.startsWith('veo');
+}
+
+function isRunwayModel(model: string): boolean {
+  return model.startsWith('runway');
+}
+
+/**
+ * Формат input для jobs/createTask разный у каждой модели (KIE OpenAPI).
+ * Строим payload по спецификации: Kling — image_url, Grok — image_urls, Hailuo — image_url + resolution и т.д.
+ */
+function buildJobsCreateTaskInput(
+  model: string,
+  imageUrl: string,
+  prompt: string
+): Record<string, unknown> {
+  switch (model) {
+    case 'kling/v2-1-standard':
+      return {
+        prompt,
+        image_url: imageUrl,
+        duration: '5',
+      };
+    case 'grok-imagine/image-to-video':
+      return {
+        image_urls: [imageUrl],
+        prompt,
+        mode: 'normal',
+        duration: '6',
+        resolution: '480p',
+      };
+    case 'wan/2-2-a14b-image-to-video-turbo':
+      return {
+        image_url: imageUrl,
+        prompt,
+        resolution: '720p',
+      };
+    case 'hailuo/2-3-image-to-video-standard':
+    case 'hailuo/02-image-to-video-standard':
+      return {
+        prompt,
+        image_url: imageUrl,
+        duration: '10',
+        resolution: '768P',
+        prompt_optimizer: true,
+      };
+    default:
+      return {
+        input_urls: [imageUrl],
+        prompt,
+        aspect_ratio: '9:16',
+      };
+  }
+}
 
 /** Пул моделей для видео (Lab dev). Production: только veo-3-1. */
 const VIDEO_MODEL_POOL = [
@@ -108,41 +165,207 @@ export default async function handler(req: Req, res: Res) {
       return res.status(400).json({ error: 'Недостаточно данных для создания видео.' });
     }
 
-    const isVeo = model.startsWith('veo');
-    const videoPrompt = prompt || (isVeo ? VEO_EXTENDED_PROMPT : DEFAULT_VIDEO_PROMPT);
-    const payload: Record<string, unknown> = {
-      prompt: videoPrompt,
-      model,
-      aspect_ratio: '9:16',
-      imageUrls: [imageUrl],
-    };
-    if (isVeo) {
-      payload.duration = 8;
+    const useVeo = isVeoModel(model);
+    const videoPrompt = prompt || (useVeo ? VEO_EXTENDED_PROMPT : DEFAULT_VIDEO_PROMPT);
+
+    if (useVeo) {
+      // Veo: отдельный эндпоинт veo/generate + veo/record-info
+      const payload: Record<string, unknown> = {
+        prompt: videoPrompt,
+        model,
+        aspect_ratio: '9:16',
+        imageUrls: [imageUrl],
+        duration: 8,
+      };
+      const createRes = await fetch(`${KIE_BASE}/veo/generate`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      let createData: { data?: { taskId?: string; creditsUsed?: number }; message?: string; msg?: string } = {};
+      try {
+        createData = await createRes.json();
+      } catch (e) {
+        const endTs = Date.now();
+        console.error('[generate-video] veo/generate', { model, startTs, endTs, durationMs: endTs - startTs, httpStatus: createRes.status, error: 'response not JSON' });
+        return res.status(502).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
+      }
+
+      const endTs = Date.now();
+      const creditsUsed = createData?.data?.creditsUsed;
+      console.error('[generate-video] veo/generate', { model, startTs, endTs, durationMs: endTs - startTs, httpStatus: createRes.status, creditsUsed, ...(createData?.msg ? { msg: createData.msg } : {}) });
+
+      if (!createRes.ok) {
+        return res.status(502).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
+      }
+
+      const taskId = createData?.data?.taskId;
+      if (!taskId) {
+        return res.status(502).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
+      }
+
+      for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
+        const jobRes = await fetch(`${KIE_BASE}/veo/record-info?taskId=${encodeURIComponent(taskId)}`, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+        let jobData: { data?: { successFlag?: number | string }; message?: string } = {};
+        try {
+          jobData = await jobRes.json();
+        } catch {
+          await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+          continue;
+        }
+        if (!jobRes.ok) {
+          const totalMs = Date.now() - startTs;
+          console.error('[generate-video] veo/record-info', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: jobRes.status });
+          return res.status(502).json({ error: 'Не удалось получить видео. Попробуйте позже.' });
+        }
+
+        const flag = jobData?.data?.successFlag;
+        if (flag === 1 || flag === '1') {
+          const videoUrl = extractVideoUrl(jobData?.data);
+          if (videoUrl) {
+            const totalMs = Date.now() - startTs;
+            console.error('[generate-video] success', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 200 });
+            return res.status(200).json({ videoUrl });
+          }
+          const totalMs = Date.now() - startTs;
+          console.error('[generate-video] successFlag=1 but no videoUrl', { model, startTs, endTs: Date.now(), durationMs: totalMs });
+          return res.status(500).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
+        }
+        if (flag === 2 || flag === 3 || flag === '2' || flag === '3') {
+          const totalMs = Date.now() - startTs;
+          console.error('[generate-video] fail', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 422, successFlag: flag });
+          return res.status(422).json({
+            error: 'Генерация видео не удалась. Попробуйте снова.',
+          });
+        }
+
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+      }
+
+      const totalMs = Date.now() - startTs;
+      console.error('[generate-video] timeout', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 408 });
+      return res.status(408).json({
+        error: 'Превышено время ожидания для видео. Попробуйте ещё раз.',
+      });
     }
 
-    const createRes = await fetch(`${KIE_BASE}/veo/generate`, {
+    if (isRunwayModel(model)) {
+      // Runway: отдельный эндпоинт runway/generate + runway/record-detail (KIE Runway API Quickstart)
+      const runwayPayload = {
+        prompt: videoPrompt,
+        imageUrl,
+        duration: 5,
+        quality: '720p',
+        aspectRatio: '9:16',
+      };
+      const createRes = await fetch(`${KIE_BASE}/runway/generate`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(runwayPayload),
+      });
+
+      let createData: { data?: { taskId?: string }; code?: number; msg?: string } = {};
+      try {
+        createData = await createRes.json();
+      } catch (e) {
+        const endTs = Date.now();
+        console.error('[generate-video] runway/generate', { model, startTs, endTs, durationMs: endTs - startTs, httpStatus: createRes.status, error: 'response not JSON' });
+        return res.status(502).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
+      }
+
+      const endTs = Date.now();
+      console.error('[generate-video] runway/generate', { model, startTs, endTs, durationMs: endTs - startTs, httpStatus: createRes.status, ...(createData?.msg ? { msg: createData.msg } : {}) });
+
+      if (!createRes.ok || createData.code !== 200) {
+        return res.status(502).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
+      }
+
+      const taskId = createData?.data?.taskId;
+      if (!taskId) {
+        return res.status(502).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
+      }
+
+      for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
+        const jobRes = await fetch(`${KIE_BASE}/runway/record-detail?taskId=${encodeURIComponent(taskId)}`, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+        let jobData: { data?: { state?: string; videoInfo?: { videoUrl?: string }; failMsg?: string }; code?: number } = {};
+        try {
+          jobData = await jobRes.json();
+        } catch {
+          await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+          continue;
+        }
+        if (!jobRes.ok) {
+          const totalMs = Date.now() - startTs;
+          console.error('[generate-video] runway/record-detail', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: jobRes.status });
+          return res.status(502).json({ error: 'Не удалось получить видео. Попробуйте позже.' });
+        }
+
+        const state = jobData?.data?.state;
+        if (state === 'success') {
+          const videoUrl = jobData?.data?.videoInfo?.videoUrl;
+          if (typeof videoUrl === 'string') {
+            const totalMs = Date.now() - startTs;
+            console.error('[generate-video] success', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 200 });
+            return res.status(200).json({ videoUrl });
+          }
+        }
+        if (state === 'fail') {
+          const totalMs = Date.now() - startTs;
+          console.error('[generate-video] fail', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 422, errorMessage: jobData?.data?.failMsg });
+          return res.status(422).json({
+            error: 'Генерация видео не удалась. Попробуйте снова.',
+          });
+        }
+
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+      }
+
+      const totalMs = Date.now() - startTs;
+      console.error('[generate-video] timeout', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 408 });
+      return res.status(408).json({
+        error: 'Превышено время ожидания для видео. Попробуйте ещё раз.',
+      });
+    }
+
+    // Не-Veo (kling, hailuo, wan, grok): jobs/createTask + jobs/recordInfo
+    const inputPayload = buildJobsCreateTaskInput(model, imageUrl, videoPrompt);
+    const createRes = await fetch(`${KIE_BASE}/jobs/createTask`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        model,
+        input: inputPayload,
+      }),
     });
 
-    let createData: { data?: { taskId?: string; creditsUsed?: number }; message?: string; msg?: string } = {};
+    let createData: { data?: { taskId?: string; creditsUsed?: number }; message?: string; msg?: string; code?: number } = {};
     try {
       createData = await createRes.json();
     } catch (e) {
       const endTs = Date.now();
-      console.error('[generate-video] veo/generate', { model, startTs, endTs, durationMs: endTs - startTs, httpStatus: createRes.status, error: 'response not JSON' });
+      console.error('[generate-video] jobs/createTask', { model, startTs, endTs, durationMs: endTs - startTs, httpStatus: createRes.status, error: 'response not JSON' });
       return res.status(502).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
     }
 
     const endTs = Date.now();
     const creditsUsed = createData?.data?.creditsUsed;
-    console.error('[generate-video] veo/generate', { model, startTs, endTs, durationMs: endTs - startTs, httpStatus: createRes.status, creditsUsed, ...(createData?.msg ? { msg: createData.msg } : {}) });
+    console.error('[generate-video] jobs/createTask', { model, startTs, endTs, durationMs: endTs - startTs, httpStatus: createRes.status, creditsUsed, ...(createData?.msg ? { msg: createData.msg } : {}) });
 
-    if (!createRes.ok) {
+    if (!createRes.ok || (createData.code !== undefined && createData.code !== 200)) {
       return res.status(502).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
     }
 
@@ -152,10 +375,10 @@ export default async function handler(req: Req, res: Res) {
     }
 
     for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
-      const jobRes = await fetch(`${KIE_BASE}/veo/record-info?taskId=${encodeURIComponent(taskId)}`, {
+      const jobRes = await fetch(`${KIE_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
-      let jobData: { data?: { successFlag?: number | string }; message?: string } = {};
+      let jobData: { data?: { state?: string; resultJson?: string; failMsg?: string }; message?: string } = {};
       try {
         jobData = await jobRes.json();
       } catch {
@@ -164,25 +387,36 @@ export default async function handler(req: Req, res: Res) {
       }
       if (!jobRes.ok) {
         const totalMs = Date.now() - startTs;
-        console.error('[generate-video] veo/record-info', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: jobRes.status });
+        console.error('[generate-video] jobs/recordInfo', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: jobRes.status });
         return res.status(502).json({ error: 'Не удалось получить видео. Попробуйте позже.' });
       }
 
-      const flag = jobData?.data?.successFlag;
-      if (flag === 1 || flag === '1') {
-        const videoUrl = extractVideoUrl(jobData?.data);
+      const state = jobData?.data?.state;
+      if (state === 'success') {
+        let videoUrl: string | undefined;
+        const resultJson = jobData?.data?.resultJson;
+        if (typeof resultJson === 'string') {
+          try {
+            const parsed = JSON.parse(resultJson) as Record<string, unknown>;
+            videoUrl = extractVideoUrl(parsed);
+            if (!videoUrl && Array.isArray(parsed?.result_urls)) videoUrl = (parsed.result_urls as string[])[0];
+            if (!videoUrl && Array.isArray(parsed?.resultUrls)) videoUrl = (parsed.resultUrls as string[])[0];
+          } catch {
+            // ignore
+          }
+        }
         if (videoUrl) {
           const totalMs = Date.now() - startTs;
           console.error('[generate-video] success', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 200 });
           return res.status(200).json({ videoUrl });
         }
         const totalMs = Date.now() - startTs;
-        console.error('[generate-video] successFlag=1 but no videoUrl', { model, startTs, endTs: Date.now(), durationMs: totalMs });
+        console.error('[generate-video] success but no videoUrl in resultJson', { model, startTs, endTs: Date.now(), durationMs: totalMs });
         return res.status(500).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
       }
-      if (flag === 2 || flag === 3 || flag === '2' || flag === '3') {
+      if (state === 'fail') {
         const totalMs = Date.now() - startTs;
-        console.error('[generate-video] fail', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 422, successFlag: flag });
+        console.error('[generate-video] fail', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 422, errorMessage: jobData?.data?.failMsg });
         return res.status(422).json({
           error: 'Генерация видео не удалась. Попробуйте снова.',
         });

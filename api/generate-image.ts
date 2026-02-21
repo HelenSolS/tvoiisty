@@ -128,7 +128,7 @@ export default async function handler(
       },
       body: JSON.stringify({
         model,
-        input: JSON.stringify(inputPayload),
+        input: inputPayload,
       }),
     });
 
@@ -239,10 +239,13 @@ export default async function handler(
 
       if (state === 'fail') {
         const totalMs = Date.now() - startTs;
-        console.error('[generate-image] job state=fail', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 422, errorMessage: jobData?.data?.failMsg });
-        return res.status(422).json({
-          error: 'Генерация не удалась. Попробуйте снова.',
-        });
+        const failMsg = jobData?.data?.failMsg;
+        console.error('[generate-image] job state=fail', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 422, errorMessage: failMsg });
+        const userMessage =
+          failMsg && failMsg.trim()
+            ? failMsg.trim()
+            : 'Генерация не удалась. Попробуйте снова.';
+        return res.status(422).json({ error: userMessage });
       }
 
       // пока state не success/fail — ждём
