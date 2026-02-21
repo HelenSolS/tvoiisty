@@ -88,7 +88,7 @@ curl -X POST "https://api.kie.ai/api/v1/gpt4o-image/generate" \
 }
 ```
 
-**Пример запроса на редактирование изображения:**
+**Пример запроса на редактирование изображения (Image-to-Image):**
 
 ```bash
 curl -X POST "https://api.kie.ai/api/v1/gpt4o-image/generate" \
@@ -99,6 +99,19 @@ curl -X POST "https://api.kie.ai/api/v1/gpt4o-image/generate" \
     "maskUrl": "https://example.com/mask.png",
     "prompt": "Replace sky with starry night",
     "size": "3:2"
+  }'
+```
+
+**Пример виртуальной примерки (2 изображения):**
+
+```bash
+curl -X POST "https://api.kie.ai/api/v1/gpt4o-image/generate" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "filesUrl": ["https://example.com/person.jpg", "https://example.com/clothing.jpg"],
+    "prompt": "Virtual try-on: show this person wearing this clothing naturally",
+    "size": "1:1"
   }'
 ```
 
@@ -128,7 +141,96 @@ GET /api/v1/gpt4o-image/record-info?taskId=YOUR_TASK_ID
 
 Поле `progress` содержит значение от 0.00 до 1.00, позволяющее отслеживать прогресс выполнения. Поле `result_urls` массив с URL сгенерированных изображений.
 
-### 2.2 Flux Kontext API
+### 2.2 GPT Image 1.5 API
+
+GPT Image 1.5 представляет собой улучшенную версию модели с поддержкой более продвинутых функций редактирования и работы с несколькими изображениями.
+
+**Эндпоинт:**
+
+```
+POST https://api.kie.ai/api/v1/jobs/createTask
+```
+
+**Параметры:**
+
+| Параметр | Тип | Обязательный | Описание |
+|----------|-----|--------------|----------|
+| model | string | Да | `gpt-image-1.5` |
+| input.prompt | string | Да | Текстовое описание |
+| input.image_urls | array | Нет | Массив URL изображений (до 5) |
+| input.aspect_ratio | string | Нет | Соотношение сторон |
+
+**Пример запроса:**
+
+```bash
+curl -X POST "https://api.kie.ai/api/v1/jobs/createTask" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-image-1.5",
+    "input": {
+      "prompt": "Edit this image to add autumn leaves",
+      "image_urls": ["https://example.com/photo.jpg"]
+    }
+  }'
+```
+
+### 2.3 Gemini / Nano Banana API
+
+Gemini от Google (в народе называемый "Nano Banana") — это мультимодальная модель, которая отлично работает с несколькими изображениями и идеально подходит для виртуальной примерки.
+
+**Эндпоинт:**
+
+```
+POST https://api.kie.ai/api/v1/jobs/createTask
+```
+
+**Доступные модели:**
+
+| Модель | Назначение | Особенности |
+|--------|------------|-------------|
+| gemini-2.5-flash-image-preview | Быстрая генерация | Оптимальная скорость/качество |
+| gemini-3.0-pro-image | Профессиональное качество | Лучшее качество, мультимодальность |
+
+**Пример виртуальной примерки (ЧЕЛОВЕК + ОДЕЖДА):**
+
+```bash
+curl -X POST "https://api.kie.ai/api/v1/jobs/createTask" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemini-3.0-pro-image",
+    "input": {
+      "prompt": "Virtual try-on: show this person wearing this clothing naturally, realistic photo",
+      "image_urls": [
+        "https://example.com/person.jpg",
+        "https://example.com/clothing.jpg"
+      ]
+    }
+  }'
+```
+
+**Пример генерации из текста:**
+
+```bash
+curl -X POST "https://api.kie.ai/api/v1/jobs/createTask" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemini-2.5-flash-image-preview",
+    "input": {
+      "prompt": "A futuristic cityscape at sunset"
+    }
+  }'
+```
+
+**Почему Gemini лучше для примерки:**
+
+- Специально обучена понимать отношения между объектами на разных изображениях
+- Мультимодальная — понимает контекст "человек + одежда"
+- Лучше сохраняет детали при наложении одежды на тело
+
+### 2.4 Flux Kontext API
 
 Flux Kontext API представляет собой высококачественное решение для генерации и редактирования изображений от Black Forest Labs. API поддерживает две модели: `flux-kontext-pro` (базовая версия) и `flux-kontext-max` (максимальное качество). Этот API особенно хорош для творческих задач и профессиональной работы с визуальным контентом.
 
@@ -171,7 +273,7 @@ curl -X POST "https://api.kie.ai/api/v1/flux/kontext/generate" \
   }'
 ```
 
-**Пример редактирования существующего изображения:**
+**Пример редактирования существующего изображения (Image-to-Image):**
 
 ```bash
 curl -X POST "https://api.kie.ai/api/v1/flux/kontext/generate" \
@@ -192,7 +294,41 @@ GET https://api.kie.ai/api/v1/flux/kontext/record-info?taskId={taskId}
 
 Параметр `safetyTolerance` интересен тем, что позволяет контролировать уровень модерации контента. Значение 0 означает максимально строгую модерацию, тогда как 6 разрешает практически любой контент. Для редактирования изображений допустимы только значения 0-2.
 
-### 2.3 Grok Imagine API
+### 2.5 Flux-2 Image-to-Image API
+
+Flux-2 предоставляет расширенные возможности для работы с несколькими изображениями и стилизацией.
+
+**Эндпоинт:**
+
+```
+POST https://api.kie.ai/api/v1/jobs/createTask
+```
+
+**Доступные модели:**
+
+| Модель | Назначение |
+|--------|------------|
+| flux-2/flex-text-to-image | Генерация из текста |
+| flux-2/flex-image-to-image | Редактирование/стилизация |
+| flux-2/pro-text-to-image | Профессиональная генерация |
+| flux-2/pro-image-to-image | Профессиональное редактирование |
+
+**Пример Image-to-Image:**
+
+```bash
+curl -X POST "https://api.kie.ai/api/v1/jobs/createTask" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "flux-2/flex-image-to-image",
+    "input": {
+      "prompt": "Transform to watercolor style",
+      "image_urls": ["https://example.com/photo.jpg"]
+    }
+  }'
+```
+
+### 2.6 Grok Imagine API
 
 Grok Imagine API от xAI предлагает возможности как для генерации изображений, так и для работы с видео. Это относительно новое решение на рынке, которое активно развивается и предлагает интересные возможности для создания контента.
 
@@ -248,6 +384,136 @@ curl --request POST \
 }
 ```
 
+### 2.7 Ideogram API
+
+Ideogram специализируется на генерации изображений с текстом и имеет уникальную функцию сохранения персонажей.
+
+**Эндпоинт:**
+
+```
+POST https://api.kie.ai/api/v1/jobs/createTask
+```
+
+**Доступные модели:**
+
+| Модель | Назначение |
+|--------|------------|
+| ideogram/v3 | Генерация с текстом |
+| ideogram/v3-reframe | Автоматическое перекомпозирование |
+| ideogram/character | Сохранение персонажей |
+
+**Пример запроса:**
+
+```bash
+curl -X POST "https://api.kie.ai/api/v1/jobs/createTask" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "ideogram/v3",
+    "input": {
+      "prompt": "A poster with text \"SUMMER SALE\" and beach background"
+    }
+  }'
+```
+
+### 2.8 Qwen API
+
+Qwen от Alibaba поддерживает мультиязычную генерацию и редактирование изображений.
+
+**Эндпоинт:**
+
+```
+POST https://api.kie.ai/api/v1/jobs/createTask
+```
+
+**Доступные модели:**
+
+| Модель | Назначение |
+|--------|------------|
+| qwen/text-to-image | Генерация из текста |
+| qwen/image-to-image | Редактирование изображения |
+
+**Пример Image-to-Image:**
+
+```bash
+curl -X POST "https://api.kie.ai/api/v1/jobs/createTask" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen/image-to-image",
+    "input": {
+      "prompt": "Change background to forest",
+      "image_urls": ["https://example.com/person.jpg"]
+    }
+  }'
+```
+
+### 2.9 Recraft API
+
+Recraft специализируется на профессиональной обработке изображений.
+
+**Эндпоинт:**
+
+```
+POST https://api.kie.ai/api/v1/jobs/createTask
+```
+
+**Доступные модели:**
+
+| Модель | Назначение |
+|--------|------------|
+| recraft/upscaling | Увеличение разрешения |
+| recraft/background-removal | Удаление фона |
+
+**Пример:**
+
+```bash
+curl -X POST "https://api.kie.ai/api/v1/jobs/createTask" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "recraft/upscaling",
+    "input": {
+      "image_urls": ["https://example.com/image.jpg"]
+    }
+  }'
+```
+
+### 2.10 Topaz API
+
+Topaz предоставляет профессиональные инструменты для улучшения и масштабирования изображений.
+
+**Эндпоинт:**
+
+```
+POST https://api.kie.ai/api/v1/jobs/createTask
+```
+
+**Доступные модели:**
+
+| Модель | Назначение |
+|--------|------------|
+| topaz/enhancement | Улучшение качества |
+| topaz/upscaling | Увеличение разрешения |
+| topaz/video-upscale | Увеличение разрешения видео |
+
+### 2.11 Seedream API
+
+Seedream специализируется на креативной генерации с уникальными художественными стилями.
+
+**Эндпоинт:**
+
+```
+POST https://api.kie.ai/api/v1/jobs/createTask
+```
+
+**Доступные модели:**
+
+| Модель | Назначение |
+|--------|------------|
+| seedream/v4.0 | Генерация (версия 4.0) |
+| seedream/v4.5 | Генерация (версия 4.5) |
+
 ## 3. Генерация видео
 
 Генерация видео является одной из наиболее востребованных возможностей современных AI-систем. KIE AI предоставляет доступ к нескольким мощным решениям для создания видеоконтента, каждое из которых имеет свои уникальные характеристики и области применения.
@@ -285,6 +551,20 @@ curl -X POST "https://api.kie.ai/api/v1/veo/generate" \
     "model": "veo3",
     "aspect_ratio": "16:9",
     "callBackUrl": "https://your-site.com/callback"
+  }'
+```
+
+**Пример генерации видео из изображения (Image-to-Video):**
+
+```bash
+curl -X POST "https://api.kie.ai/api/v1/veo/generate" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Make this image come alive with motion",
+    "model": "veo3",
+    "aspect_ratio": "16:9",
+    "imageUrls": ["https://example.com/photo.jpg"]
   }'
 ```
 
@@ -336,6 +616,14 @@ Authorization: Bearer YOUR_API_KEY
 Content-Type: application/json
 ```
 
+**Доступные модели:**
+
+| Модель | Назначение |
+|--------|------------|
+| kling-3.0/video | Стандартная генерация |
+| kling-3.0/video-pro | Профессиональное качество |
+| kling-ai/virtual-try-on | Виртуальная примерка одежды |
+
 **Параметры:**
 
 | Параметр | Тип | Обязательный | Описание |
@@ -381,6 +669,24 @@ curl --request POST \
 
 Особенностью Kling API является система элементов (`kling_elements`), которая позволяет включать в сцену конкретные объекты или персонажи. Элементы определяются отдельно и затем ссылаются в промпте через синтаксис `@element_name`. Это обеспечивает более точный контроль над содержанием сгенерированного видео.
 
+**Пример Image-to-Video:**
+
+```bash
+curl --request POST \
+  --url https://api.kie.ai/api/v1/jobs/createTask \
+  --header 'Authorization: Bearer YOUR_API_KEY' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "model": "kling-3.0/video",
+    "input": {
+      "prompt": "Animate this image with realistic motion",
+      "image_urls": ["https://example.com/photo.jpg"],
+      "duration": "5",
+      "aspect_ratio": "16:9"
+    }
+  }'
+```
+
 **Ответ:**
 
 ```json
@@ -393,7 +699,40 @@ curl --request POST \
 }
 ```
 
-### 3.3 Sora 2 API
+### 3.3 Kling AI Virtual Try-On API
+
+Специализированный API для виртуальной примерки одежды на фотографиях людей.
+
+**Эндпоинт:**
+
+```
+POST https://api.kie.ai/api/v1/jobs/createTask
+```
+
+**Параметры:**
+
+| Параметр | Тип | Обязательный | Описание |
+|----------|-----|--------------|----------|
+| model | string | Да | `kling-ai/virtual-try-on` |
+| input.model_image | string | Да | URL изображения человека |
+| input.garment_image | string | Да | URL изображения одежды |
+
+**Пример:**
+
+```bash
+curl -X POST "https://api.kie.ai/api/v1/jobs/createTask" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "kling-ai/virtual-try-on",
+    "input": {
+      "model_image": "https://example.com/person.jpg",
+      "garment_image": "https://example.com/clothing.jpg"
+    }
+  }'
+```
+
+### 3.4 Sora 2 API
 
 Sora 2 от OpenAI представляет собой эволюцию знаменитой модели генерации видео. API предоставляет несколько режимов работы для различных сценариев использования.
 
@@ -448,7 +787,23 @@ curl --request POST \
   }'
 ```
 
-### 3.4 Runway API
+**Пример Image-to-Video:**
+
+```bash
+curl --request POST \
+  --url https://api.kie.ai/api/v1/jobs/createTask \
+  --header 'Authorization: Bearer YOUR_API_KEY' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "model": "sora-2-image-to-video",
+    "input": {
+      "prompt": "Animate this image with realistic movement",
+      "image_urls": ["https://example.com/photo.jpg"]
+    }
+  }'
+```
+
+### 3.5 Runway API
 
 Runway API предоставляет возможности генерации и расширения видео через известную платформу для творческих профессионалов. API особенно удобен для интеграции в существующие рабочие процессы.
 
@@ -492,6 +847,21 @@ curl -X POST "https://api.kie.ai/api/v1/runway/generate" \
   }'
 ```
 
+**Пример Image-to-Video:**
+
+```bash
+curl -X POST "https://api.kie.ai/api/v1/runway/generate" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Animate this image",
+    "duration": 5,
+    "quality": "720p",
+    "aspectRatio": "16:9",
+    "imageUrl": "https://example.com/photo.jpg"
+  }'
+```
+
 **Проверка статуса:**
 
 ```
@@ -523,7 +893,137 @@ curl -X POST "https://api.kie.ai/api/v1/runway/extend" \
 - Разрешение 1080p доступно только для 5-секундных видео
 - Коды ответа: 200 (успех), 400 (ошибка запроса), 401 (не авторизован), 402 (недостаточно кредитов), 429 (превышен лимит)
 
-### 3.5 Luma API
+### 3.6 Wan API
+
+Wan от Alibaba предоставляет мощные возможности для генерации видео из изображений и текста.
+
+**Эндпоинт:**
+
+```
+POST https://api.kie.ai/api/v1/jobs/createTask
+```
+
+**Доступные модели:**
+
+| Модель | Назначение |
+|--------|------------|
+| wan-2.1/image-to-video | Генерация видео из изображения |
+| wan-2.1/text-to-video | Генерация видео из текста |
+| wan-2.6 | Новая версия с кинематографичным качеством |
+
+**Пример Image-to-Video:**
+
+```bash
+curl -X POST "https://api.kie.ai/api/v1/jobs/createTask" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "wan-2.1/image-to-video",
+    "input": {
+      "prompt": "Create smooth motion from this image",
+      "image_urls": ["https://example.com/photo.jpg"]
+    }
+  }'
+```
+
+### 3.7 Hailuo API
+
+Hailuo (также известный как MiniMax) специализируется на качественной генерации видео из изображений.
+
+**Эндпоинт:**
+
+```
+POST https://api.kie.ai/api/v1/jobs/createTask
+```
+
+**Доступные модели:**
+
+| Модель | Назначение |
+|--------|------------|
+| hailuo/2-3-image-to-video-pro | Профессиональное преобразование изображения в видео |
+| hailuo/text-to-video | Генерация из текста |
+
+**Пример:**
+
+```bash
+curl -X POST "https://api.kie.ai/api/v1/jobs/createTask" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "hailuo/2-3-image-to-video-pro",
+    "input": {
+      "prompt": "Transform this image into dynamic video",
+      "image_urls": ["https://example.com/photo.jpg"]
+    }
+  }'
+```
+
+### 3.8 Bytedance Seedance API
+
+Seedance от ByteDance предоставляет кинематографичное качество с сильной поддержкой мультишотов.
+
+**Эндпоинт:**
+
+```
+POST https://api.kie.ai/api/v1/jobs/createTask
+```
+
+**Доступные модели:**
+
+| Модель | Назначение |
+|--------|------------|
+| bytedance/seedance-2.0 | Кинематографичное видео |
+| bytedance/v1-lite-text-to-video | Быстрая генерация из текста |
+| bytedance/v1-lite-image-to-video | Быстрое преобразование изображения в видео |
+
+**Пример Image-to-Video:**
+
+```bash
+curl -X POST "https://api.kie.ai/api/v1/jobs/createTask" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "bytedance/v1-lite-image-to-video",
+    "input": {
+      "prompt": "Create video from this image",
+      "image_urls": ["https://example.com/photo.jpg"]
+    }
+  }'
+```
+
+### 3.9 InfiniteTalk (Wan) API
+
+InfiniteTalk специализируется на синхронизации губ и создании видео из изображения и аудио.
+
+**Эндпоинт:**
+
+```
+POST https://api.kie.ai/api/v1/jobs/createTask
+```
+
+**Доступные модели:**
+
+| Модель | Назначение |
+|--------|------------|
+| infinitalk/ai-lip-sync | Синхронизация губ |
+| wan-2.1/speech-to-video | Речь в видео |
+
+**Пример:**
+
+```bash
+curl -X POST "https://api.kie.ai/api/v1/jobs/createTask" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "infinitalk/ai-lip-sync",
+    "input": {
+      "image_url": "https://example.com/portrait.jpg",
+      "audio_url": "https://example.com/speech.mp3"
+    }
+  }'
+```
+
+### 3.10 Luma API
 
 Luma API специализируется на модификации и трансформации существующих видео с помощью AI. Это отличает его от других API, которые фокусируются на генерации с нуля.
 
@@ -589,6 +1089,36 @@ GET https://api.kie.ai/api/v1/modify/record-info?taskId={taskId}
 | 2 | CREATE_TASK_FAILED | Ошибка создания задачи |
 | 3 | GENERATE_FAILED | Ошибка генерации |
 | 4 | CALLBACK_FAILED | Генерация успешна, но callback не доставлен |
+
+### 3.11 Topaz Video API
+
+Topaz специализируется на улучшении качества и увеличении разрешения видео.
+
+**Эндпоинт:**
+
+```
+POST https://api.kie.ai/api/v1/jobs/createTask
+```
+
+**Модели:**
+
+| Модель | Назначение |
+|--------|------------|
+| topaz/video-upscale | Увеличение разрешения видео |
+
+**Пример:**
+
+```bash
+curl -X POST "https://api.kie.ai/api/v1/jobs/createTask" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "topaz/video-upscale",
+    "input": {
+      "video_url": "https://example.com/video.mp4"
+    }
+  }'
+```
 
 ## 4. Чат-модели
 

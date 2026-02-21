@@ -1,14 +1,31 @@
 /**
  * Backend-эндпоинт: примерка (try-on) через KIE.
  * Ключ KIE читается только здесь (process.env.KIE_API_KEY), на фронт не передаётся.
- * Эндпоинт: POST https://api.kie.ai/api/v1/jobs/createTask (важно: префикс /api/v1/).
- * KIE принимает в input_urls только https-URL; data/base64 загружаем в Vercel Blob и  подставляем URL.
+ * Эндпоинт: POST https://api.kie.ai/api/v1/jobs/createTask. KIE принимает в input_urls только https-URL; data/base64 загружаем в Vercel Blob.
  */
 
 import { put } from '@vercel/blob';
 
-const KIE_BASE = 'https://api.kie.ai/api/v1';
+const DEFAULT_KIE_BASE = 'https://api.kie.ai/api/v1';
 const POLL_INTERVAL_MS = 2000;
+
+/** Промпт по умолчанию для примерки (subject, setting, style, lighting, composition, camera). */
+const DEFAULT_IMAGE_PROMPT =
+  'Person from uploaded photos wearing new outfit. Preserve full identity and body proportions, natural confident fashion pose. Setting: neutral premium minimalist interior. Background: soft beige-gray or light concrete, clean and distraction-free. Style: hyper-realistic high-end fashion photography. Lighting: soft directional side light with subtle rim light. Mood: premium, confident, modern. Composition: rule of thirds, subject centered, vertical frame. Camera: Sony A7R V, 85mm f/1.8. Format: vertical.';
+
+type ProviderId = 'default' | 'backup';
+
+function getKieConfig(provider: ProviderId): { base: string; apiKey: string | undefined } {
+  if (provider === 'backup') {
+    const base = process.env.KIE_BACKUP_BASE_URL;
+    const apiKey = process.env.KIE_BACKUP_API_KEY;
+    if (base && apiKey) return { base: base.replace(/\/$/, ''), apiKey };
+  }
+  return {
+    base: (process.env.KIE_BASE_URL || DEFAULT_KIE_BASE).replace(/\/$/, ''),
+    apiKey: process.env.KIE_API_KEY,
+  };
+}
 const POLL_MAX_ATTEMPTS = 60; // ~2 минуты макс
 const MODEL_IMAGE = process.env.KIE_IMAGE_MODEL || 'flux-2/flex-image-to-image';
 
@@ -23,6 +40,9 @@ async function ensureHttpsUrl(value: string, filename: string): Promise<string> 
   }
   const buf = Buffer.from(base64, 'base64');
   const blob = await put(`tryon/${Date.now()}-${filename}`, buf, { access: 'public' });
+  if (blob.url.includes('private.blob.vercel-storage.com')) {
+    console.error('[generate-image] Blob URL is private — KIE cannot fetch it. Create a PUBLIC Blob store in Vercel (Storage → Blob) and set BLOB_READ_WRITE_TOKEN from that store.');
+  }
   return blob.url;
 }
 
@@ -35,13 +55,15 @@ export default async function handler(
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.KIE_API_KEY;
+  const provider = ((req.body as Record<string, unknown>)?.provider === 'backup' ? 'backup' : 'default') as ProviderId;
+  const { base: KIE_BASE, apiKey } = getKieConfig(provider);
   if (!apiKey) {
-    console.error('[generate-image] KIE_API_KEY not set in environment');
+    console.error('[generate-image] API key not set for provider', provider);
     return res
       .status(500)
       .json({ error: 'Сервис временно недоступен. Попробуйте позже.' });
   }
+  console.error('[generate-image] provider', provider, 'base', KIE_BASE);
 
   try {
     const { personImageBase64, clothingImageBase64, prompt } = (req.body ||
@@ -51,13 +73,27 @@ export default async function handler(
       prompt?: string;
     };
 
+    // Лог для анализа 422/413: только размеры, без содержимого и ключей
+    console.error('[generate-image] request', {
+      personLen: personImageBase64?.length ?? 0,
+      clothingLen: clothingImageBase64?.length ?? 0,
+      promptLen: prompt?.length ?? 0,
+    });
+
     if (!personImageBase64 || !clothingImageBase64) {
       return res
         .status(400)
         .json({ error: 'Недостаточно данных для примерки.' });
     }
 
-    // KIE ждёт в input_urls только https-URL; data/base64 загружаем в Blob
+    const needUpload = !personImageBase64.startsWith('https://') || !clothingImageBase64.startsWith('https://');
+    if (needUpload && !process.env.BLOB_READ_WRITE_TOKEN) {
+      console.error('[generate-image] BLOB_READ_WRITE_TOKEN not set — add Blob Store in Vercel (Storage → Blob) and set env var');
+      return res
+        .status(503)
+        .json({ error: 'Сервис временно недоступен. Попробуйте позже.' });
+    }
+
     let personUrl: string;
     let clothingUrl: string;
     try {
@@ -72,10 +108,10 @@ export default async function handler(
         .json({ error: 'Не удалось подготовить изображения. Попробуйте позже.' });
     }
 
-    // 1) KIE jobs/createTask (важно: базовый URL с /api/v1/)
+    // 1) KIE jobs/createTask (input_urls — только https-URL)
     const inputPayload = {
       aspect_ratio: '1:1',
-      prompt: prompt || 'Virtual try-on: dress the person in the outfit from the second image naturally.',
+      prompt: prompt || DEFAULT_IMAGE_PROMPT,
       resolution: '1K',
       input_urls: [personUrl, clothingUrl],
     };
@@ -203,14 +239,10 @@ export default async function handler(
       }
 
       if (state === 'fail') {
-        console.error(
-          '[generate-image] job state=fail',
-          jobData?.data?.failMsg,
-        );
+        // В лог — сырой текст от KIE для отладки; клиенту — только русский
+        console.error('[generate-image] job state=fail', jobData?.data?.failMsg);
         return res.status(422).json({
-          error:
-            jobData?.data?.failMsg ||
-            'Генерация не удалась. Попробуйте снова.',
+          error: 'Генерация не удалась. Попробуйте снова.',
         });
       }
 

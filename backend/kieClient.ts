@@ -20,7 +20,7 @@ function authHeaders(): Record<string, string> {
   };
 }
 
-/** Создать задачу на примерку (jobs/createTask). Модель flux-2/flex-image-to-image, input — строка JSON. */
+/** Создать задачу на примерку: POST .../api/v1/jobs/createTask. */
 export async function createImageTask(params: {
   personImageBase64: string;
   clothingImageBase64: string;

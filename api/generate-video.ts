@@ -1,6 +1,6 @@
 /**
  * Backend-эндпоинт: генерация видео из результата примерки через KIE Veo.
- * Как в backend/kieClient: veo/generate + veo/record-info, veo3, 9:16, imageUrls.
+ * Тот же префикс, что и для картинки: https://api.kie.ai/api/v1/... (veo/generate, veo/record-info).
  * Ключ только на бэкенде (process.env.KIE_API_KEY).
  */
 
@@ -8,12 +8,53 @@
 type Req = { method?: string; body?: Record<string, unknown> };
 type Res = { status: (n: number) => { json: (o: object) => void } };
 
-const KIE_BASE = 'https://api.kie.ai/api/v1';
+const DEFAULT_KIE_BASE = 'https://api.kie.ai/api/v1';
 const POLL_INTERVAL_MS = 3000;
+
+type ProviderId = 'default' | 'backup';
+
+function getKieConfig(provider: ProviderId): { base: string; apiKey: string | undefined } {
+  if (provider === 'backup') {
+    const base = process.env.KIE_BACKUP_BASE_URL;
+    const apiKey = process.env.KIE_BACKUP_API_KEY;
+    if (base && apiKey) return { base: base.replace(/\/$/, ''), apiKey };
+  }
+  return {
+    base: (process.env.KIE_BASE_URL || DEFAULT_KIE_BASE).replace(/\/$/, ''),
+    apiKey: process.env.KIE_API_KEY,
+  };
+}
 const POLL_MAX_ATTEMPTS = 80;
 
-const DEFAULT_VIDEO_PROMPT =
-  'Cinematic fashion film, dynamic and smooth. The person from the image moves with catwalk-like grace so the outfit is clearly visible at all times. Soft diffused lighting, no harsh shadows. Beautiful textures and a refined, fitting location. Rule of thirds, hyperrealistic cinematography, film look. One beautiful environment that suits the look—e.g. minimal atelier, sunlit terrace, or urban backdrop.';
+/** Промпт по умолчанию для видео (позже — выбор из набора для разнообразия). */
+const DEFAULT_VIDEO_PROMPT = `Create a short high-end fashion advertisement video based on the provided image.
+
+The character must preserve full facial identity and body proportions.
+The outfit must remain identical in color, fit, and texture.
+
+Scene (5–8 seconds):
+
+Shot 1:
+Subtle camera push-in.
+Character takes a soft step forward.
+Fabric moves naturally.
+
+Shot 2:
+Gentle body turn.
+Light glides across the fabric surface.
+Highlight garment fit and texture.
+
+Shot 3:
+Close-up of clothing details.
+Natural fabric motion.
+Confident eye contact with camera.
+
+Lighting remains consistent with the original image.
+Neutral premium color grading.
+Cinematic smooth dolly camera movement.
+
+Atmosphere: modern fashion brand advertisement.
+Clean, stylish, minimal environment.`;
 
 function extractVideoUrl(data: unknown): string | undefined {
   if (!data || typeof data !== 'object') return undefined;
@@ -29,9 +70,12 @@ function extractVideoUrl(data: unknown): string | undefined {
   if (result?.video_url && typeof result.video_url === 'string') return result.video_url as string;
   const videos = result?.videos as Array<{ url?: string }> | undefined;
   if (Array.isArray(videos) && videos[0]?.url) return videos[0].url;
-  const response = target.response as { result_urls?: string[]; video_url?: string } | undefined;
-  if (Array.isArray(response?.result_urls) && response.result_urls[0]) return response.result_urls[0];
-  if (response?.video_url) return response.video_url;
+  const response = target.response as Record<string, unknown> | undefined;
+  if (response && typeof response === 'object') {
+    if (Array.isArray(response.resultUrls) && response.resultUrls[0] && typeof response.resultUrls[0] === 'string') return response.resultUrls[0] as string;
+    if (Array.isArray(response.result_urls) && response.result_urls[0]) return response.result_urls[0] as string;
+    if (typeof response.video_url === 'string') return response.video_url;
+  }
   return undefined;
 }
 
@@ -40,11 +84,13 @@ export default async function handler(req: Req, res: Res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.KIE_API_KEY;
+  const provider = (req.body?.provider === 'backup' ? 'backup' : 'default') as ProviderId;
+  const { base: KIE_BASE, apiKey } = getKieConfig(provider);
   if (!apiKey) {
-    console.error('[generate-video] KIE_API_KEY not set in environment');
+    console.error('[generate-video] API key not set for provider', provider);
     return res.status(500).json({ error: 'Сервис временно недоступен. Попробуйте позже.' });
   }
+  console.error('[generate-video] provider', provider);
 
   try {
     const { imageUrl, prompt } = (req.body || {}) as { imageUrl?: string; prompt?: string };
