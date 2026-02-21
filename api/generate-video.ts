@@ -26,8 +26,35 @@ function getKieConfig(provider: ProviderId): { base: string; apiKey: string | un
 }
 const POLL_MAX_ATTEMPTS = 80;
 
-const DEFAULT_VIDEO_PROMPT =
-  'Cinematic fashion film, dynamic and smooth. The person from the image moves with catwalk-like grace so the outfit is clearly visible at all times. Soft diffused lighting, no harsh shadows. Beautiful textures and a refined, fitting location. Rule of thirds, hyperrealistic cinematography, film look. One beautiful environment that suits the look—e.g. minimal atelier, sunlit terrace, or urban backdrop.';
+/** Промпт по умолчанию для видео (позже — выбор из набора для разнообразия). */
+const DEFAULT_VIDEO_PROMPT = `Create a short high-end fashion advertisement video based on the provided image.
+
+The character must preserve full facial identity and body proportions.
+The outfit must remain identical in color, fit, and texture.
+
+Scene (5–8 seconds):
+
+Shot 1:
+Subtle camera push-in.
+Character takes a soft step forward.
+Fabric moves naturally.
+
+Shot 2:
+Gentle body turn.
+Light glides across the fabric surface.
+Highlight garment fit and texture.
+
+Shot 3:
+Close-up of clothing details.
+Natural fabric motion.
+Confident eye contact with camera.
+
+Lighting remains consistent with the original image.
+Neutral premium color grading.
+Cinematic smooth dolly camera movement.
+
+Atmosphere: modern fashion brand advertisement.
+Clean, stylish, minimal environment.`;
 
 function extractVideoUrl(data: unknown): string | undefined {
   if (!data || typeof data !== 'object') return undefined;

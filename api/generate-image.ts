@@ -9,6 +9,10 @@ import { put } from '@vercel/blob';
 const DEFAULT_KIE_BASE = 'https://api.kie.ai/api/v1';
 const POLL_INTERVAL_MS = 2000;
 
+/** Промпт по умолчанию для примерки (subject, setting, style, lighting, composition, camera). */
+const DEFAULT_IMAGE_PROMPT =
+  'Person from uploaded photos wearing new outfit. Preserve full identity and body proportions, natural confident fashion pose. Setting: neutral premium minimalist interior. Background: soft beige-gray or light concrete, clean and distraction-free. Style: hyper-realistic high-end fashion photography. Lighting: soft directional side light with subtle rim light. Mood: premium, confident, modern. Composition: rule of thirds, subject centered, vertical frame. Camera: Sony A7R V, 85mm f/1.8. Format: vertical.';
+
 type ProviderId = 'default' | 'backup';
 
 function getKieConfig(provider: ProviderId): { base: string; apiKey: string | undefined } {
@@ -107,7 +111,7 @@ export default async function handler(
     // 1) KIE jobs/createTask (input_urls — только https-URL)
     const inputPayload = {
       aspect_ratio: '1:1',
-      prompt: prompt || 'Virtual try-on: dress the person in the outfit from the second image naturally.',
+      prompt: prompt || DEFAULT_IMAGE_PROMPT,
       resolution: '1K',
       input_urls: [personUrl, clothingUrl],
     };
