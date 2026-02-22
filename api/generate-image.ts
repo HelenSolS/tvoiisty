@@ -1,7 +1,8 @@
 /**
- * Backend-эндпоинт: примерка (try-on) через KIE.
- * POST /api/v1/jobs/createTask. KIE принимает в input_urls только https-URL; data/base64 загружаем в Vercel Blob.
- * Лаборатория (dev): принимает model из body и выбирает из пула. Production: один ключ, модель из env или по умолчанию.
+ * Backend-эндпоинт: примерка (try-on) через KIE и Fal.
+ * POST /api/v1/jobs/createTask (KIE) или queue.fal.run (Fal). input_urls — только https; data/base64 загружаем в Vercel Blob.
+ * Лаборатория (dev): model из body. Production: ключ из env.
+ * Большие base64 (person/clothing по 1–2 МБ) увеличивают cold start и память; на будущее — предпочитать presigned URLs.
  */
 
 import { put } from '@vercel/blob';
@@ -9,6 +10,13 @@ import { put } from '@vercel/blob';
 const DEFAULT_KIE_BASE = 'https://api.kie.ai/api/v1';
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_ATTEMPTS = 60; // ~2 минуты макс
+
+/**
+ * Таймаут ожидания Fal queue. Vercel Hobby — ~10–60 с на функцию; при 504 уменьшить.
+ * Оставляем 35 с на polling, чтобы уложиться с запасом (upload + POST + poll).
+ */
+const FAL_POLL_TIMEOUT_MS = 35_000;
+const FAL_POLL_INTERVAL_MS = 1500;
 
 /** Модели KIE (Lab + production). */
 const KIE_IMAGE_MODEL_POOL = [
@@ -20,10 +28,9 @@ const KIE_IMAGE_MODEL_POOL = [
   'ideogram/v3-edit',
 ] as const;
 
-/** Модели Fal AI (альтернатива KIE). В Vercel: FAL_KEY (один ключ для всех Fal). */
+/** Модели Fal AI (альтернатива KIE). В Vercel: FAL_KEY (один ключ для всех Fal). Fashn убран — плохое качество и зависания. */
 const FAL_IMAGE_MODEL_POOL = [
   'fal-ai/image-apps-v2/virtual-try-on',
-  'fal-ai/fashn/tryon/v1.6',
   'fal-ai/nano-banana-pro/edit',
 ] as const;
 
@@ -125,14 +132,13 @@ export default async function handler(
         .json({ error: 'Не удалось подготовить изображения. Попробуйте позже.' });
     }
 
-    // Fal AI (альтернатива KIE): virtual-try-on, FASHN v1.6 или nano-banana-pro/edit — разные имена полей
+    // Fal AI (альтернатива KIE): virtual-try-on или nano-banana-pro/edit. Очередь: при IN_QUEUE пуллим status_url до COMPLETED/FAILED.
     if (isFalModel(model)) {
       const falKey = process.env.FAL_KEY;
       if (!falKey) {
         console.error('[generate-image] FAL_KEY not set for Fal model', model);
         return res.status(503).json({ error: 'Сервис примерки (Fal) недоступен. Попробуйте другую модель.' });
       }
-      const isFashn = model === 'fal-ai/fashn/tryon/v1.6';
       const isNanoBanana = model === 'fal-ai/nano-banana-pro/edit';
       const falInput = isNanoBanana
         ? {
@@ -143,19 +149,20 @@ export default async function handler(
             output_format: 'png' as const,
             resolution: '1K' as const,
           }
-        : isFashn
-          ? {
-              model_image: personUrl,
-              garment_image: clothingUrl,
-              category: 'auto' as const,
-              mode: 'quality' as const,
-              garment_photo_type: 'auto' as const,
-              num_samples: 1,
-              output_format: 'png' as const,
-            }
-          : { person_image_url: personUrl, clothing_image_url: clothingUrl, preserve_pose: true };
+        : { person_image_url: personUrl, clothing_image_url: clothingUrl, preserve_pose: true };
       const falUrl = `https://queue.fal.run/${model}`;
-      // Fal: 1) POST submit (Input по доке), 2) при 200+IN_QUEUE — GET /requests/{request_id} до result. Output: images[].url (nano-banana: fal-ai/nano-banana-pro/edit)
+
+      type FalQueuePayload = {
+        status?: 'IN_QUEUE' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+        status_url?: string;
+        response_url?: string;
+        images?: Array<{ url?: string }>;
+        data?: { images?: Array<{ url?: string }> };
+        request_id?: string;
+        error?: unknown;
+        logs?: unknown;
+      };
+
       const falRes = await fetch(falUrl, {
         method: 'POST',
         headers: {
@@ -165,48 +172,92 @@ export default async function handler(
         body: JSON.stringify(falInput),
       });
       const rawBody = await falRes.text();
-      let falData: {
-        images?: Array<{ url?: string }>;
-        data?: { images?: Array<{ url?: string }> };
-        request_id?: string;
-        status?: string;
-      };
+      let falData: FalQueuePayload;
       try {
-        falData = JSON.parse(rawBody) as typeof falData;
-      } catch (parseErr) {
+        falData = JSON.parse(rawBody) as FalQueuePayload;
+      } catch {
         console.error('[generate-image] Fal response not JSON', { model, status: falRes.status, bodyPreview: rawBody.slice(0, 300) });
         return res.status(502).json({ error: 'Не удалось сгенерировать изображение. Попробуйте другую модель.' });
       }
-      const firstImageUrl = (d: typeof falData) =>
+
+      const firstImageUrl = (d: FalQueuePayload) =>
         d?.images?.[0]?.url ?? d?.data?.images?.[0]?.url;
+
+      // Синхронный успех: ответ уже содержит картинку
       if (falRes.ok && firstImageUrl(falData)) {
         const totalMs = Date.now() - startTs;
         console.error('[generate-image] Fal success', { model, durationMs: totalMs });
         return res.status(200).json({ imageUrl: firstImageUrl(falData)! });
       }
-      if ((falRes.status === 202 || (falRes.ok && falData?.status === 'IN_QUEUE')) && falData?.request_id) {
-        for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
-          await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-          const resultRes = await fetch(`${falUrl}/requests/${falData.request_id}`, {
-            headers: { Authorization: `Key ${falKey}` },
-          });
-          const resultRaw = await resultRes.text();
-          let resultData: { images?: Array<{ url?: string }>; data?: { images?: Array<{ url?: string }> }; status?: string };
-          try {
-            resultData = JSON.parse(resultRaw) as typeof resultData;
-          } catch {
-            continue;
+
+      // Очередь: 200/202 + IN_QUEUE — пуллим по status_url из ответа (не собираем URL вручную)
+      const needPoll =
+        (falRes.status === 202 || (falRes.ok && falData?.status === 'IN_QUEUE')) &&
+        falData?.status_url;
+
+      if (!needPoll) {
+        console.error('[generate-image] Fal failed', { model, status: falRes.status, data: falData });
+        return res.status(502).json({ error: 'Не удалось сгенерировать изображение. Попробуйте другую модель.' });
+      }
+
+      const statusUrl = falData.status_url;
+      const pollStartedAt = Date.now();
+      console.error('[generate-image] Fal polling started', {
+        model,
+        requestId: falData.request_id,
+        timeoutMs: FAL_POLL_TIMEOUT_MS,
+      });
+
+      while (true) {
+        if (Date.now() - pollStartedAt > FAL_POLL_TIMEOUT_MS) {
+          console.error('[generate-image] Fal queue timeout', { model, timeoutMs: FAL_POLL_TIMEOUT_MS });
+          return res.status(503).json({ error: 'Сервис примерки занят. Попробуйте через минуту.' });
+        }
+
+        const statusRes = await fetch(statusUrl, {
+          headers: { Authorization: `Key ${falKey}` },
+        });
+        const statusRaw = await statusRes.text();
+        let statusData: FalQueuePayload;
+        try {
+          statusData = JSON.parse(statusRaw) as FalQueuePayload;
+        } catch {
+          await new Promise((r) => setTimeout(r, FAL_POLL_INTERVAL_MS));
+          continue;
+        }
+
+        if (statusData?.status === 'COMPLETED') {
+          let imageUrl = firstImageUrl(statusData);
+          if (!imageUrl && statusData.response_url) {
+            const resultRes = await fetch(statusData.response_url, {
+              headers: { Authorization: `Key ${falKey}` },
+            });
+            const resultRaw = await resultRes.text();
+            try {
+              const resultJson = JSON.parse(resultRaw) as FalQueuePayload;
+              imageUrl = firstImageUrl(resultJson);
+            } catch {
+              console.error('[generate-image] Fal COMPLETED but result parse failed', { model });
+              return res.status(502).json({ error: 'Не удалось получить результат. Попробуйте другую модель.' });
+            }
           }
-          if (resultRes.ok && firstImageUrl(resultData)) {
+          if (imageUrl) {
             const totalMs = Date.now() - startTs;
             console.error('[generate-image] Fal success (poll)', { model, durationMs: totalMs });
-            return res.status(200).json({ imageUrl: firstImageUrl(resultData)! });
+            return res.status(200).json({ imageUrl });
           }
-          if (resultData?.status === 'FAILED') break;
+          console.error('[generate-image] Fal COMPLETED without image', { model, data: statusData });
+          return res.status(502).json({ error: 'Не удалось сгенерировать изображение. Попробуйте другую модель.' });
         }
+
+        if (statusData?.status === 'FAILED') {
+          console.error('[generate-image] Fal job FAILED', { model, error: statusData.error, logs: statusData.logs });
+          return res.status(502).json({ error: 'Генерация не удалась. Попробуйте другую модель или фото.' });
+        }
+
+        // IN_QUEUE или PROCESSING
+        await new Promise((r) => setTimeout(r, FAL_POLL_INTERVAL_MS));
       }
-      console.error('[generate-image] Fal failed', { model, status: falRes.status, data: falData });
-      return res.status(502).json({ error: 'Не удалось сгенерировать изображение. Попробуйте другую модель.' });
     }
 
     // 1) KIE jobs/createTask — формат input разный у моделей (см. docs KIE)

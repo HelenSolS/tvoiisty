@@ -9,7 +9,7 @@
 - **Эндпоинт Fal:** `https://queue.fal.run/{model_id}`
 - **Авторизация:** `Authorization: Key ${FAL_KEY}`
 - **Тело запроса:** `POST`, `Content-Type: application/json`, `body: JSON.stringify({ input: { ... } })`
-- Пример использования — `api/generate-image.ts` (virtual-tryon, FASHN, nano-banana-pro/edit).
+- Пример использования — `api/generate-image.ts` (virtual-tryon, nano-banana-pro/edit).
 
 То есть **эндпоинты и способ вызова Fal по FAL_KEY уже есть**; нужно только выбрать **модель и формат входа/выхода** для сценария «картинка → текст (промпт)».
 

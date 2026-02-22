@@ -74,7 +74,7 @@
 - **BLOB_READ_WRITE_TOKEN** — **обязателен для примерки**, если фронт шлёт data-URL/base64.
 - **Переключатель нейросети:** в настройках приложения пользователь может выбрать «Основной» или «Резервный». Для резервного задай **KIE_BACKUP_BASE_URL** и **KIE_BACKUP_API_KEY**. Если не заданы — при выборе «Резервный» используется основной. Опционально **KIE_BASE_URL** — базовый URL основного провайдера (по умолчанию `https://api.kie.ai/api/v1`). Хранилище Blob должно быть **публичным (Public)**: KIE по нашим URL сам запрашивает картинки; если URL на `private.blob.vercel-storage.com`, их серверы не имеют доступа → «Your media file is unavailable». В Vercel: **Storage** → **Blob** → создать хранилище с **Public** доступом, токен этого хранилища задать как `BLOB_READ_WRITE_TOKEN`.
 
-- **FAL_KEY** — для Fal AI (примерка: virtual-try-on, FASHN, nano-banana-pro/edit; создание промпта из картинки — тоже через Fal). Имя переменной обязательно: **FAL_KEY**. См. `docs/issue-12-prompt-via-fal.md`.
+- **FAL_KEY** — для Fal AI (примерка: virtual-try-on, nano-banana-pro/edit; создание промпта из картинки — тоже через Fal). Имя переменной обязательно: **FAL_KEY**. См. `docs/issue-12-prompt-via-fal.md`.
 
 **Правило для примерочной:** В контексте примерки «OpenAI» (Vision, Prompt Builder) = **вызов через Fal** (FAL_KEY). Прямой **OPENAI_API_KEY не используем**. Если в ишью или доках написано «OpenAI key» — имеется в виду Fal AI (FAL_KEY). При сомнениях — уточнять.
 

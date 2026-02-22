@@ -29,7 +29,7 @@ async function callFalChat(systemPrompt: string, userContent: string, signal?: A
   if (!falKey) throw new Error('FAL_KEY not set');
 
   const url = `https://queue.fal.run/${FAL_CHAT_MODEL}`;
-  // Fal queue REST ожидает поля в корне тела (как для FASHN/nano-banana), без обёртки "input"
+  // Fal queue REST ожидает поля в корне тела (как для nano-banana), без обёртки "input"
   const payload = {
     messages: [
       { role: 'system' as const, content: systemPrompt },

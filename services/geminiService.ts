@@ -14,7 +14,6 @@ export const IMAGE_MODEL_POOL = [
   'grok-imagine/image-to-image',
   'ideogram/v3-edit',
   'fal-ai/image-apps-v2/virtual-try-on',
-  'fal-ai/fashn/tryon/v1.6',
   'fal-ai/nano-banana-pro/edit',
 ] as const;
 
