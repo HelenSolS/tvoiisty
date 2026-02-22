@@ -4,12 +4,12 @@
  * При сбое — цепочка альтернатив: один сброс, сразу в следующую — OpenAI simple → Fal LLM (FAL_KEY) → Fal OpenAI-прокси (если задан). Уведомление админа при fallback/токенах.
  */
 
-import { tryParseGarmentDescription } from '../lib/ai/garment-schema';
+import { tryParseGarmentDescription } from '../lib/ai/garment-schema.js';
 import {
   GARMENT_VISION_SYSTEM_PROMPT,
   TRYON_PROMPT_BUILDER_SYSTEM_PROMPT,
   buildTryOnPromptUserMessage,
-} from '../lib/ai/prompts';
+} from '../lib/ai/prompts.js';
 
 /** Same as api/generate-image.ts — fallback when Vision or Prompt Builder fails. */
 const DEFAULT_IMAGE_PROMPT =
