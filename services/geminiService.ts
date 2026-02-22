@@ -5,7 +5,7 @@
 
 const API_BASE = '';
 
-/** Пул моделей для изображений (Lab). */
+/** Пул моделей для изображений (Lab): KIE + Fal AI. */
 export const IMAGE_MODEL_POOL = [
   'flux-2/flex-image-to-image',
   'google/nano-banana-edit',
@@ -13,9 +13,12 @@ export const IMAGE_MODEL_POOL = [
   'qwen/image-edit',
   'grok-imagine/image-to-image',
   'ideogram/v3-edit',
+  'fal-ai/image-apps-v2/virtual-try-on',
+  'fal-ai/fashn/tryon/v1.6',
+  'fal-ai/nano-banana-pro/edit',
 ] as const;
 
-/** Пул моделей для видео (Lab). */
+/** Пул моделей для видео (Lab). Veo в KIE: veo3_fast. */
 export const VIDEO_MODEL_POOL = [
   'kling/v2-1-standard',
   'veo-3-1',

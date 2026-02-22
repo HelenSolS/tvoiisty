@@ -69,7 +69,7 @@ function buildJobsCreateTaskInput(
   }
 }
 
-/** Пул моделей для видео (Lab dev). Production: только veo-3-1. */
+/** Пул моделей для видео (Lab dev). Veo в KIE: только veo3_fast. */
 const VIDEO_MODEL_POOL = [
   'kling/v2-1-standard',
   'veo-3-1',
@@ -169,13 +169,14 @@ export default async function handler(req: Req, res: Res) {
     const videoPrompt = prompt || (useVeo ? VEO_EXTENDED_PROMPT : DEFAULT_VIDEO_PROMPT);
 
     if (useVeo) {
-      // Veo: отдельный эндпоинт veo/generate + veo/record-info
+      // Veo 3.1: POST /api/v1/veo/generate. В KIE — только veo3_fast.
+      const veoModelKie = 'veo3_fast';
       const payload: Record<string, unknown> = {
         prompt: videoPrompt,
-        model,
-        aspect_ratio: '9:16',
         imageUrls: [imageUrl],
-        duration: 8,
+        model: veoModelKie,
+        aspect_ratio: '9:16',
+        generationType: 'FIRST_AND_LAST_FRAMES_2_VIDEO',
       };
       const createRes = await fetch(`${KIE_BASE}/veo/generate`, {
         method: 'POST',
