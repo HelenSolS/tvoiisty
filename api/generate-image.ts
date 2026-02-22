@@ -40,9 +40,9 @@ function resolveImageModel(bodyModel: unknown): string {
   return DEFAULT_IMAGE_MODEL;
 }
 
-/** Промпт по умолчанию для примерки. Явно: вещь со второго изображения надеть на человека с первого (не оставлять свою одежду). */
+/** Единый стандартный промпт для всех моделей (KIE, Fal). На человека с фото надеть одежду с фото, консистентность персонажа и одежды, естественно и стильно. */
 const DEFAULT_IMAGE_PROMPT =
-  'Dress the person from the first image in the garment from the second image. Replace only the clothing; keep face, body, pose and identity unchanged. Person wearing the new outfit. Preserve full identity and body proportions, natural confident fashion pose. Setting: neutral premium minimalist interior. Background: soft beige-gray or light concrete, clean and distraction-free. Style: hyper-realistic high-end fashion photography. Lighting: soft directional side light with subtle rim light. Mood: premium, confident, modern. Composition: rule of thirds, subject centered, vertical frame. Camera: Sony A7R V, 85mm f/1.8. Format: vertical.';
+  'Put the garment from the second image onto the person in the first image. Preserve character consistency, garment consistency, and body shape. Dress naturally, beautifully and stylishly this outfit from the photo. Background: soft beige-gray or light concrete, clean and distraction-free. Style: hyper-realistic high-end fashion photography. Lighting: soft directional side light with subtle rim light. Mood: premium, confident, modern. Composition: rule of thirds, subject centered, vertical frame. Camera: Sony A7R V, 85mm f/1.8. Format: vertical.';
 
 /** Если строка не https-URL — загружаем в Blob и возвращаем URL. Иначе возвращаем как есть. */
 async function ensureHttpsUrl(value: string, filename: string): Promise<string> {
@@ -138,14 +138,24 @@ export default async function handler(
         ? {
             prompt: prompt || DEFAULT_IMAGE_PROMPT,
             image_urls: [personUrl, clothingUrl],
-            aspect_ratio: '9:16' as const,
             num_images: 1,
+            aspect_ratio: '9:16' as const,
+            output_format: 'png' as const,
+            resolution: '1K' as const,
           }
         : isFashn
-          ? { model_image: personUrl, garment_image: clothingUrl }
+          ? {
+              model_image: personUrl,
+              garment_image: clothingUrl,
+              category: 'auto' as const,
+              mode: 'quality' as const,
+              garment_photo_type: 'auto' as const,
+              num_samples: 1,
+              output_format: 'png' as const,
+            }
           : { person_image_url: personUrl, clothing_image_url: clothingUrl, preserve_pose: true };
       const falUrl = `https://queue.fal.run/${model}`;
-      // Fal queue REST API ожидает тело запроса = объект input напрямую (без обёртки "input")
+      // Fal: 1) POST submit (Input по доке), 2) при 200+IN_QUEUE — GET /requests/{request_id} до result. Output: images[].url (nano-banana: fal-ai/nano-banana-pro/edit)
       const falRes = await fetch(falUrl, {
         method: 'POST',
         headers: {
@@ -154,12 +164,19 @@ export default async function handler(
         },
         body: JSON.stringify(falInput),
       });
-      const falData = (await falRes.json()) as {
+      const rawBody = await falRes.text();
+      let falData: {
         images?: Array<{ url?: string }>;
         data?: { images?: Array<{ url?: string }> };
         request_id?: string;
         status?: string;
       };
+      try {
+        falData = JSON.parse(rawBody) as typeof falData;
+      } catch (parseErr) {
+        console.error('[generate-image] Fal response not JSON', { model, status: falRes.status, bodyPreview: rawBody.slice(0, 300) });
+        return res.status(502).json({ error: 'Не удалось сгенерировать изображение. Попробуйте другую модель.' });
+      }
       const firstImageUrl = (d: typeof falData) =>
         d?.images?.[0]?.url ?? d?.data?.images?.[0]?.url;
       if (falRes.ok && firstImageUrl(falData)) {
@@ -173,11 +190,13 @@ export default async function handler(
           const resultRes = await fetch(`${falUrl}/requests/${falData.request_id}`, {
             headers: { Authorization: `Key ${falKey}` },
           });
-          const resultData = (await resultRes.json()) as {
-            images?: Array<{ url?: string }>;
-            data?: { images?: Array<{ url?: string }> };
-            status?: string;
-          };
+          const resultRaw = await resultRes.text();
+          let resultData: { images?: Array<{ url?: string }>; data?: { images?: Array<{ url?: string }> }; status?: string };
+          try {
+            resultData = JSON.parse(resultRaw) as typeof resultData;
+          } catch {
+            continue;
+          }
           if (resultRes.ok && firstImageUrl(resultData)) {
             const totalMs = Date.now() - startTs;
             console.error('[generate-image] Fal success (poll)', { model, durationMs: totalMs });
