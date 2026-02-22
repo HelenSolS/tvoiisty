@@ -10,8 +10,8 @@ const DEFAULT_KIE_BASE = 'https://api.kie.ai/api/v1';
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_ATTEMPTS = 60; // ~2 минуты макс
 
-/** Пул моделей для изображений (Lab dev). Production использует KIE_IMAGE_MODEL или первую из списка. */
-const IMAGE_MODEL_POOL = [
+/** Модели KIE (Lab + production). */
+const KIE_IMAGE_MODEL_POOL = [
   'flux-2/flex-image-to-image',
   'google/nano-banana-edit',
   'gpt-image/1.5-image-to-image',
@@ -20,17 +20,28 @@ const IMAGE_MODEL_POOL = [
   'ideogram/v3-edit',
 ] as const;
 
+/** Модели Fal AI (альтернатива KIE). В Vercel: FAL_KEY (один ключ для всех Fal). */
+const FAL_IMAGE_MODEL_POOL = [
+  'fal-ai/image-apps-v2/virtual-try-on',
+  'fal-ai/fashn/tryon/v1.6',
+] as const;
+
+const ALL_IMAGE_MODELS = [...KIE_IMAGE_MODEL_POOL, ...FAL_IMAGE_MODEL_POOL] as readonly string[];
+
 const DEFAULT_IMAGE_MODEL = process.env.KIE_IMAGE_MODEL || 'flux-2/flex-image-to-image';
+
+function isFalModel(model: string): boolean {
+  return (FAL_IMAGE_MODEL_POOL as readonly string[]).includes(model);
+}
+
+function resolveImageModel(bodyModel: unknown): string {
+  if (typeof bodyModel === 'string' && ALL_IMAGE_MODELS.includes(bodyModel)) return bodyModel;
+  return DEFAULT_IMAGE_MODEL;
+}
 
 /** Промпт по умолчанию для примерки. */
 const DEFAULT_IMAGE_PROMPT =
   'Person from uploaded photos wearing new outfit. Preserve full identity and body proportions, natural confident fashion pose. Setting: neutral premium minimalist interior. Background: soft beige-gray or light concrete, clean and distraction-free. Style: hyper-realistic high-end fashion photography. Lighting: soft directional side light with subtle rim light. Mood: premium, confident, modern. Composition: rule of thirds, subject centered, vertical frame. Camera: Sony A7R V, 85mm f/1.8. Format: vertical.';
-
-function resolveImageModel(bodyModel: unknown): string {
-  if (typeof bodyModel === 'string' && (IMAGE_MODEL_POOL as readonly string[]).includes(bodyModel))
-    return bodyModel;
-  return DEFAULT_IMAGE_MODEL;
-}
 
 /** Если строка не https-URL — загружаем в Blob и возвращаем URL. Иначе возвращаем как есть. */
 async function ensureHttpsUrl(value: string, filename: string): Promise<string> {
@@ -113,13 +124,73 @@ export default async function handler(
         .json({ error: 'Не удалось подготовить изображения. Попробуйте позже.' });
     }
 
-    // 1) KIE jobs/createTask (input_urls — только https-URL)
-    const inputPayload = {
-      aspect_ratio: '9:16',
-      prompt: prompt || DEFAULT_IMAGE_PROMPT,
-      resolution: '1K',
-      input_urls: [personUrl, clothingUrl],
-    };
+    // Fal AI (альтернатива KIE): virtual-try-on или FASHN v1.6 — разные имена полей
+    if (isFalModel(model)) {
+      const falKey = process.env.FAL_KEY;
+      if (!falKey) {
+        console.error('[generate-image] FAL_KEY not set for Fal model', model);
+        return res.status(503).json({ error: 'Сервис примерки (Fal) недоступен. Попробуйте другую модель.' });
+      }
+      const isFashn = model === 'fal-ai/fashn/tryon/v1.6';
+      const falInput = isFashn
+        ? { model_image: personUrl, garment_image: clothingUrl }
+        : { person_image_url: personUrl, clothing_image_url: clothingUrl, preserve_pose: true };
+      const falUrl = `https://queue.fal.run/${model}`;
+      const falRes = await fetch(falUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Key ${falKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ input: falInput }),
+      });
+      const falData = (await falRes.json()) as {
+        data?: { images?: Array<{ url?: string }> };
+        request_id?: string;
+        status?: string;
+      };
+      if (falRes.ok && falData?.data?.images?.[0]?.url) {
+        const totalMs = Date.now() - startTs;
+        console.error('[generate-image] Fal success', { model, durationMs: totalMs });
+        return res.status(200).json({ imageUrl: falData.data.images[0].url });
+      }
+      if (falRes.status === 202 && falData?.request_id) {
+        for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
+          await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+          const resultRes = await fetch(`${falUrl}/requests/${falData.request_id}`, {
+            headers: { Authorization: `Key ${falKey}` },
+          });
+          const resultData = (await resultRes.json()) as {
+            status?: string;
+            data?: { images?: Array<{ url?: string }> };
+          };
+          if (resultRes.ok && resultData?.data?.images?.[0]?.url) {
+            const totalMs = Date.now() - startTs;
+            console.error('[generate-image] Fal success (poll)', { model, durationMs: totalMs });
+            return res.status(200).json({ imageUrl: resultData.data.images[0].url });
+          }
+          if (resultData?.status === 'FAILED') break;
+        }
+      }
+      console.error('[generate-image] Fal failed', { model, status: falRes.status, data: falData });
+      return res.status(502).json({ error: 'Не удалось сгенерировать изображение. Попробуйте другую модель.' });
+    }
+
+    // 1) KIE jobs/createTask — формат input разный у моделей (см. docs KIE)
+    const isGptImage15 = model === 'gpt-image/1.5-image-to-image';
+    const inputPayload = isGptImage15
+      ? {
+          input_urls: [personUrl, clothingUrl],
+          prompt: prompt || DEFAULT_IMAGE_PROMPT,
+          aspect_ratio: '2:3' as const,
+          quality: 'medium' as const,
+        }
+      : {
+          aspect_ratio: '9:16' as const,
+          prompt: prompt || DEFAULT_IMAGE_PROMPT,
+          resolution: '1K' as const,
+          input_urls: [personUrl, clothingUrl],
+        };
     const createRes = await fetch(`${KIE_BASE}/jobs/createTask`, {
       method: 'POST',
       headers: {

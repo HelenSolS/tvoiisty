@@ -101,14 +101,14 @@ const VIDEO_ASPECT_RATIO = '9:16' as const;
 const DEFAULT_VIDEO_PROMPT =
   'Cinematic fashion film, dynamic and smooth. The person from the image moves with catwalk-like grace so the outfit is clearly visible at all times. Soft diffused lighting, no harsh shadows. Beautiful textures and a refined, fitting location. Rule of thirds, hyperrealistic cinematography, film look. One beautiful environment that suits the look—e.g. minimal atelier, sunlit terrace, or urban backdrop.';
 
-/** Создать задачу на видео (Veo): POST veo/generate, image-to-video. Всегда 9:16. model из params (veo-3-1 → veo3 для KIE). */
+/** Создать задачу на видео (Veo 3.1): POST veo/generate. В KIE — veo3_fast. */
 export async function createVideoTask(params: { imageUrl: string; prompt?: string; model?: string }): Promise<string> {
-  const veoModel = params.model && params.model.startsWith('veo') ? (params.model === 'veo-3-1' ? 'veo3' : params.model) : 'veo3';
   const payload = {
     prompt: params.prompt || DEFAULT_VIDEO_PROMPT,
-    model: veoModel,
-    aspect_ratio: VIDEO_ASPECT_RATIO,
     imageUrls: [params.imageUrl],
+    model: 'veo3_fast',
+    aspect_ratio: VIDEO_ASPECT_RATIO,
+    generationType: 'FIRST_AND_LAST_FRAMES_2_VIDEO',
   };
   console.log('VIDEO PAYLOAD:', JSON.stringify(payload, null, 2));
 
