@@ -24,6 +24,7 @@ const KIE_IMAGE_MODEL_POOL = [
 const FAL_IMAGE_MODEL_POOL = [
   'fal-ai/image-apps-v2/virtual-try-on',
   'fal-ai/fashn/tryon/v1.6',
+  'fal-ai/nano-banana-pro/edit',
 ] as const;
 
 const ALL_IMAGE_MODELS = [...KIE_IMAGE_MODEL_POOL, ...FAL_IMAGE_MODEL_POOL] as readonly string[];
@@ -124,7 +125,7 @@ export default async function handler(
         .json({ error: 'Не удалось подготовить изображения. Попробуйте позже.' });
     }
 
-    // Fal AI (альтернатива KIE): virtual-try-on или FASHN v1.6 — разные имена полей
+    // Fal AI (альтернатива KIE): virtual-try-on, FASHN v1.6 или nano-banana-pro/edit — разные имена полей
     if (isFalModel(model)) {
       const falKey = process.env.FAL_KEY;
       if (!falKey) {
@@ -132,9 +133,17 @@ export default async function handler(
         return res.status(503).json({ error: 'Сервис примерки (Fal) недоступен. Попробуйте другую модель.' });
       }
       const isFashn = model === 'fal-ai/fashn/tryon/v1.6';
-      const falInput = isFashn
-        ? { model_image: personUrl, garment_image: clothingUrl }
-        : { person_image_url: personUrl, clothing_image_url: clothingUrl, preserve_pose: true };
+      const isNanoBanana = model === 'fal-ai/nano-banana-pro/edit';
+      const falInput = isNanoBanana
+        ? {
+            prompt: prompt || DEFAULT_IMAGE_PROMPT,
+            image_urls: [personUrl, clothingUrl],
+            aspect_ratio: '9:16' as const,
+            num_images: 1,
+          }
+        : isFashn
+          ? { model_image: personUrl, garment_image: clothingUrl }
+          : { person_image_url: personUrl, clothing_image_url: clothingUrl, preserve_pose: true };
       const falUrl = `https://queue.fal.run/${model}`;
       const falRes = await fetch(falUrl, {
         method: 'POST',

@@ -15,6 +15,7 @@ export const IMAGE_MODEL_POOL = [
   'ideogram/v3-edit',
   'fal-ai/image-apps-v2/virtual-try-on',
   'fal-ai/fashn/tryon/v1.6',
+  'fal-ai/nano-banana-pro/edit',
 ] as const;
 
 /** Пул моделей для видео (Lab). Veo в KIE: veo3_fast. */
