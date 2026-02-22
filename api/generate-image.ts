@@ -40,9 +40,9 @@ function resolveImageModel(bodyModel: unknown): string {
   return DEFAULT_IMAGE_MODEL;
 }
 
-/** Промпт по умолчанию для примерки. */
+/** Промпт по умолчанию для примерки. Явно: вещь со второго изображения надеть на человека с первого (не оставлять свою одежду). */
 const DEFAULT_IMAGE_PROMPT =
-  'Person from uploaded photos wearing new outfit. Preserve full identity and body proportions, natural confident fashion pose. Setting: neutral premium minimalist interior. Background: soft beige-gray or light concrete, clean and distraction-free. Style: hyper-realistic high-end fashion photography. Lighting: soft directional side light with subtle rim light. Mood: premium, confident, modern. Composition: rule of thirds, subject centered, vertical frame. Camera: Sony A7R V, 85mm f/1.8. Format: vertical.';
+  'Dress the person from the first image in the garment from the second image. Replace only the clothing; keep face, body, pose and identity unchanged. Person wearing the new outfit. Preserve full identity and body proportions, natural confident fashion pose. Setting: neutral premium minimalist interior. Background: soft beige-gray or light concrete, clean and distraction-free. Style: hyper-realistic high-end fashion photography. Lighting: soft directional side light with subtle rim light. Mood: premium, confident, modern. Composition: rule of thirds, subject centered, vertical frame. Camera: Sony A7R V, 85mm f/1.8. Format: vertical.';
 
 /** Если строка не https-URL — загружаем в Blob и возвращаем URL. Иначе возвращаем как есть. */
 async function ensureHttpsUrl(value: string, filename: string): Promise<string> {
@@ -155,29 +155,33 @@ export default async function handler(
         body: JSON.stringify(falInput),
       });
       const falData = (await falRes.json()) as {
+        images?: Array<{ url?: string }>;
         data?: { images?: Array<{ url?: string }> };
         request_id?: string;
         status?: string;
       };
-      if (falRes.ok && falData?.data?.images?.[0]?.url) {
+      const firstImageUrl = (d: typeof falData) =>
+        d?.images?.[0]?.url ?? d?.data?.images?.[0]?.url;
+      if (falRes.ok && firstImageUrl(falData)) {
         const totalMs = Date.now() - startTs;
         console.error('[generate-image] Fal success', { model, durationMs: totalMs });
-        return res.status(200).json({ imageUrl: falData.data.images[0].url });
+        return res.status(200).json({ imageUrl: firstImageUrl(falData)! });
       }
-      if (falRes.status === 202 && falData?.request_id) {
+      if ((falRes.status === 202 || (falRes.ok && falData?.status === 'IN_QUEUE')) && falData?.request_id) {
         for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
           await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
           const resultRes = await fetch(`${falUrl}/requests/${falData.request_id}`, {
             headers: { Authorization: `Key ${falKey}` },
           });
           const resultData = (await resultRes.json()) as {
-            status?: string;
+            images?: Array<{ url?: string }>;
             data?: { images?: Array<{ url?: string }> };
+            status?: string;
           };
-          if (resultRes.ok && resultData?.data?.images?.[0]?.url) {
+          if (resultRes.ok && firstImageUrl(resultData)) {
             const totalMs = Date.now() - startTs;
             console.error('[generate-image] Fal success (poll)', { model, durationMs: totalMs });
-            return res.status(200).json({ imageUrl: resultData.data.images[0].url });
+            return res.status(200).json({ imageUrl: firstImageUrl(resultData)! });
           }
           if (resultData?.status === 'FAILED') break;
         }

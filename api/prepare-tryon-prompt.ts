@@ -11,9 +11,9 @@ import {
   buildTryOnPromptUserMessage,
 } from '../lib/ai/prompts.js';
 
-/** Same as api/generate-image.ts — fallback when Vision or Prompt Builder fails. */
+/** Same as api/generate-image.ts — fallback when Vision or Prompt Builder fails. Явно: вещь со второго изображения на человека с первого. */
 const DEFAULT_IMAGE_PROMPT =
-  'Person from uploaded photos wearing new outfit. Preserve full identity and body proportions, natural confident fashion pose. Setting: neutral premium minimalist interior. Background: soft beige-gray or light concrete, clean and distraction-free. Style: hyper-realistic high-end fashion photography. Lighting: soft directional side light with subtle rim light. Mood: premium, confident, modern. Composition: rule of thirds, subject centered, vertical frame. Camera: Sony A7R V, 85mm f/1.8. Format: vertical.';
+  'Dress the person from the first image in the garment from the second image. Replace only the clothing; keep face, body, pose and identity unchanged. Person wearing the new outfit. Preserve full identity and body proportions, natural confident fashion pose. Setting: neutral premium minimalist interior. Background: soft beige-gray or light concrete, clean and distraction-free. Style: hyper-realistic high-end fashion photography. Lighting: soft directional side light with subtle rim light. Mood: premium, confident, modern. Composition: rule of thirds, subject centered, vertical frame. Camera: Sony A7R V, 85mm f/1.8. Format: vertical.';
 
 const VISION_TIMEOUT_MS = 15_000;
 const OPENAI_BASE = 'https://api.openai.com/v1';
@@ -216,8 +216,9 @@ async function callVision(garmentImageBase64: string, signal: AbortSignal | unde
   if (!apiKey) throw new Error('OPENAI_API_KEY not set');
 
   const url = `${OPENAI_BASE}/chat/completions`;
+  const visionModel = process.env.OPENAI_VISION_MODEL || 'gpt-4o-mini';
   const body = {
-    model: 'gpt-4o',
+    model: visionModel,
     max_tokens: 1024,
     messages: [
       { role: 'system', content: GARMENT_VISION_SYSTEM_PROMPT },
