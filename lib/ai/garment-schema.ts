@@ -1,5 +1,5 @@
 /**
- * Схема JSON от OpenAI Vision (анализ одежды).
+ * Схема JSON от Vision (анализ одежды; вызов через Fal, FAL_KEY).
  * Issue #12 — AI Core Refactor. См. docs/issue-12-ai-core-refactor-spec.md
  */
 

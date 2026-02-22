@@ -1,0 +1,13 @@
+---
+description: В примерочной OpenAI = вызов через Fal (FAL_KEY); при сомнениях — уточнять
+alwaysApply: true
+---
+
+# Примерочная: OpenAI только через Fal
+
+- В контексте **примерки** (try-on, prepare-tryon-prompt, Vision, Prompt Builder) «OpenAI» означает **вызов через Fal**, не прямой OpenAI API.
+- Используется **один ключ: FAL_KEY**. Прямой **OPENAI_API_KEY в примерочной не использовать**.
+- Если в ишью, спеках или доках написано «OpenAI key» или «OPENAI_API_KEY» в связи с примеркой — имеется в виду **Fal AI (FAL_KEY)**.
+- **При сомнениях** (например, новый issue или правка в другом месте) — переспросить у пользователя, а не предполагать прямой OpenAI ключ.
+
+См. также: `docs/DECISIONS.md`, `docs/issue-12-prompt-via-fal.md`.
