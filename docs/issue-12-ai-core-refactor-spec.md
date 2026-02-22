@@ -118,6 +118,13 @@ generateTryOn(personBase64, garmentBase64, prompt, selectedModel)
 
 Текущий рабочий pipeline не ломать.
 
+**Robustness & guardrails:**
+- **Vision timeout:** 15s.
+- **Retry Vision once** if JSON invalid (parse or schema).
+- If second attempt fails → use safe default prompt (`DEFAULT_IMAGE_PROMPT`).
+- **Validate JSON schema** (Zod) before calling Prompt Builder.
+- **Log malformed JSON** (e.g. `[prepare-tryon-prompt] malformed Vision JSON`) for debugging.
+
 ---
 
 ## 5. Язык финального prompt
