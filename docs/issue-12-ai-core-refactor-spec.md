@@ -20,7 +20,7 @@ This issue must be implemented **strictly within the existing structure**.
 
 - Add **ONE** new endpoint: **POST /api/prepare-tryon-prompt**
 - Use **existing project structure**
-- Use **OpenAI directly inside this endpoint**
+- Use **OpenAI via Fal** inside this endpoint (FAL_KEY only; no direct OPENAI_API_KEY)
 - Retry Vision **once**
 - If failure → **fallback to DEFAULT_IMAGE_PROMPT**
 - Return **`{ prompt, garmentJson? }`**
@@ -37,20 +37,17 @@ This is a **functional enhancement**, not a system refactor. The current pipelin
 
 ---
 
-## 1. OpenAI vs текущий стек
+## 1. OpenAI через Fal (не прямой ключ)
 
-**Да, подтверждаем:** добавляем **OpenAI как отдельный мозг системы**.
+**Да, подтверждаем:** для анализа и сборки prompt используем **OpenAI-совместимый вызов через Fal** — не прямой OpenAI API.
 
-- **gpt-4o** — Vision, анализ одежды
-- **gpt-4o-mini** — сборка финального prompt
-
-Добавляем:
-- **`OPENAI_API_KEY`** — ключ в окружении Vercel (и локально в `.env`). Использовать именно это имя.
-- отдельный сервис вызова OpenAI
+- Логика: Vision (анализ одежды) + Prompt Builder (финальный prompt) — как раньше.
+- **Ключ один:** **`FAL_KEY`** (тот же, что для примерки). Прямой `OPENAI_API_KEY` в примерочной **не используем**.
+- Вызов идёт в Fal (например, OpenAI-совместимый прокси или vision/chat-модель Fal), авторизация: `Authorization: Key ${FAL_KEY}`.
 
 **Gemini для этого слоя не используем.**
 
-Важно: OpenAI используется только для анализа и сборки prompt. Генерация изображений и видео остаётся через KIE / Fal.
+Важно: «OpenAI» в контексте примерки = вызов через Fal. Генерация изображений и видео остаётся через KIE / Fal.
 
 ---
 
@@ -142,9 +139,9 @@ Frontend
    ↓
 POST /api/prepare-tryon-prompt  (personBase64, garmentBase64)
    ↓
-OpenAI Vision (gpt-4o) → JSON (garment_type, color, material, fit, sleeves, length, style, details)
+Vision через Fal (FAL_KEY) → JSON (garment_type, color, material, fit, sleeves, length, style, details)
    ↓
-OpenAI Prompt Builder (gpt-4o-mini) → finalPrompt
+Prompt Builder через Fal (FAL_KEY) → finalPrompt
    ↓
 Frontend получает { prompt }
    ↓
