@@ -34,6 +34,28 @@ async function describeOutfit(_imageUrl: string): Promise<string> {
 }
 
 /**
+ * Получить промпт для примерки через POST /api/prepare-tryon-prompt (Vision + Prompt Builder, при сбое — альтернатива на бэкенде).
+ * Если процесс прерван или нет промпта — бросает ошибку: примерку не отправлять.
+ */
+async function prepareTryonPrompt(personImageBase64: string, garmentImageBase64: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/prepare-tryon-prompt`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ personImageBase64, garmentImageBase64 }),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err?.error ?? 'Не удалось подготовить промпт');
+  }
+  const data = (await res.json()) as { prompt?: string };
+  const prompt = typeof data.prompt === 'string' ? data.prompt.trim() : '';
+  if (!prompt) {
+    throw new Error('Промпт не получен. Попробуйте ещё раз или позже.');
+  }
+  return prompt;
+}
+
+/**
  * Примерка. Один вызов backend → один вызов KIE.
  * model — только для Lab; в production не передаётся.
  */
@@ -104,4 +126,4 @@ async function generateVideo(resultImageUrl: string, options?: { model?: string 
   return videoUrl;
 }
 
-export { describeOutfit, generateTryOn, generateVideo };
+export { describeOutfit, prepareTryonPrompt, generateTryOn, generateVideo };

@@ -47,6 +47,8 @@ export interface HistoryItem {
   outfitUrl: string;
   shopUrl: string;
   timestamp: number;
+  /** URL видео из «Анимировать» — храним локально (localStorage) */
+  videoUrl?: string;
 }
 
 /** Эксперимент лаборатории: примерка (человек + образ → результат). */

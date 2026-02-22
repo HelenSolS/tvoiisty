@@ -1,7 +1,7 @@
 /**
  * POST /api/prepare-tryon-prompt — Issue #12.
- * Vision (gpt-4o) → JSON → Prompt Builder (gpt-4o-mini) → { prompt, garmentJson? }.
- * Robustness: Vision timeout 15s, retry once on invalid JSON, validate schema, log malformed, fallback to DEFAULT_IMAGE_PROMPT.
+ * Vision → JSON → Prompt Builder → { prompt, garmentJson? }.
+ * При сбое — цепочка альтернатив: один сброс, сразу в следующую — OpenAI simple → Fal LLM (FAL_KEY) → Fal OpenAI-прокси (если задан). Уведомление админа при fallback/токенах.
  */
 
 import { tryParseGarmentDescription } from '../lib/ai/garment-schema';
@@ -17,6 +17,194 @@ const DEFAULT_IMAGE_PROMPT =
 
 const VISION_TIMEOUT_MS = 15_000;
 const OPENAI_BASE = 'https://api.openai.com/v1';
+const FAL_CHAT_MODEL = 'fal-ai/Mixtral-8x7B-Instruct-v0.1';
+
+/** Уведомить админа о сбое (токены, fallback). Если задан ADMIN_WEBHOOK_URL — POST туда; всегда лог [ADMIN]. */
+function notifyAdmin(reason: string, detail: Record<string, unknown>): void {
+  const payload = { reason, ...detail, ts: new Date().toISOString() };
+  console.error('[prepare-tryon-prompt] [ADMIN]', JSON.stringify(payload));
+  const webhook = process.env.ADMIN_WEBHOOK_URL;
+  if (webhook) {
+    fetch(webhook, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch((e) => console.error('[prepare-tryon-prompt] [ADMIN] webhook failed', e));
+  }
+}
+
+/** Альтернатива: один вызов OpenAI (gpt-4o-mini + картинка) — короткий промпт для примерки. Меньше токенов, подходит при сбое основного пути или лимитах. */
+async function callOpenAISimplePrompt(garmentImageBase64: string, signal?: AbortSignal): Promise<string> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error('OPENAI_API_KEY not set');
+
+  const url = `${OPENAI_BASE}/chat/completions`;
+  const body = {
+    model: 'gpt-4o-mini',
+    max_tokens: 256,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: 'Look at this garment image. Reply with a single short sentence in English suitable as an image-editing prompt for virtual try-on: person wearing this garment, same pose and identity, realistic. No JSON, no explanation.',
+          },
+          { type: 'image_url', image_url: { url: toDataUrl(garmentImageBase64) } },
+        ],
+      },
+    ],
+  };
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (res.status === 401 || res.status === 429) {
+    notifyAdmin('openai_quota_or_auth', { status: res.status, endpoint: 'prepare-tryon-prompt-fallback' });
+  }
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`OpenAI simple ${res.status}: ${t.slice(0, 200)}`);
+  }
+
+  const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const prompt = data.choices?.[0]?.message?.content?.trim();
+  if (!prompt) throw new Error('OpenAI simple returned empty content');
+  return prompt;
+}
+
+/** Fal LLM (Mixtral и т.п.): текстовый чат по FAL_KEY. Один сброс — сразу в следующую. */
+async function callFalChat(systemPrompt: string, userContent: string, signal?: AbortSignal): Promise<string> {
+  const falKey = process.env.FAL_KEY;
+  if (!falKey) throw new Error('FAL_KEY not set');
+
+  const url = `https://queue.fal.run/${FAL_CHAT_MODEL}`;
+  // Fal queue REST ожидает поля в корне тела (как для FASHN/nano-banana), без обёртки "input"
+  const payload = {
+    messages: [
+      { role: 'system' as const, content: systemPrompt },
+      { role: 'user' as const, content: userContent },
+    ],
+  };
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Key ${falKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+    signal,
+  });
+
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`Fal chat ${res.status}: ${t.slice(0, 200)}`);
+  }
+
+  const data = (await res.json()) as {
+    output?: { choices?: Array<{ message?: { content?: string } }> };
+    data?: { choices?: Array<{ message?: { content?: string } }> };
+  };
+  const content =
+    data.output?.choices?.[0]?.message?.content ?? data.data?.choices?.[0]?.message?.content;
+  const prompt = typeof content === 'string' ? content.trim() : '';
+  if (!prompt) throw new Error('Fal chat returned empty content');
+  return prompt;
+}
+
+/** OpenAI-совместимый прокси для Fal (Cloudflare Worker). Один сброс — сразу в следующую. */
+async function callFalViaOpenAIProxy(messages: Array<{ role: string; content: string }>, signal?: AbortSignal): Promise<string> {
+  const proxyUrl = process.env.FAL_OPENAI_PROXY_URL;
+  const proxyKey = process.env.FAL_PROXY_API_KEY;
+  if (!proxyUrl || !proxyKey) throw new Error('FAL_OPENAI_PROXY_URL or FAL_PROXY_API_KEY not set');
+
+  const chatUrl = proxyUrl.includes('/v1/chat/completions')
+    ? proxyUrl
+    : proxyUrl.replace(/\/?$/, '') + '/v1/chat/completions';
+  const res = await fetch(chatUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${proxyKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: FAL_CHAT_MODEL,
+      messages,
+      max_tokens: 256,
+      temperature: 0.7,
+    }),
+    signal,
+  });
+
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`Fal proxy ${res.status}: ${t.slice(0, 200)}`);
+  }
+
+  const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const prompt = data.choices?.[0]?.message?.content?.trim();
+  if (!prompt) throw new Error('Fal proxy returned empty content');
+  return prompt;
+}
+
+/** Цепочка альтернатив: один сброс — сразу в следующую. Порядок: OpenAI simple → Fal chat → Fal proxy (если задан). */
+async function tryAlternativesForPrompt(
+  garmentImageBase64: string,
+  garmentJson?: Record<string, string>,
+  signal?: AbortSignal
+): Promise<{ prompt: string; source: string } | null> {
+  const falSystem =
+    'You are a prompt engineer. Return ONE short English sentence suitable as an image-editing prompt for virtual try-on: person wearing the described garment, same pose and identity, realistic. No JSON, no explanation.';
+
+  // 1) OpenAI simple (image → prompt)
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const prompt = await callOpenAISimplePrompt(garmentImageBase64, signal);
+      return { prompt, source: 'openai_simple' };
+    } catch {
+      /* один сброс — сразу в следующую */
+    }
+  }
+
+  // 2) Fal LLM (текст: JSON или общее описание)
+  if (process.env.FAL_KEY) {
+    try {
+      const userContent = garmentJson
+        ? `Garment description (JSON): ${JSON.stringify(garmentJson)}. Generate the try-on prompt.`
+        : 'Generate a short virtual try-on prompt in English: person wearing a garment, same pose and identity, realistic.';
+      const prompt = await callFalChat(falSystem, userContent, signal);
+      return { prompt, source: 'fal_chat' };
+    } catch {
+      /* один сброс — сразу в следующую */
+    }
+  }
+
+  // 3) Fal через OpenAI-прокси (если настроен)
+  if (process.env.FAL_OPENAI_PROXY_URL && process.env.FAL_PROXY_API_KEY) {
+    try {
+      const userContent = garmentJson
+        ? `Garment: ${JSON.stringify(garmentJson)}. Generate try-on prompt.`
+        : 'Generate a short virtual try-on prompt in English.';
+      const prompt = await callFalViaOpenAIProxy(
+        [
+          { role: 'system', content: falSystem },
+          { role: 'user', content: userContent },
+        ],
+        signal
+      );
+      return { prompt, source: 'fal_proxy' };
+    } catch {
+      /* один сброс — сразу в следующую */
+    }
+  }
+
+  return null;
+}
 
 function toDataUrl(base64: string, mime = 'image/jpeg'): string {
   if (base64.startsWith('data:')) return base64;
@@ -124,6 +312,7 @@ export default async function handler(
 
   if (!process.env.OPENAI_API_KEY) {
     console.error('[prepare-tryon-prompt] OPENAI_API_KEY not set');
+    notifyAdmin('openai_key_missing', { endpoint: 'prepare-tryon-prompt' });
     return res.status(500).json({ error: 'Сервис временно недоступен. Попробуйте позже.' });
   }
 
@@ -143,6 +332,15 @@ export default async function handler(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[prepare-tryon-prompt] Vision failed', msg);
+    if (String(msg).includes('401') || String(msg).includes('429')) {
+      notifyAdmin('openai_quota_or_auth', { stage: 'vision', message: msg });
+    }
+    const alt = await tryAlternativesForPrompt(garmentImageBase64, undefined, undefined);
+    if (alt) {
+      notifyAdmin('fallback_used', { stage: 'after_vision_fail', source: alt.source });
+      return res.status(200).json({ prompt: alt.prompt });
+    }
+    notifyAdmin('fallback_failed', { stage: 'after_vision_fail' });
     return res.status(200).json({ prompt: DEFAULT_IMAGE_PROMPT });
   }
 
@@ -154,10 +352,22 @@ export default async function handler(
       garment = tryParseGarmentDescription(raw);
       if (!garment) {
         console.error('[prepare-tryon-prompt] malformed Vision JSON on retry', raw);
+        const alt = await tryAlternativesForPrompt(garmentImageBase64, undefined, undefined);
+        if (alt) {
+          notifyAdmin('fallback_used', { stage: 'malformed_json', source: alt.source });
+          return res.status(200).json({ prompt: alt.prompt });
+        }
+        notifyAdmin('fallback_failed', { stage: 'malformed_json' });
         return res.status(200).json({ prompt: DEFAULT_IMAGE_PROMPT });
       }
     } catch (retryErr) {
       console.error('[prepare-tryon-prompt] Vision retry failed', retryErr);
+      const alt = await tryAlternativesForPrompt(garmentImageBase64, undefined, undefined);
+      if (alt) {
+        notifyAdmin('fallback_used', { stage: 'vision_retry_fail', source: alt.source });
+        return res.status(200).json({ prompt: alt.prompt });
+      }
+      notifyAdmin('fallback_failed', { stage: 'vision_retry_fail' });
       return res.status(200).json({ prompt: DEFAULT_IMAGE_PROMPT });
     }
   }
@@ -171,7 +381,17 @@ export default async function handler(
     prompt = await callPromptBuilder(garmentJson, builderController.signal);
     clearTimeout(builderTimeoutId);
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     console.error('[prepare-tryon-prompt] Prompt Builder failed', err);
+    if (String(msg).includes('401') || String(msg).includes('429')) {
+      notifyAdmin('openai_quota_or_auth', { stage: 'prompt_builder', message: msg });
+    }
+    const alt = await tryAlternativesForPrompt(garmentImageBase64, garmentJson, undefined);
+    if (alt) {
+      notifyAdmin('fallback_used', { stage: 'after_builder_fail', source: alt.source });
+      return res.status(200).json({ prompt: alt.prompt, garmentJson });
+    }
+    notifyAdmin('fallback_failed', { stage: 'after_builder_fail' });
     return res.status(200).json({ prompt: DEFAULT_IMAGE_PROMPT, garmentJson });
   }
 

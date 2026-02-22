@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ImageUploader } from './components/ImageUploader';
 import { Lab } from './components/Lab';
-import { describeOutfit, generateTryOn, generateVideo, IMAGE_MODEL_POOL, VIDEO_MODEL_POOL } from './services/geminiService';
+import { prepareTryonPrompt, generateTryOn, generateVideo, IMAGE_MODEL_POOL, VIDEO_MODEL_POOL } from './services/geminiService';
 import { TryOnState, User, CuratedOutfit, PersonGalleryItem, HistoryItem, AppTheme, CategoryType } from './types';
 
 const INITIAL_BOUTIQUE: CuratedOutfit[] = [
@@ -139,9 +139,10 @@ const App: React.FC = () => {
     try {
       const personBase64 = await urlToBase64(state.personImage!);
       const outfitBase64 = await urlToBase64(outfitUrl);
-      const description = await describeOutfit(outfitBase64);
+      setState(prev => ({ ...prev, status: 'Подготовка промпта...' }));
+      const prompt = await prepareTryonPrompt(personBase64, outfitBase64);
       setState(prev => ({ ...prev, status: 'Примеряем образ...' }));
-      const imageUrl = await generateTryOn(personBase64, outfitBase64, description, { model: selectedImageModel });
+      const imageUrl = await generateTryOn(personBase64, outfitBase64, prompt, { model: selectedImageModel });
       setState(prev => ({ ...prev, resultImage: imageUrl, isProcessing: false, status: '' }));
       const newItem: HistoryItem = { id: `h_${Date.now()}`, resultUrl: imageUrl, outfitUrl, shopUrl, timestamp: Date.now() };
       const newHistory = [newItem, ...history].slice(0, 20);
@@ -295,6 +296,15 @@ const App: React.FC = () => {
                 <img src={state.resultImage} className="w-full h-full object-cover" alt="Результат примерки" />
              </div>
 
+             {/* Главные действия сразу под картинкой — всегда видны */}
+             <button 
+               onClick={() => openInStore(state.currentShopUrl!)} 
+               className="w-full py-5 rounded-3xl font-black text-[12px] uppercase tracking-widest shadow-2xl active:scale-95 flex items-center justify-center gap-3 bg-[var(--theme-color)] text-white border-2 border-[var(--theme-color)] ring-2 ring-black/10"
+             >
+               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+               Купить в магазине
+             </button>
+
              {/* Выбор модели для видео и кнопка «Создать видео» */}
              <div className="space-y-3">
                <div>
@@ -338,16 +348,9 @@ const App: React.FC = () => {
              </div>
 
              <div className="grid grid-cols-2 gap-4">
-                <button 
-                  onClick={() => openInStore(state.currentShopUrl!)} 
-                  className="col-span-2 py-5 bg-theme text-white rounded-3xl font-black text-[12px] uppercase tracking-widest shadow-2xl active:scale-95 flex items-center justify-center gap-3"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
-                  Купить в магазине
-                </button>
-                <button onClick={() => handleDownload(state.resultImage!)} className="py-4 bg-white border border-gray-100 rounded-3xl font-black text-[9px] uppercase tracking-widest shadow-xl active:scale-95">Скачать</button>
-                <button onClick={() => setSocialModal(state.resultImage)} className="py-4 bg-white border border-gray-100 rounded-3xl font-black text-[9px] uppercase tracking-widest shadow-xl active:scale-95">Поделиться</button>
-                <button onClick={() => { setState(s => ({ ...s, resultImage: null })); setResultVideoUrl(null); setVideoError(null); }} className="col-span-2 py-4 text-gray-400 font-black text-[9px] uppercase tracking-widest active:scale-95">Примерить другое</button>
+                <button onClick={() => handleDownload(state.resultImage!)} className="py-4 bg-white border border-gray-200 rounded-3xl font-black text-[9px] uppercase tracking-widest shadow-xl active:scale-95 text-gray-800">Скачать</button>
+                <button onClick={() => setSocialModal(state.resultImage)} className="py-4 bg-white border border-gray-200 rounded-3xl font-black text-[9px] uppercase tracking-widest shadow-xl active:scale-95 text-gray-800">Поделиться</button>
+                <button onClick={() => { setState(s => ({ ...s, resultImage: null })); setResultVideoUrl(null); setVideoError(null); }} className="col-span-2 py-4 text-gray-500 font-black text-[9px] uppercase tracking-widest active:scale-95">Примерить другое</button>
              </div>
           </div>
         ) : (
@@ -479,7 +482,7 @@ const App: React.FC = () => {
                 <div className="space-y-6">
                   <div className="flex justify-between px-2 items-center">
                     <h4 className="serif text-xl font-bold italic">Ваши товары</h4>
-                    <button onClick={() => setAddProductModal(true)} className="bg-theme text-white font-black text-[9px] uppercase px-5 py-2.5 rounded-full shadow-lg">+ Добавить</button>
+                    <button onClick={() => setAddProductModal(true)} className="bg-[var(--theme-color)] text-white font-black text-[9px] uppercase px-5 py-2.5 rounded-full shadow-lg border-2 border-[var(--theme-color)] ring-2 ring-black/10">+ Добавить в коллекцию</button>
                   </div>
                   <div className="space-y-4">
                     {merchantProducts.map(item => (
@@ -586,18 +589,28 @@ const App: React.FC = () => {
               <div className="mt-10 grid grid-cols-2 gap-4">
                  <button 
                    onClick={() => openInStore(selectedHistoryItem.shopUrl)} 
-                   className="col-span-2 py-5 btn-theme rounded-3xl font-black text-[12px] uppercase tracking-widest shadow-2xl flex items-center justify-center gap-3"
+                   className="col-span-2 py-5 rounded-3xl font-black text-[12px] uppercase tracking-widest shadow-2xl flex items-center justify-center gap-3 bg-[var(--theme-color)] text-white border-2 border-[var(--theme-color)] ring-2 ring-black/10"
                  >
                    Купить в магазине
                  </button>
+                 <div className="col-span-2">
+                   <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Модель для видео</label>
+                   <select value={selectedVideoModel} onChange={e => setSelectedVideoModel(e.target.value)} className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme">
+                     {VIDEO_MODEL_POOL.map(m => <option key={m} value={m}>{m}</option>)}
+                   </select>
+                 </div>
                  <button
                    onClick={async () => {
-                     setArchiveVideoUrl(null);
                      setArchiveVideoError(null);
                      setIsArchiveVideoProcessing(true);
                      try {
                        const url = await generateVideo(selectedHistoryItem!.resultUrl, { model: selectedVideoModel });
-                       setArchiveVideoUrl(url);
+                       const updatedItem = { ...selectedHistoryItem!, videoUrl: url };
+                       const nextHistory = history.map(h => h.id === selectedHistoryItem.id ? updatedItem : h);
+                       setHistory(nextHistory);
+                       saveToStorage('history', nextHistory);
+                       setSelectedHistoryItem(updatedItem);
+                       setArchiveVideoUrl(null);
                      } catch (err: unknown) {
                        const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
                        setArchiveVideoError(msg);
@@ -620,19 +633,19 @@ const App: React.FC = () => {
                  {archiveVideoError && (
                    <p className="col-span-2 text-red-500 text-[9px] font-bold uppercase text-center py-2">{archiveVideoError}</p>
                  )}
-                 {archiveVideoUrl && (
+                 {(archiveVideoUrl ?? selectedHistoryItem.videoUrl) && (
                    <>
                      <div className="col-span-2 rounded-2xl overflow-hidden border-2 border-white shadow-xl aspect-[9/16] max-h-64 bg-black">
-                       <video src={archiveVideoUrl} className="w-full h-full object-contain" controls playsInline />
+                       <video src={archiveVideoUrl ?? selectedHistoryItem.videoUrl} className="w-full h-full object-contain" controls playsInline />
                      </div>
                      <button
                        onClick={() => {
                          const link = document.createElement('a');
-                         link.href = archiveVideoUrl;
+                         link.href = archiveVideoUrl ?? selectedHistoryItem.videoUrl!;
                          link.download = 'look.mp4';
                          link.click();
                        }}
-                       className="col-span-2 py-4 btn-theme rounded-3xl font-black text-[9px] uppercase tracking-widest"
+                       className="col-span-2 py-4 rounded-3xl font-black text-[9px] uppercase tracking-widest bg-[var(--theme-color)] text-white border-2 border-[var(--theme-color)]"
                      >
                        Скачать видео
                      </button>

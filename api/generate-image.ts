@@ -145,13 +145,14 @@ export default async function handler(
           ? { model_image: personUrl, garment_image: clothingUrl }
           : { person_image_url: personUrl, clothing_image_url: clothingUrl, preserve_pose: true };
       const falUrl = `https://queue.fal.run/${model}`;
+      // Fal queue REST API ожидает тело запроса = объект input напрямую (без обёртки "input")
       const falRes = await fetch(falUrl, {
         method: 'POST',
         headers: {
           Authorization: `Key ${falKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ input: falInput }),
+        body: JSON.stringify(falInput),
       });
       const falData = (await falRes.json()) as {
         data?: { images?: Array<{ url?: string }> };

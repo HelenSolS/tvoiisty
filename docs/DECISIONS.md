@@ -78,6 +78,8 @@
 
 **Правило для примерочной:** В контексте примерки «OpenAI» (Vision, Prompt Builder) = **вызов через Fal** (FAL_KEY). Прямой **OPENAI_API_KEY не используем**. Если в ишью или доках написано «OpenAI key» — имеется в виду Fal AI (FAL_KEY). При сомнениях — уточнять.
 
+- **ADMIN_WEBHOOK_URL** — опционально. При сбоях подготовки промпта (prepare-tryon-prompt) отправляется POST с телом `{ reason, stage, ts, ... }`. Нужно для алертов (токены, ключи). См. `docs/12-Plan-Razvitiya-Autotesty-Klyuchi.md`.
+
 Ключи используются только в serverless-функциях (`api/*`), на фронт не передаются.
 
 ### Фронт
