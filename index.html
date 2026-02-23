@@ -33,6 +33,7 @@
         }
         .serif { font-family: 'Bodoni Moda', serif; }
         .glass { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px); }
+        /* Ориентация на мобильный: колонка 420px по центру, на узком экране — на всю ширину */
         .app-container { max-width: 420px; margin: 0 auto; background: var(--theme-bg); height: var(--app-height); position: relative; display: flex; flex-direction: column; z-index: 1; }
         @media (max-width: 420px) { .app-container { max-width: 100%; } }
         .btn-theme { background-color: var(--theme-color); color: white; shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.2); }

@@ -11,13 +11,13 @@
     "server": "tsx server.ts"
   },
   "dependencies": {
-    "@vercel/blob": "^0.25.0",
     "@google/genai": "^1.41.0",
     "@vercel/blob": "^0.25.0",
     "dotenv": "^16.6.1",
     "express": "^4.22.1",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/express": "^4.17.25",
