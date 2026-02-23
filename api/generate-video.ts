@@ -69,17 +69,17 @@ function buildJobsCreateTaskInput(
   }
 }
 
-/** Пул моделей для видео (Lab dev). Veo в KIE: только veo3_fast. */
+/** Пул моделей для видео (Lab dev). Первая — основная (Grok), вторая — резерв (Kling). */
 const VIDEO_MODEL_POOL = [
+  'grok-imagine/image-to-video',
   'kling/v2-1-standard',
   'veo-3-1',
   'runway/gen-3-alpha-turbo',
   'hailuo/2-3-image-to-video-standard',
   'wan/2-2-a14b-image-to-video-turbo',
-  'grok-imagine/image-to-video',
 ] as const;
 
-const DEFAULT_VIDEO_MODEL = 'veo-3-1';
+const DEFAULT_VIDEO_MODEL = 'grok-imagine/image-to-video';
 
 function resolveVideoModel(bodyModel: unknown): string {
   if (typeof bodyModel === 'string' && (VIDEO_MODEL_POOL as readonly string[]).includes(bodyModel))
@@ -119,6 +119,12 @@ Clean, stylish, minimal environment.`;
 
 /** Короткий промпт для не-Veo моделей. */
 const DEFAULT_VIDEO_PROMPT = 'Fashion film, person moves, outfit visible. Soft lighting, cinematic.';
+
+/** Модели с озвучкой (Grok, Wan, Veo): в промпт в модель добавляем строку про звук — на английском. */
+function isVoicedModel(model: string): boolean {
+  return model === 'grok-imagine/image-to-video' || model === 'wan/2-2-a14b-image-to-video-turbo' || isVeoModel(model);
+}
+const VOICED_PROMPT_SUFFIX_EN = ' Character is silent. Background: pleasant, quiet music or nature sounds only.';
 
 function extractVideoUrl(data: unknown): string | undefined {
   if (!data || typeof data !== 'object') return undefined;
@@ -166,7 +172,10 @@ export default async function handler(req: Req, res: Res) {
     }
 
     const useVeo = isVeoModel(model);
-    const videoPrompt = prompt || (useVeo ? VEO_EXTENDED_PROMPT : DEFAULT_VIDEO_PROMPT);
+    let videoPrompt = prompt || (useVeo ? VEO_EXTENDED_PROMPT : DEFAULT_VIDEO_PROMPT);
+    if (isVoicedModel(model)) {
+      videoPrompt = (videoPrompt + VOICED_PROMPT_SUFFIX_EN).trim();
+    }
 
     if (useVeo) {
       // Veo 3.1: POST /api/v1/veo/generate. В KIE — только veo3_fast.

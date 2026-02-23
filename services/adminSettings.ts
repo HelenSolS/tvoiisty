@@ -10,7 +10,7 @@ const STORAGE_KEY = 'tvoisty_admin_settings';
 
 const DEFAULT_VIDEO_PROMPT_TEXT = 'Fashion film, person moves, outfit visible. Soft lighting, cinematic.';
 
-/** По умолчанию для показа: Fal Banana для картинки, Kling для видео. Провайдер Fal первичен для примерки. */
+/** По умолчанию для показа: Fal Banana для картинки, Grok для видео (Kling — резерв). Провайдер Fal первичен для примерки. */
 const DEFAULT_ADMIN_SETTINGS: AdminSettings = {
   provider: 'fal',
   defaultImageModel: 'fal-ai/nano-banana-pro/edit',

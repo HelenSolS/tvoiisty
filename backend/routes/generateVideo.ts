@@ -7,18 +7,18 @@ import type { Request, Response } from 'express';
 import { generateVideoFromImage } from '../kieClient.js';
 
 const VIDEO_MODEL_POOL = [
+  'grok-imagine/image-to-video',
   'kling/v2-1-standard',
   'veo-3-1',
   'runway/gen-3-alpha-turbo',
   'hailuo/2-3-image-to-video-standard',
   'wan/2-2-a14b-image-to-video-turbo',
-  'grok-imagine/image-to-video',
 ] as const;
 
 function resolveVideoModel(bodyModel: unknown): string {
   if (typeof bodyModel === 'string' && (VIDEO_MODEL_POOL as readonly string[]).includes(bodyModel))
     return bodyModel;
-  return process.env.KIE_VIDEO_MODEL || 'veo-3-1';
+  return process.env.KIE_VIDEO_MODEL || 'grok-imagine/image-to-video';
 }
 
 export async function generateVideoHandler(req: Request, res: Response): Promise<void> {

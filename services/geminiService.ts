@@ -17,14 +17,14 @@ export const IMAGE_MODEL_POOL = [
   'fal-ai/nano-banana-pro/edit',
 ] as const;
 
-/** Пул моделей для видео (Lab). Veo в KIE: veo3_fast. */
+/** Пул моделей для видео (Lab). Первая — Grok (озвучка → в промпте просим тишину), вторая — Kling (резерв). */
 export const VIDEO_MODEL_POOL = [
+  'grok-imagine/image-to-video',
   'kling/v2-1-standard',
   'veo-3-1',
   'runway/gen-3-alpha-turbo',
   'hailuo/2-3-image-to-video-standard',
   'wan/2-2-a14b-image-to-video-turbo',
-  'grok-imagine/image-to-video',
 ] as const;
 
 /** Описание образа для подсказки KIE (пока заглушка). */
