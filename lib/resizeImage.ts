@@ -1,14 +1,14 @@
 /**
- * Адаптация изображения при загрузке: один раз уменьшаем до разумного размера.
- * Результат храним и используем как есть; перед отправкой в API повторно не уменьшаем.
+ * Одно сжатие при загрузке/сохранении — храним уже сжатое, в запрос отправляем как есть.
+ * Параметры под лимит тела Vercel (~4.5 MB) для двух картинок в одном запросе.
  */
-const DEFAULT_MAX_WIDTH = 1024;
-const DEFAULT_QUALITY = 0.8;
+const STORAGE_MAX_DIM = 768;
+const STORAGE_QUALITY = 0.72;
 
-export function resizeDataUrl(
+function resizeToStorageFormat(
   dataUrl: string,
-  maxWidth: number = DEFAULT_MAX_WIDTH,
-  quality: number = DEFAULT_QUALITY
+  maxDim: number = STORAGE_MAX_DIM,
+  quality: number = STORAGE_QUALITY
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!dataUrl.startsWith('data:')) {
@@ -16,30 +16,40 @@ export function resizeDataUrl(
     }
     const img = new Image();
     img.onload = () => {
-      let width = img.width;
-      let height = img.height;
-      if (width <= maxWidth) {
+      let { width, height } = img;
+      if (width <= maxDim && height <= maxDim) {
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          return resolve(dataUrl);
+        }
+        ctx.drawImage(img, 0, 0);
         try {
-          resolve(dataUrl);
+          resolve(canvas.toDataURL('image/jpeg', quality));
         } catch (e) {
           reject(e);
         }
         return;
       }
-      height = Math.round((height * maxWidth) / width);
-      width = maxWidth;
+      if (width > height) {
+        height = Math.round((height * maxDim) / width);
+        width = maxDim;
+      } else {
+        width = Math.round((width * maxDim) / height);
+        height = maxDim;
+      }
       const canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext('2d');
       if (!ctx) {
-        resolve(dataUrl);
-        return;
+        return resolve(dataUrl);
       }
       ctx.drawImage(img, 0, 0, width, height);
       try {
-        const out = canvas.toDataURL('image/png', quality);
-        resolve(out);
+        resolve(canvas.toDataURL('image/jpeg', quality));
       } catch (e) {
         reject(e);
       }
@@ -47,4 +57,26 @@ export function resizeDataUrl(
     img.onerror = () => reject(new Error('Ошибка загрузки изображения'));
     img.src = dataUrl;
   });
+}
+
+/**
+ * Сжатие при загрузке: человек, товар, коллекция. Результат сохраняем — в API отправляем без повторного сжатия.
+ */
+export const resizeDataUrlForStorage = resizeToStorageFormat;
+
+/** Для обратной совместиости: галерея/витрина хранят уже сжатое. */
+export function resizeDataUrl(
+  dataUrl: string,
+  _maxWidth?: number,
+  _quality?: number
+): Promise<string> {
+  return resizeDataUrlForStorage(dataUrl);
+}
+
+/**
+ * Только для образа по внешней ссылке (каталог/URL): мы его не храним, сжимаем один раз перед запросом.
+ * Для person и образов из магазина не вызывать — они уже сжаты при сохранении.
+ */
+export function resizeDataUrlForApi(dataUrl: string): Promise<string> {
+  return resizeToStorageFormat(dataUrl, STORAGE_MAX_DIM, STORAGE_QUALITY);
 }

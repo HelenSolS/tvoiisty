@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ImageUploader } from './components/ImageUploader';
 import { Lab } from './components/Lab';
 import { AdminPanel } from './components/AdminPanel';
@@ -19,8 +19,17 @@ import {
 import { TryOnState, User, CuratedOutfit, PersonGalleryItem, HistoryItem, AppTheme, CategoryType } from './types';
 import { getHistory, saveHistory, ARCHIVE_MAX_ITEMS } from './services/historyStorage';
 import { getMerchantProducts, saveMerchantProducts } from './services/merchantProductsStorage';
+import { getCompressedByUrl, saveCompressedByUrl } from './services/compressedUrlStorage';
 import { getMetrics, incrementMetric, resetMetrics, type AppMetrics } from './services/metricsStorage';
-import { resizeDataUrl } from './lib/resizeImage';
+import { resizeDataUrl, resizeDataUrlForStorage } from './lib/resizeImage';
+import {
+  SOCIAL_PLATFORMS,
+  loadSocialConnections,
+  saveSocialConnections,
+  createDefaultSocialConnections,
+  type SocialConnectionsState,
+  type SocialPlatformId,
+} from './services/socials';
 
 const INITIAL_BOUTIQUE: CuratedOutfit[] = [
   { id: 'w1', name: 'Шелковое платье Emerald', imageUrl: 'https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?q=80&w=600', shopUrl: 'https://zara.com', category: 'dresses' },
@@ -93,6 +102,12 @@ const App: React.FC = () => {
   const [archiveOverflowToastShown, setArchiveOverflowToastShown] = useState(false);
   /** Локальные метрики (Issue #29). */
   const [metrics, setMetrics] = useState<AppMetrics | null>(null);
+  /** Подключённые соцсети (Issue #31). */
+  const [socialConnections, setSocialConnections] = useState<SocialConnectionsState>(createDefaultSocialConnections());
+  /** Тултип при клике на неактивную соцсеть в веере. */
+  const [shareTooltip, setShareTooltip] = useState<string | null>(null);
+  /** URL карточек, по которым уже запущена загрузка+сжатие (чтобы не дублировать). */
+  const loadingUrls = useRef<Set<string>>(new Set());
 
   const initUser = () => {
     const guest: User = { 
@@ -111,6 +126,7 @@ const App: React.FC = () => {
       getHistory(`${STORAGE_VER}_history`).then(setHistory);
       getMetrics().then(setMetrics);
       getMerchantProducts(`${STORAGE_VER}_merchant_products`).then(setMerchantProducts);
+      setSocialConnections(loadSocialConnections(`${STORAGE_VER}_social_connections`));
       const savedTestClothes = localStorage.getItem(`${STORAGE_VER}_test_clothes`);
       if (savedTestClothes) setTestClothes(savedTestClothes);
       
@@ -177,8 +193,20 @@ const App: React.FC = () => {
     setResultVideoUrl(null);
     setVideoError(null);
     try {
-      const personBase64 = await urlToBase64(state.personImage!);
-      const outfitBase64 = await urlToBase64(outfitUrl);
+      // Инвариант: только готовые данные из хранилища. Никакого resize/загрузки по URL здесь.
+      const personBase64 = state.personImage!;
+      let outfitBase64: string;
+      if (outfitUrl.startsWith('data:')) {
+        outfitBase64 = outfitUrl;
+      } else {
+        const stored = await getCompressedByUrl(outfitUrl);
+        if (!stored) {
+          setState((prev) => ({ ...prev, isProcessing: false, error: 'Дождитесь загрузки изображения', status: '' }));
+          setTimeout(() => setState((p) => ({ ...p, error: null })), 3000);
+          return;
+        }
+        outfitBase64 = stored;
+      }
       setState(prev => ({ ...prev, status: 'Подготовка промпта...' }));
       const prompt = await getEffectiveImagePrompt(() => prepareTryonPrompt(personBase64, outfitBase64));
       setState(prev => ({ ...prev, status: 'Примеряем образ...' }));
@@ -226,6 +254,17 @@ const App: React.FC = () => {
       setState(prev => ({ ...prev, isProcessing: false, error: msg }));
       setTimeout(() => setState(p => ({ ...p, error: null })), 5000);
     }
+  };
+
+  /** Загрузили картинку по URL → сразу сжали → сохранили в IndexedDB. Handler примерки только читает оттуда. */
+  const loadThenCompressAndStore = (url: string) => {
+    if (!url.startsWith('http') || loadingUrls.current.has(url)) return;
+    loadingUrls.current.add(url);
+    urlToBase64(url)
+      .then(resizeDataUrlForStorage)
+      .then((c) => saveCompressedByUrl(url, c))
+      .catch(() => {})
+      .finally(() => { loadingUrls.current.delete(url); });
   };
 
   /** URL или data URL → base64/data URL для API. Не уменьшаем: фото уже адаптированы при загрузке; повторно не жмём. */
@@ -515,7 +554,7 @@ const App: React.FC = () => {
                       .slice(0, outfitPage * OUTFITS_PAGE_SIZE)
                       .map(outfit => (
                         <div key={outfit.id} className="relative aspect-[3/4] rounded-[2.5rem] overflow-hidden border-[5px] border-white shadow-xl group transition-all hover:scale-[1.02] animate-in fade-in duration-500">
-                          <img src={outfit.imageUrl} className="w-full h-full object-cover" />
+                          <img src={outfit.imageUrl} className="w-full h-full object-cover" onLoad={() => loadThenCompressAndStore(outfit.imageUrl)} alt="" />
                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all flex flex-col justify-end p-4 gap-2 backdrop-blur-[2px]">
                             <button onClick={() => handleQuickTryOn(outfit.imageUrl, outfit.shopUrl)} className="w-full py-2.5 btn-theme rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg">Примерить</button>
                             {outfit.shopUrl && outfit.shopUrl !== '#' && (
@@ -678,6 +717,36 @@ const App: React.FC = () => {
                     <button onClick={() => { const u = { ...user!, theme: 'peach' as AppTheme }; setUser(u); saveToStorage('user', u); document.body.className = 'theme-peach'; }} className={`w-14 h-14 rounded-full bg-[#f97316] border-4 ${user?.theme === 'peach' ? 'border-white scale-125 shadow-2xl' : 'border-transparent opacity-30'} transition-all`}></button>
                 </div>
                 
+                {/* Социальные сети — Issue #31 */}
+                <div className="space-y-4">
+                  <h4 className="serif text-lg font-bold italic text-center">Социальные сети</h4>
+                  <p className="text-[9px] text-gray-500 text-center uppercase tracking-widest">Подключите для кнопки «Поделиться»</p>
+                  <div className="space-y-3">
+                    {SOCIAL_PLATFORMS.map((p) => {
+                      const connected = socialConnections[p.id];
+                      return (
+                        <div key={p.id} className="flex items-center justify-between gap-4 p-4 bg-white rounded-[2rem] border border-gray-100 shadow-sm">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-[10px] font-black" style={{ backgroundColor: p.brandColor }}>{p.short}</div>
+                            <span className="text-[10px] font-black uppercase tracking-wide text-gray-800">{p.label}</span>
+                          </div>
+                          <span className="text-[8px] font-bold uppercase text-gray-400">{connected ? 'Подключено' : 'Не подключено'}</span>
+                          <button
+                            onClick={() => {
+                              const next = { ...socialConnections, [p.id]: !connected };
+                              setSocialConnections(next);
+                              saveSocialConnections(`${STORAGE_VER}_social_connections`, next);
+                            }}
+                            className={`px-4 py-2 rounded-full text-[8px] font-black uppercase tracking-widest ${connected ? 'bg-gray-100 text-gray-600' : 'bg-theme/90 text-white'}`}
+                          >
+                            {connected ? 'Отключить' : 'Подключить'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div className="pt-8 space-y-5 text-center">
                    <button onClick={() => setStylistModalOpen(true)} className="w-full py-5 bg-white border-2 border-theme text-theme rounded-[2rem] text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95">Позвать стилиста</button>
                    <button onClick={() => setActiveTab('lab')} className="w-full py-5 bg-theme/90 text-white rounded-[2rem] text-[11px] font-black uppercase tracking-widest shadow-xl active:scale-95 flex items-center justify-center gap-2">
@@ -740,6 +809,63 @@ const App: React.FC = () => {
               setAddProductModal(false);
               setNewProduct({ name: '', image: '', category: 'casual', shopUrl: '' });
             }} className="w-full py-5 btn-theme rounded-3xl font-black text-[10px] uppercase tracking-widest shadow-xl">Опубликовать</button>
+          </div>
+        </div>
+      )}
+
+      {/* Поделиться — веер соцсетей (Issue #31) */}
+      {socialModal && (
+        <div className="fixed inset-0 z-[165] flex items-center justify-center bg-black/60 backdrop-blur-md p-6 animate-in fade-in duration-200">
+          <div className="w-full max-w-[380px] bg-white rounded-[4rem] p-8 space-y-6 animate-in zoom-in-95 duration-200 shadow-4xl relative">
+            <button onClick={() => { setSocialModal(null); setShareTooltip(null); }} className="absolute top-8 right-8 text-gray-300 hover:text-gray-500">
+              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+            <h3 className="serif text-2xl font-black italic text-center">Поделиться</h3>
+            <div className="flex flex-wrap justify-center gap-4 py-2">
+              {SOCIAL_PLATFORMS.map((platform) => {
+                const connected = socialConnections[platform.id];
+                const handleClick = () => {
+                  if (!connected) {
+                    setShareTooltip('Подключите в настройках');
+                    setTimeout(() => setShareTooltip(null), 2500);
+                    return;
+                  }
+                  if (platform.id === 'telegram') {
+                    const text = encodeURIComponent('Мой образ — твоИИстиль');
+                    const url = socialModal.startsWith('data:') ? window.location.href : socialModal;
+                    window.open(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${text}`, '_blank', 'noopener,noreferrer');
+                    setSuccessMsg('Ссылка открыта в Telegram');
+                    setTimeout(() => setSuccessMsg(null), 3000);
+                    setSocialModal(null);
+                  } else {
+                    const names: Record<string, string> = { vk: 'VK', facebook: 'Facebook', instagram: 'Instagram', threads: 'Threads', tenchat: 'TenChat', pinterest: 'Pinterest', dzen: 'Дзен', ok: 'OK' };
+                    setSuccessMsg(`Публикация в ${names[platform.id] || platform.label} появится в следующей версии`);
+                    setTimeout(() => setSuccessMsg(null), 3500);
+                  }
+                };
+                return (
+                  <button
+                    key={platform.id}
+                    type="button"
+                    onClick={handleClick}
+                    title={connected ? `Поделиться в ${platform.label}` : 'Подключите в настройках'}
+                    className={`w-14 h-14 rounded-full flex items-center justify-center text-white text-[11px] font-black shadow-lg transition-all duration-200 ${connected ? 'hover:scale-110 cursor-pointer' : 'opacity-40 cursor-not-allowed'}`}
+                    style={{ backgroundColor: platform.brandColor }}
+                  >
+                    {platform.short}
+                  </button>
+                );
+              })}
+            </div>
+            {shareTooltip && (
+              <p className="text-center text-[10px] font-bold text-gray-500 animate-in fade-in">{shareTooltip}</p>
+            )}
+            <button
+              onClick={() => { setActiveTab('settings'); setSocialModal(null); setShareTooltip(null); }}
+              className="w-full py-3 rounded-2xl border-2 border-theme text-theme text-[10px] font-black uppercase tracking-widest"
+            >
+              Настройки соцсетей
+            </button>
           </div>
         </div>
       )}
