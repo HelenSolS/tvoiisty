@@ -45,6 +45,8 @@ export interface AdminSettings {
   videoPromptCustom: string;
   /** При ошибке первой модели (KIE) автоматически пробовать запасную (Fal). Выключено — процесс заканчивается после первого ответа (даже с ошибкой). */
   imageFallbackEnabled: boolean;
+  /** Локально: показывать выбор моделей (фото/видео) на главном экране. false = только в Настройках → Лаборатория. Не влияет на пользователей без доступа в админку. */
+  showModelChoiceOnHome: boolean;
 }
 
 export type CategoryType = 'all' | 'dresses' | 'suits' | 'casual' | 'outerwear' | 'men' | 'women';

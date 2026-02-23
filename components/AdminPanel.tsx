@@ -93,12 +93,33 @@ export const AdminPanel: React.FC<{ onBack: () => void; unlocked: boolean; onUnl
           <button onClick={onBack} className="py-2 px-4 text-[10px] font-black uppercase tracking-widest text-gray-500">
             ← Назад
           </button>
-          <button onClick={handleSave} className="py-2.5 px-5 bg-theme text-white rounded-full font-black text-[9px] uppercase tracking-widest shadow-lg">
+          <button
+            type="button"
+            onClick={handleSave}
+            className="py-2.5 px-5 min-w-[100px] bg-gray-800 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-gray-700 active:bg-gray-900"
+          >
             {saved ? 'Сохранено' : 'Сохранить'}
           </button>
         </div>
 
         <h2 className="serif text-2xl font-black italic text-gray-900">Настройки</h2>
+
+        <p className="text-[9px] text-gray-500 mb-4">Для пользователей без доступа в админку (пароль 888) действуют настройки по умолчанию: одна модель, без выбора. Ниже — настройки только для этого устройства (локально).</p>
+
+        {/* Локально: где показывать выбор моделей */}
+        <section className="p-4 rounded-2xl bg-gray-100/80 border border-gray-200">
+          <p className="text-[9px] font-black uppercase text-gray-500 mb-2">Локально (только это устройство)</p>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={settings.showModelChoiceOnHome === true}
+              onChange={(e) => setSettings((s) => ({ ...s, showModelChoiceOnHome: e.target.checked }))}
+              className="rounded border-2 border-theme text-theme"
+            />
+            <span className="text-[10px] font-bold">Показывать выбор моделей (фото и видео) на главном экране — для теста</span>
+          </label>
+          <p className="text-[8px] text-gray-400 mt-1.5">Выключено: выбор моделей только в Настройки → Лаборатория.</p>
+        </section>
 
         {/* Провайдер */}
         <section>
@@ -167,6 +188,7 @@ export const AdminPanel: React.FC<{ onBack: () => void; unlocked: boolean; onUnl
           </div>
           <div>
             <p className="text-[9px] font-black uppercase text-gray-500 mb-2">Режим выбора модели</p>
+            <p className="text-[9px] text-gray-500 mb-1.5">«Выпадающий список» — выбор модели в Настройках → Лаборатория. Чтобы показывать его ещё и на главном экране, включите опцию «Локально» выше.</p>
             <div className="flex gap-4">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input

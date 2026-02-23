@@ -10,10 +10,10 @@ const STORAGE_KEY = 'tvoisty_admin_settings';
 
 const DEFAULT_VIDEO_PROMPT_TEXT = 'Fashion film, person moves, outfit visible. Soft lighting, cinematic.';
 
-/** По умолчанию — стабильный режим «как вчера»: одна модель, стандартный промпт, fallback при ошибке KIE. Админка не меняет поведение, пока пользователь сам не включит настройки. */
+/** По умолчанию для показа: Fal Banana для картинки, Kling для видео. Провайдер Fal первичен для примерки. */
 const DEFAULT_ADMIN_SETTINGS: AdminSettings = {
-  provider: 'kie',
-  defaultImageModel: IMAGE_MODEL_POOL[0],
+  provider: 'fal',
+  defaultImageModel: 'fal-ai/nano-banana-pro/edit',
   defaultVideoModel: VIDEO_MODEL_POOL[0],
   imageModelChoice: 'default_only',
   imageModelsInDropdown: [...IMAGE_MODEL_POOL],
@@ -28,6 +28,8 @@ const DEFAULT_ADMIN_SETTINGS: AdminSettings = {
   videoPromptDefaultText: DEFAULT_VIDEO_PROMPT_TEXT,
   videoPromptCustom: '',
   imageFallbackEnabled: true,
+  /** По умолчанию выбор моделей только в Лаборатории, не на главном — чтобы не ломать показ инвестору. */
+  showModelChoiceOnHome: false,
 };
 
 export function getAdminSettings(): AdminSettings {
@@ -51,6 +53,7 @@ export function getAdminSettings(): AdminSettings {
       videoPromptDefaultText: typeof parsed.videoPromptDefaultText === 'string' ? parsed.videoPromptDefaultText : DEFAULT_ADMIN_SETTINGS.videoPromptDefaultText,
       videoPromptCustom: typeof parsed.videoPromptCustom === 'string' ? parsed.videoPromptCustom : '',
       imageFallbackEnabled: parsed.imageFallbackEnabled === true,
+      showModelChoiceOnHome: parsed.showModelChoiceOnHome === true,
     };
   } catch {
     return DEFAULT_ADMIN_SETTINGS;
@@ -103,6 +106,11 @@ export function getDefaultVideoModel(): string {
 /** Включено ли авто-переключение на запасную модель при ошибке (KIE → Fal). */
 export function getImageFallbackEnabled(): boolean {
   return getAdminSettings().imageFallbackEnabled;
+}
+
+/** Локально: показывать выбор моделей на главном экране (для теста). false = только в Лаборатории. */
+export function showModelChoiceOnHome(): boolean {
+  return getAdminSettings().showModelChoiceOnHome === true;
 }
 
 /** Запасная модель для картинок (при авто-переключении). */

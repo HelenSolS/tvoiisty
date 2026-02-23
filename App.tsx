@@ -11,6 +11,7 @@ import {
   getVideoModelsForDropdown,
   showImageModelDropdown,
   showVideoModelDropdown,
+  showModelChoiceOnHome,
   getEffectiveImagePrompt,
   getEffectiveVideoPrompt,
   getImageFallbackEnabled,
@@ -42,6 +43,8 @@ const App: React.FC = () => {
   const [testClothes, setTestClothes] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'history' | 'settings' | 'showroom' | 'lab' | 'admin'>('home');
   const [adminUnlockedSession, setAdminUnlockedSession] = useState(false);
+  /** Кто ввёл 888 в этой сессии — показываем шестерёнку в шапке для быстрого перехода в настройки. */
+  const [adminSessionUnlocked, setAdminSessionUnlocked] = useState(() => typeof sessionStorage !== 'undefined' && sessionStorage.getItem('tvoisty_admin_unlocked') === '1');
   const [activeCategory, setActiveCategory] = useState<CategoryType>('all');
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -290,6 +293,11 @@ const App: React.FC = () => {
           <p className="text-[7px] font-bold uppercase tracking-[0.3em] text-gray-400 mt-1">Digital Atelier</p>
         </div>
         <div className="flex items-center gap-5">
+          {adminSessionUnlocked && (
+            <button onClick={() => goToTab('settings')} className={`${activeTab === 'settings' ? 'text-theme' : 'text-gray-400'} transition-all hover:scale-110`} title="Настройки" aria-label="Настройки">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            </button>
+          )}
           {user?.isVerifiedMerchant && (
             <button onClick={() => goToTab('showroom')} className={`${activeTab === 'showroom' ? 'text-theme' : 'text-gray-300'} transition-all hover:scale-110`}>
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
@@ -321,9 +329,9 @@ const App: React.FC = () => {
                Купить в магазине
              </button>
 
-             {/* Выбор модели для видео и кнопка «Создать видео» */}
+             {/* Выбор модели для видео: на главном только если локально включено. */}
              <div className="space-y-3">
-               {showVideoModelDropdown() && (
+               {showVideoModelDropdown() && showModelChoiceOnHome() && (
                  <div>
                    <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Модель для видео</label>
                    <select value={selectedVideoModel} onChange={e => setSelectedVideoModel(e.target.value)} className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme">
@@ -398,15 +406,15 @@ const App: React.FC = () => {
                 {/* Step 2: Catalog with Search & Filter */}
                 <div className="space-y-6">
                   <div className="flex justify-between items-end px-1"><h3 className="serif text-2xl font-black italic">Витрина</h3><span className="text-[9px] font-black text-gray-300 uppercase tracking-widest">Шаг 02</span></div>
-                  {/* Выбор модели перед примеркой (если в админке включён выпадающий список) */}
-                  {showImageModelDropdown() && (
+                  {/* Выбор модели: на главном только если локально включено «показывать на главном». Иначе — только в Лаборатории. */}
+                  {showImageModelDropdown() && showModelChoiceOnHome() ? (
                     <div>
                       <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Модель для примерки</label>
                       <select value={selectedImageModel} onChange={e => setSelectedImageModel(e.target.value)} className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme">
                         {getImageModelsForDropdown().map(m => <option key={m} value={m}>{m}</option>)}
                       </select>
                     </div>
-                  )}
+                  ) : null}
                   {/* Search Bar */}
                   <div className="relative">
                     <input 
@@ -526,7 +534,11 @@ const App: React.FC = () => {
               <AdminPanel
                 onBack={() => { setAdminUnlockedSession(false); goToTab('settings'); }}
                 unlocked={adminUnlockedSession}
-                onUnlock={() => setAdminUnlockedSession(true)}
+                onUnlock={() => {
+                  setAdminUnlockedSession(true);
+                  setAdminSessionUnlocked(true);
+                  if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('tvoisty_admin_unlocked', '1');
+                }}
               />
             ) : activeTab === 'lab' ? (
               <Lab onBack={() => goToTab('settings')} />
@@ -620,7 +632,7 @@ const App: React.FC = () => {
                  >
                    Купить в магазине
                  </button>
-                 {showVideoModelDropdown() && (
+                 {showVideoModelDropdown() && showModelChoiceOnHome() && (
                  <div className="col-span-2">
                    <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Модель для видео</label>
                    <select value={selectedVideoModel} onChange={e => setSelectedVideoModel(e.target.value)} className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme">
