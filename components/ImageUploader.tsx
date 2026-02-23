@@ -1,5 +1,5 @@
-
 import React, { useRef } from 'react';
+import { resizeDataUrl } from '../lib/resizeImage';
 
 interface ImageUploaderProps {
   label: string;
@@ -8,6 +8,7 @@ interface ImageUploaderProps {
   icon: React.ReactNode;
 }
 
+/** Загрузка одного фото с адаптацией (один раз уменьшаем при загрузке; в примерочную идут уже нормальные размеры). */
 export const ImageUploader: React.FC<ImageUploaderProps> = ({ label, image, onImageSelect, icon }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -15,7 +16,11 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ label, image, onIm
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => onImageSelect(reader.result as string);
+      reader.onloadend = async () => {
+        const raw = reader.result as string;
+        const adapted = await resizeDataUrl(raw);
+        onImageSelect(adapted);
+      };
       reader.readAsDataURL(file);
     }
   };

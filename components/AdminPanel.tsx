@@ -1,9 +1,11 @@
 /**
  * Дополнительная панель настроек (провайдер, модели). Вход по паролю 888 — заглушка, авторизация позже.
+ * Issue #29: опционально метрики и Reset Metrics для демо.
  */
 
 import React, { useState, useEffect } from 'react';
 import type { AdminSettings } from '../types';
+import type { AppMetrics } from '../services/metricsStorage';
 import {
   getAdminSettings,
   setAdminSettings,
@@ -14,10 +16,18 @@ import {
 
 const ADMIN_PASSWORD = '888';
 
-export const AdminPanel: React.FC<{ onBack: () => void; unlocked: boolean; onUnlock: () => void }> = ({
+export const AdminPanel: React.FC<{
+  onBack: () => void;
+  unlocked: boolean;
+  onUnlock: () => void;
+  metrics?: AppMetrics | null;
+  onResetMetrics?: () => Promise<void>;
+}> = ({
   onBack,
   unlocked,
   onUnlock,
+  metrics = null,
+  onResetMetrics,
 }) => {
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
@@ -117,6 +127,33 @@ export const AdminPanel: React.FC<{ onBack: () => void; unlocked: boolean; onUnl
         </div>
 
         <h2 className="serif text-2xl font-black italic text-gray-900">Настройки</h2>
+
+        {metrics !== undefined && metrics !== null && onResetMetrics && (
+          <section className="p-5 rounded-2xl bg-white border border-gray-200 shadow-lg space-y-4">
+            <h3 className="text-[11px] font-black uppercase tracking-widest text-gray-700">📊 Метрики (демо)</h3>
+            <div className="grid grid-cols-2 gap-3 text-[10px]">
+              <div className="bg-gray-50 p-3 rounded-xl text-center">
+                <span className="text-lg font-black text-theme">{metrics.totalCollectionsCreated}</span>
+                <p className="text-[8px] uppercase text-gray-500 mt-0.5">Коллекций</p>
+              </div>
+              <div className="bg-gray-50 p-3 rounded-xl text-center">
+                <span className="text-lg font-black text-theme">{metrics.totalOutfitsUploaded}</span>
+                <p className="text-[8px] uppercase text-gray-500 mt-0.5">Образов загружено</p>
+              </div>
+              <div className="col-span-2 bg-gray-50 p-3 rounded-xl text-center">
+                <span className="text-lg font-black text-theme">{metrics.totalTryOns + metrics.totalVideos + metrics.totalShares}</span>
+                <p className="text-[8px] uppercase text-gray-500 mt-0.5">Общая активность (примерки + видео + шары)</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onResetMetrics()}
+              className="w-full py-2.5 rounded-xl border-2 border-red-200 text-red-600 font-black text-[9px] uppercase tracking-widest hover:bg-red-50"
+            >
+              Reset Metrics
+            </button>
+          </section>
+        )}
 
         <p className="text-[9px] text-gray-500 mb-4">Для пользователей без доступа в админку (пароль 888) действуют настройки по умолчанию: одна модель, без выбора. Ниже — настройки только для этого устройства (локально).</p>
 
