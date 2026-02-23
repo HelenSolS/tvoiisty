@@ -60,6 +60,8 @@ export default async function handler(
   const body = (req.body || {}) as Record<string, unknown>;
   const model = resolveImageModel(body.model);
   const provider = getImageProvider(model);
+  /** Из панели настроек: при ошибке KIE вызывать Fal только если включено осознанно. По умолчанию выключено. */
+  const fallbackOnError = body.fallbackOnError === true;
 
   if (provider === 'kie' && !process.env.KIE_API_KEY) {
     console.error('[generate-image] KIE_API_KEY not set');
@@ -105,12 +107,16 @@ export default async function handler(
       return res.status(502).json({ error: 'Не удалось подготовить изображения. Попробуйте позже.' });
     }
 
-    const result = await generateImage({
-      personUrl,
-      clothingUrl,
-      prompt: prompt ?? undefined,
-      model,
-    });
+    const fallbackOnError = body.fallbackOnError !== false;
+    const result = await generateImage(
+      {
+        personUrl,
+        clothingUrl,
+        prompt: prompt ?? undefined,
+        model,
+      },
+      { fallbackOnError }
+    );
 
     if (result.status === 'success') {
       const imageUrl = result.imageUrl;

@@ -143,7 +143,7 @@ export const AdminPanel: React.FC<{ onBack: () => void; unlocked: boolean; onUnl
             </select>
           </div>
           <div>
-            <p className="text-[9px] font-black uppercase text-gray-500 mb-1">Запасная модель (авто-переключение)</p>
+            <p className="text-[9px] font-black uppercase text-gray-500 mb-1">Запасная модель (при включённом переключении)</p>
             <select
               value={settings.imageBackupModel}
               onChange={(e) => setSettings((s) => ({ ...s, imageBackupModel: e.target.value }))}
@@ -153,6 +153,17 @@ export const AdminPanel: React.FC<{ onBack: () => void; unlocked: boolean; onUnl
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={settings.imageFallbackEnabled}
+                onChange={(e) => setSettings((s) => ({ ...s, imageFallbackEnabled: e.target.checked }))}
+                className="rounded border-2 border-theme text-theme"
+              />
+              <span className="text-[10px] font-bold">При ошибке переключаться на запасную модель (KIE → Fal). Выключено — процесс заканчивается после первого ответа.</span>
+            </label>
           </div>
           <div>
             <p className="text-[9px] font-black uppercase text-gray-500 mb-2">Режим выбора модели</p>

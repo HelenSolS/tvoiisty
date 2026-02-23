@@ -10,11 +10,18 @@ import { runKieTryOn } from './providers/kie-image';
 /** Модель Fal для fallback, когда KIE ответил ошибкой. */
 const FAL_FALLBACK_MODEL = 'fal-ai/image-apps-v2/virtual-try-on';
 
+export type GenerateImageOptions = {
+  /** Если false — при ошибке KIE не вызывать Fal, вернуть ошибку сразу. Задаётся из панели настроек. */
+  fallbackOnError?: boolean;
+};
+
 export async function generateImage(
-  payload: GenerateImagePayload
+  payload: GenerateImagePayload,
+  options?: GenerateImageOptions
 ): Promise<GenerateImageResult> {
   const startTs = Date.now();
   const provider = getImageProvider(payload.model);
+  const fallbackOnError = options?.fallbackOnError === true;
 
   if (provider === 'fal') {
     return runFalTryOn(payload, startTs);
@@ -29,7 +36,7 @@ export async function generateImage(
     return kieResult;
   }
 
-  if (!process.env.FAL_KEY) {
+  if (!fallbackOnError || !process.env.FAL_KEY) {
     return kieResult;
   }
 

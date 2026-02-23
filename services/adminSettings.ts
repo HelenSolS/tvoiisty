@@ -26,6 +26,7 @@ const DEFAULT_ADMIN_SETTINGS: AdminSettings = {
   videoPromptMode: 'default',
   videoPromptDefaultText: DEFAULT_VIDEO_PROMPT_TEXT,
   videoPromptCustom: '',
+  imageFallbackEnabled: false,
 };
 
 export function getAdminSettings(): AdminSettings {
@@ -48,6 +49,7 @@ export function getAdminSettings(): AdminSettings {
       videoPromptMode: parsed.videoPromptMode === 'openai' || parsed.videoPromptMode === 'custom' ? parsed.videoPromptMode : 'default',
       videoPromptDefaultText: typeof parsed.videoPromptDefaultText === 'string' ? parsed.videoPromptDefaultText : DEFAULT_ADMIN_SETTINGS.videoPromptDefaultText,
       videoPromptCustom: typeof parsed.videoPromptCustom === 'string' ? parsed.videoPromptCustom : '',
+      imageFallbackEnabled: parsed.imageFallbackEnabled === true,
     };
   } catch {
     return DEFAULT_ADMIN_SETTINGS;
@@ -95,6 +97,11 @@ export function getDefaultVideoModel(): string {
   const s = getAdminSettings();
   const pool = [...VIDEO_MODEL_POOL];
   return pool.includes(s.defaultVideoModel as typeof pool[number]) ? s.defaultVideoModel : pool[0];
+}
+
+/** Включено ли авто-переключение на запасную модель при ошибке (KIE → Fal). */
+export function getImageFallbackEnabled(): boolean {
+  return getAdminSettings().imageFallbackEnabled;
 }
 
 /** Запасная модель для картинок (при авто-переключении). */

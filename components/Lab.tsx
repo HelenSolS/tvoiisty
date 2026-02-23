@@ -14,6 +14,7 @@ import {
   getDefaultVideoModel,
   getEffectiveImagePrompt,
   getEffectiveVideoPrompt,
+  getImageFallbackEnabled,
 } from '../services/adminSettings';
 import type { LabTryOnExperiment, LabVideoExperiment } from '../types';
 
@@ -117,7 +118,7 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         compressImageDataUrl(outfitImage),
       ]);
       const prompt = await getEffectiveImagePrompt(() => prepareTryonPrompt(personCompressed, outfitCompressed));
-      const imageUrl = await generateTryOn(personCompressed, outfitCompressed, prompt, { model: imageModel });
+      const imageUrl = await generateTryOn(personCompressed, outfitCompressed, prompt, { model: imageModel, fallbackOnError: getImageFallbackEnabled() });
       const durationMs = Date.now() - start;
       setTryonResult({ imageUrl, durationMs, model: imageModel });
     } catch (e: unknown) {

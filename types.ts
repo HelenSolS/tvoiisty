@@ -43,6 +43,8 @@ export interface AdminSettings {
   videoPromptMode: PromptMode;
   videoPromptDefaultText: string;
   videoPromptCustom: string;
+  /** При ошибке первой модели (KIE) автоматически пробовать запасную (Fal). Выключено — процесс заканчивается после первого ответа (даже с ошибкой). */
+  imageFallbackEnabled: boolean;
 }
 
 export type CategoryType = 'all' | 'dresses' | 'suits' | 'casual' | 'outerwear' | 'men' | 'women';

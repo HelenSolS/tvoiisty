@@ -62,7 +62,7 @@ async function generateTryOn(
   personImageBase64: string,
   clothingImageBase64: string,
   prompt?: string,
-  options?: { model?: string }
+  options?: { model?: string; fallbackOnError?: boolean }
 ): Promise<string> {
   const res = await fetch(`${API_BASE}/api/generate-image`, {
     method: 'POST',
@@ -72,6 +72,7 @@ async function generateTryOn(
       clothingImageBase64,
       prompt: prompt || undefined,
       ...(options?.model ? { model: options.model } : {}),
+      fallbackOnError: options?.fallbackOnError === true,
     }),
   });
 

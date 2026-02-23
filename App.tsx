@@ -13,6 +13,7 @@ import {
   showVideoModelDropdown,
   getEffectiveImagePrompt,
   getEffectiveVideoPrompt,
+  getImageFallbackEnabled,
 } from './services/adminSettings';
 import { TryOnState, User, CuratedOutfit, PersonGalleryItem, HistoryItem, AppTheme, CategoryType } from './types';
 
@@ -155,7 +156,7 @@ const App: React.FC = () => {
       const prompt = await getEffectiveImagePrompt(() => prepareTryonPrompt(personBase64, outfitBase64));
       setState(prev => ({ ...prev, status: 'Примеряем образ...' }));
       const imageModel = showImageModelDropdown() ? selectedImageModel : getDefaultImageModel();
-      const imageUrl = await generateTryOn(personBase64, outfitBase64, prompt, { model: imageModel });
+      const imageUrl = await generateTryOn(personBase64, outfitBase64, prompt, { model: imageModel, fallbackOnError: getImageFallbackEnabled() });
       setState(prev => ({ ...prev, resultImage: imageUrl, isProcessing: false, status: '' }));
       const newItem: HistoryItem = { id: `h_${Date.now()}`, resultUrl: imageUrl, outfitUrl, shopUrl, timestamp: Date.now() };
       const newHistory = [newItem, ...history].slice(0, 20);
