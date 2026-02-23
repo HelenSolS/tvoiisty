@@ -10,14 +10,15 @@ const STORAGE_KEY = 'tvoisty_admin_settings';
 
 const DEFAULT_VIDEO_PROMPT_TEXT = 'Fashion film, person moves, outfit visible. Soft lighting, cinematic.';
 
+/** По умолчанию — стабильный режим «как вчера»: одна модель, стандартный промпт, fallback при ошибке KIE. Админка не меняет поведение, пока пользователь сам не включит настройки. */
 const DEFAULT_ADMIN_SETTINGS: AdminSettings = {
   provider: 'kie',
   defaultImageModel: IMAGE_MODEL_POOL[0],
   defaultVideoModel: VIDEO_MODEL_POOL[0],
-  imageModelChoice: 'dropdown',
+  imageModelChoice: 'default_only',
   imageModelsInDropdown: [...IMAGE_MODEL_POOL],
   imageBackupModel: IMAGE_MODEL_POOL.length > 1 ? IMAGE_MODEL_POOL[1] : IMAGE_MODEL_POOL[0],
-  videoModelChoice: 'dropdown',
+  videoModelChoice: 'default_only',
   videoModelsInDropdown: [...VIDEO_MODEL_POOL],
   videoBackupModel: VIDEO_MODEL_POOL.length > 1 ? VIDEO_MODEL_POOL[1] : VIDEO_MODEL_POOL[0],
   imagePromptMode: 'default',
@@ -26,7 +27,7 @@ const DEFAULT_ADMIN_SETTINGS: AdminSettings = {
   videoPromptMode: 'default',
   videoPromptDefaultText: DEFAULT_VIDEO_PROMPT_TEXT,
   videoPromptCustom: '',
-  imageFallbackEnabled: false,
+  imageFallbackEnabled: true,
 };
 
 export function getAdminSettings(): AdminSettings {

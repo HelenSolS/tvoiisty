@@ -6,7 +6,7 @@
  */
 
 import { put } from '@vercel/blob';
-import { generateImage, getImageProvider } from '../lib/provider-abstraction';
+import { generateImage, getImageProvider } from './_lib/provider-abstraction';
 
 /** Модели KIE (Lab + production). */
 const KIE_IMAGE_MODEL_POOL = [
@@ -60,9 +60,6 @@ export default async function handler(
   const body = (req.body || {}) as Record<string, unknown>;
   const model = resolveImageModel(body.model);
   const provider = getImageProvider(model);
-  /** Из панели настроек: при ошибке KIE вызывать Fal только если включено осознанно. По умолчанию выключено. */
-  const fallbackOnError = body.fallbackOnError === true;
-
   if (provider === 'kie' && !process.env.KIE_API_KEY) {
     console.error('[generate-image] KIE_API_KEY not set');
     return res.status(500).json({ error: 'Сервис временно недоступен. Попробуйте позже.' });
@@ -107,6 +104,7 @@ export default async function handler(
       return res.status(502).json({ error: 'Не удалось подготовить изображения. Попробуйте позже.' });
     }
 
+    /** Fallback KIE→Fal: по умолчанию включён (как раньше). Выключить можно из админки (fallbackOnError: false). */
     const fallbackOnError = body.fallbackOnError !== false;
     const result = await generateImage(
       {
