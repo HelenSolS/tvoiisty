@@ -7,7 +7,13 @@ import { DEFAULT_IMAGE_PROMPT } from '../provider-abstraction';
 
 const DEFAULT_KIE_BASE = 'https://api.kie.ai/api/v1';
 const POLL_INTERVAL_MS = 2000;
-const POLL_MAX_ATTEMPTS = 60;
+const POLL_MAX_ATTEMPTS = 90; // до ~3 мин, чтобы не отдавать 408 пока задача ещё в работе
+
+function calcKieIntervalMs(elapsedMs: number): number {
+  if (elapsedMs < 15_000) return 700;
+  if (elapsedMs < 60_000) return POLL_INTERVAL_MS;
+  return 4_000;
+}
 
 export async function runKieTryOn(
   payload: GenerateImagePayload,
@@ -114,7 +120,13 @@ export async function runKieTryOn(
       { headers: { Authorization: `Bearer ${apiKey}` } }
     );
     let jobData: {
-      data?: { state?: string; resultJson?: string; failMsg?: string };
+      data?: {
+        state?: string;
+        successFlag?: number | string;
+        resultJson?: string;
+        response?: { result_urls?: string[] };
+        failMsg?: string;
+      };
       message?: string;
     } = {};
     try {
@@ -137,16 +149,28 @@ export async function runKieTryOn(
     }
 
     const state = jobData?.data?.state;
-    if (state === 'success') {
+    const successFlag = jobData?.data?.successFlag;
+    const isSuccess =
+      (state && String(state).toLowerCase() === 'success') ||
+      successFlag === 1 ||
+      successFlag === '1';
+
+    if (isSuccess) {
       let imageUrl: string | undefined;
-      try {
-        const resultJson = jobData?.data?.resultJson;
-        if (typeof resultJson === 'string') {
-          const parsed = JSON.parse(resultJson) as { resultUrls?: string[] };
-          imageUrl = Array.isArray(parsed?.resultUrls) ? parsed.resultUrls[0] : undefined;
+      const resp = jobData?.data?.response;
+      if (Array.isArray(resp?.result_urls) && resp.result_urls[0]) {
+        imageUrl = resp.result_urls[0];
+      }
+      if (!imageUrl) {
+        try {
+          const resultJson = jobData?.data?.resultJson;
+          if (typeof resultJson === 'string') {
+            const parsed = JSON.parse(resultJson) as { resultUrls?: string[] };
+            imageUrl = Array.isArray(parsed?.resultUrls) ? parsed.resultUrls[0] : undefined;
+          }
+        } catch {
+          // fall through
         }
-      } catch {
-        // fall through
       }
       if (imageUrl) {
         const duration_ms = Date.now() - startTs;
@@ -169,7 +193,8 @@ export async function runKieTryOn(
       };
     }
 
-    if (state === 'fail') {
+    const stateStr = state ? String(state).toLowerCase() : '';
+    if (stateStr === 'fail' || successFlag === 2 || successFlag === '2' || successFlag === 3 || successFlag === '3') {
       const duration_ms = Date.now() - startTs;
       let userMessage =
         jobData?.data?.failMsg?.trim() ?? 'Генерация не удалась. Попробуйте снова.';
@@ -187,7 +212,60 @@ export async function runKieTryOn(
       };
     }
 
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    const elapsed = Date.now() - startTs;
+    const waitMs = calcKieIntervalMs(elapsed);
+    await new Promise((r) => setTimeout(r, waitMs));
+  }
+
+  // Последний опрос перед 408: картинка могла только что стать готовой — не отдаём ошибку без проверки.
+  const lastRes = await fetch(
+    `${KIE_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`,
+    { headers: { Authorization: `Bearer ${apiKey}` } }
+  );
+  let lastData: { data?: { state?: string; successFlag?: number | string; resultJson?: string; response?: { result_urls?: string[] } } } = {};
+  try {
+    lastData = (await lastRes.json()) as typeof lastData;
+  } catch {
+    const duration_ms = Date.now() - startTs;
+    return {
+      status: 'error',
+      model,
+      duration_ms,
+      httpStatus: 408,
+      error: 'Превышено время ожидания. Попробуйте ещё раз.',
+      credits_used: creditsUsed,
+    };
+  }
+  if (lastRes.ok) {
+    const s = lastData?.data?.state;
+    const sf = lastData?.data?.successFlag;
+    const ok =
+      (s && String(s).toLowerCase() === 'success') || sf === 1 || sf === '1';
+    if (ok) {
+      let imageUrl: string | undefined;
+      const resp = lastData?.data?.response;
+      if (Array.isArray(resp?.result_urls) && resp.result_urls[0]) {
+        imageUrl = resp.result_urls[0];
+      }
+      if (!imageUrl && typeof lastData?.data?.resultJson === 'string') {
+        try {
+          const parsed = JSON.parse(lastData.data.resultJson) as { resultUrls?: string[] };
+          imageUrl = Array.isArray(parsed?.resultUrls) ? parsed.resultUrls[0] : undefined;
+        } catch {
+          // ignore
+        }
+      }
+      if (imageUrl) {
+        const duration_ms = Date.now() - startTs;
+        return {
+          status: 'success',
+          model,
+          duration_ms,
+          imageUrl,
+          credits_used: creditsUsed,
+        };
+      }
+    }
   }
 
   const duration_ms = Date.now() - startTs;

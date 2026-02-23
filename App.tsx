@@ -18,6 +18,7 @@ import {
 } from './services/adminSettings';
 import { TryOnState, User, CuratedOutfit, PersonGalleryItem, HistoryItem, AppTheme, CategoryType } from './types';
 import { getHistory, saveHistory, ARCHIVE_MAX_ITEMS } from './services/historyStorage';
+import { getMerchantProducts, saveMerchantProducts } from './services/merchantProductsStorage';
 import { getMetrics, incrementMetric, resetMetrics, type AppMetrics } from './services/metricsStorage';
 import { resizeDataUrl } from './lib/resizeImage';
 
@@ -109,8 +110,7 @@ const App: React.FC = () => {
       if (savedPersonGallery) setPersonGallery(JSON.parse(savedPersonGallery));
       getHistory(`${STORAGE_VER}_history`).then(setHistory);
       getMetrics().then(setMetrics);
-      const savedMerchantProducts = localStorage.getItem(`${STORAGE_VER}_merchant_products`);
-      if (savedMerchantProducts) setMerchantProducts(JSON.parse(savedMerchantProducts));
+      getMerchantProducts(`${STORAGE_VER}_merchant_products`).then(setMerchantProducts);
       const savedTestClothes = localStorage.getItem(`${STORAGE_VER}_test_clothes`);
       if (savedTestClothes) setTestClothes(savedTestClothes);
       
@@ -644,7 +644,7 @@ const App: React.FC = () => {
                         <button onClick={() => {
                           const updated = merchantProducts.filter(p => p.id !== item.id);
                           setMerchantProducts(updated);
-                          saveToStorage('merchant_products', updated);
+                          saveMerchantProducts(updated, `${STORAGE_VER}_merchant_products`);
                         }} className="text-red-300 p-2"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
                       </div>
                     ))}
@@ -679,6 +679,7 @@ const App: React.FC = () => {
                 </div>
                 
                 <div className="pt-8 space-y-5 text-center">
+                   <button onClick={() => setStylistModalOpen(true)} className="w-full py-5 bg-white border-2 border-theme text-theme rounded-[2rem] text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95">Позвать стилиста</button>
                    <button onClick={() => setActiveTab('lab')} className="w-full py-5 bg-theme/90 text-white rounded-[2rem] text-[11px] font-black uppercase tracking-widest shadow-xl active:scale-95 flex items-center justify-center gap-2">
                      <span>⚗️</span> Лаборатория — выбор моделей
                    </button>
@@ -735,7 +736,7 @@ const App: React.FC = () => {
               const product: CuratedOutfit = { id: `m_${Date.now()}`, name: newProduct.name, imageUrl: newProduct.image, category: newProduct.category, shopUrl: newProduct.shopUrl || '#', merchantId: 'me' };
               const updated = [product, ...merchantProducts];
               setMerchantProducts(updated);
-              saveToStorage('merchant_products', updated);
+              saveMerchantProducts(updated, `${STORAGE_VER}_merchant_products`);
               setAddProductModal(false);
               setNewProduct({ name: '', image: '', category: 'casual', shopUrl: '' });
             }} className="w-full py-5 btn-theme rounded-3xl font-black text-[10px] uppercase tracking-widest shadow-xl">Опубликовать</button>
@@ -751,7 +752,7 @@ const App: React.FC = () => {
               <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
             <h3 className="serif text-2xl font-black italic">Стилист</h3>
-            <p className="text-[11px] text-gray-600 leading-relaxed">Здесь будет ваш виртуальный помощник по образам, а пока его нет.</p>
+            <p className="text-[11px] text-gray-600 leading-relaxed">Его пока нет, но он появится очень скоро.</p>
             <button onClick={() => setStylistModalOpen(false)} className="w-full py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest bg-gray-100 text-gray-700">Закрыть</button>
           </div>
         </div>
@@ -822,7 +823,7 @@ const App: React.FC = () => {
                 incrementMetric('totalCollectionsCreated').then(() => incrementMetric('totalOutfitsUploaded', newItems.length)).then(() => getMetrics().then(setMetrics));
                 const updated = [...newItems, ...merchantProducts];
                 setMerchantProducts(updated);
-                saveToStorage('merchant_products', updated);
+                saveMerchantProducts(updated, `${STORAGE_VER}_merchant_products`);
                 setCollectionUploadOpen(false);
                 setCollectionImages([]);
                 setCollectionForm({ name: '', shopUrl: '', category: 'casual' });
@@ -977,10 +978,23 @@ const App: React.FC = () => {
 };
 
 function handleDownload(imgUrl: string) {
-  const link = document.createElement('a');
-  link.href = imgUrl;
-  link.download = `look_${Date.now()}.png`;
-  link.click();
+  // Для надёжного скачивания (особенно с чужих доменов) делаем fetch + blob,
+  // как для видео: иначе браузер может просто открыть картинку в этом же табе.
+  (async () => {
+    try {
+      const res = await fetch(imgUrl, { mode: 'cors' });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `look_${Date.now()}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // В крайнем случае открываем в новом табе, чтобы не потерять приложение.
+      window.open(imgUrl, '_blank');
+    }
+  })();
 }
 
 export default App;

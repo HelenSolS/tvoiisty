@@ -8,6 +8,12 @@ import { DEFAULT_IMAGE_PROMPT } from '../provider-abstraction';
 const FAL_POLL_TIMEOUT_MS = 55_000;
 const FAL_POLL_INTERVAL_MS = 1500;
 
+function calcFalIntervalMs(elapsedMs: number): number {
+  if (elapsedMs < 15_000) return 700;
+  if (elapsedMs < 60_000) return FAL_POLL_INTERVAL_MS;
+  return 4_000;
+}
+
 type FalQueuePayload = {
   status?: 'IN_QUEUE' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
   status_url?: string;
@@ -214,6 +220,8 @@ export async function runFalTryOn(
       };
     }
 
-    await new Promise((r) => setTimeout(r, FAL_POLL_INTERVAL_MS));
+    const elapsed = Date.now() - pollStartedAt;
+    const waitMs = calcFalIntervalMs(elapsed);
+    await new Promise((r) => setTimeout(r, waitMs));
   }
 }
