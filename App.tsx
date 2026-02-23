@@ -384,9 +384,9 @@ const App: React.FC = () => {
       <div className="flex-1 overflow-y-auto no-scrollbar pb-20">
         {state.resultImage ? (
           <div className="p-7 space-y-8 animate-in slide-in-from-bottom-10">
-             {/* Результат примерки — 9:16 (вертикальный формат под телефон) */}
-             <div className="relative rounded-[3.5rem] overflow-hidden shadow-4xl aspect-[9/16] border-[10px] border-white ring-1 ring-gray-100">
-                <img src={state.resultImage} className="w-full h-full object-cover" alt="Результат примерки" />
+             {/* Результат примерки: целиком в кадре (голова не обрезается), скролл при необходимости */}
+             <div className="relative rounded-[3.5rem] overflow-hidden shadow-4xl border-[10px] border-white ring-1 ring-gray-100 bg-gray-50 flex items-center justify-center" style={{ maxHeight: 'min(75vh, 900px)' }}>
+                <img src={state.resultImage} className="w-full max-h-[min(75vh,900px)] object-contain" alt="Результат примерки" />
              </div>
 
              {/* Главные действия сразу под картинкой — всегда видны */}
@@ -844,8 +844,8 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-white/98 backdrop-blur-3xl p-6 animate-in zoom-in-95 overflow-y-auto">
            <div className="w-full max-w-[420px] min-h-full flex flex-col pt-10 pb-24">
               <button onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }} className="absolute top-10 right-8 text-gray-400 z-10"><svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
-              <div className="relative rounded-[3.5rem] overflow-hidden shadow-4xl aspect-[9/16] border-[10px] border-white ring-1 ring-gray-100 mt-10 shrink-0">
-                <img src={selectedHistoryItem.resultUrl} className="w-full h-full object-cover" alt="" />
+              <div className="relative rounded-[3.5rem] overflow-hidden shadow-4xl border-[10px] border-white ring-1 ring-gray-100 mt-10 shrink-0 bg-gray-50 flex items-center justify-center" style={{ maxHeight: 'min(70vh, 800px)' }}>
+                <img src={selectedHistoryItem.resultUrl} className="w-full max-h-[min(70vh,800px)] object-contain" alt="" />
               </div>
               <div className="mt-10 grid grid-cols-2 gap-4">
                  <button 
