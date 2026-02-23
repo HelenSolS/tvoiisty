@@ -6,7 +6,15 @@
 
 import React, { useState, useEffect } from 'react';
 import { ImageUploader } from './ImageUploader';
-import { generateTryOn, generateVideo, IMAGE_MODEL_POOL, VIDEO_MODEL_POOL } from '../services/geminiService';
+import { prepareTryonPrompt, generateTryOn, generateVideo } from '../services/geminiService';
+import {
+  getImageModelsForDropdown,
+  getVideoModelsForDropdown,
+  getDefaultImageModel,
+  getDefaultVideoModel,
+  getEffectiveImagePrompt,
+  getEffectiveVideoPrompt,
+} from '../services/adminSettings';
 import type { LabTryOnExperiment, LabVideoExperiment } from '../types';
 
 const LAB_STORAGE_KEY = 'tvoisty_lab_tryon';
@@ -62,7 +70,8 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   // Шаг 1 — Примерка
   const [personImage, setPersonImage] = useState<string | null>(null);
   const [outfitImage, setOutfitImage] = useState<string | null>(null);
-  const [imageModel, setImageModel] = useState<string>(IMAGE_MODEL_POOL[0]);
+  const imageOptions = (() => { const m = getImageModelsForDropdown(); return m.length > 0 ? m : [getDefaultImageModel()]; })();
+  const [imageModel, setImageModel] = useState<string>(imageOptions[0]);
   const [tryonLoading, setTryonLoading] = useState(false);
   const [tryonError, setTryonError] = useState<string | null>(null);
   const [tryonResult, setTryonResult] = useState<{ imageUrl: string; durationMs: number; model: string } | null>(null);
@@ -70,7 +79,8 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
   // Шаг 2 — Видео
   const [videoSourceUrl, setVideoSourceUrl] = useState<string | null>(null);
-  const [videoModel, setVideoModel] = useState<string>(VIDEO_MODEL_POOL[0]);
+  const videoOptions = (() => { const m = getVideoModelsForDropdown(); return m.length > 0 ? m : [getDefaultVideoModel()]; })();
+  const [videoModel, setVideoModel] = useState<string>(videoOptions[0]);
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [videoResult, setVideoResult] = useState<{ videoUrl: string; durationMs: number; model: string } | null>(null);
@@ -106,7 +116,8 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         compressImageDataUrl(personImage),
         compressImageDataUrl(outfitImage),
       ]);
-      const imageUrl = await generateTryOn(personCompressed, outfitCompressed, undefined, { model: imageModel });
+      const prompt = await getEffectiveImagePrompt(() => prepareTryonPrompt(personCompressed, outfitCompressed));
+      const imageUrl = await generateTryOn(personCompressed, outfitCompressed, prompt, { model: imageModel });
       const durationMs = Date.now() - start;
       setTryonResult({ imageUrl, durationMs, model: imageModel });
     } catch (e: unknown) {
@@ -145,7 +156,8 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setVideoLoading(true);
     const start = Date.now();
     try {
-      const videoUrl = await generateVideo(source, { model: videoModel });
+      const videoPrompt = getEffectiveVideoPrompt();
+      const videoUrl = await generateVideo(source, { model: videoModel, prompt: videoPrompt });
       const durationMs = Date.now() - start;
       setVideoResult({ videoUrl, durationMs, model: videoModel });
       saveVideos([{ id: `v_${Date.now()}`, sourceImageUrl: source, videoUrl, provider: videoModel, durationMs, timestamp: Date.now() }, ...savedVideos].slice(0, 20));
@@ -186,8 +198,8 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
           <section>
             <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Модель (image)</p>
-            <select value={imageModel} onChange={e => setImageModel(e.target.value)} className="w-full py-2.5 px-4 rounded-xl border-2 border-white bg-white text-gray-800 text-[11px] font-bold uppercase tracking-wide">
-              {IMAGE_MODEL_POOL.map(m => (
+            <select value={imageOptions.includes(imageModel) ? imageModel : imageOptions[0]} onChange={e => setImageModel(e.target.value)} className="w-full py-2.5 px-4 rounded-xl border-2 border-white bg-white text-gray-800 text-[11px] font-bold uppercase tracking-wide">
+              {imageOptions.map(m => (
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
@@ -243,8 +255,8 @@ export const Lab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
           <section>
             <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Модель (video)</p>
-            <select value={videoModel} onChange={e => setVideoModel(e.target.value)} className="w-full py-2.5 px-4 rounded-xl border-2 border-white bg-white text-gray-800 text-[11px] font-bold uppercase tracking-wide">
-              {VIDEO_MODEL_POOL.map(m => (
+            <select value={videoOptions.includes(videoModel) ? videoModel : videoOptions[0]} onChange={e => setVideoModel(e.target.value)} className="w-full py-2.5 px-4 rounded-xl border-2 border-white bg-white text-gray-800 text-[11px] font-bold uppercase tracking-wide">
+              {videoOptions.map(m => (
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>

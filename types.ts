@@ -20,6 +20,31 @@ export interface User {
   theme: AppTheme;
 }
 
+/** Режим промпта: стандартный (редактируемый текст), через ИИ (Fal/OpenAI), свой текст. */
+export type PromptMode = 'default' | 'openai' | 'custom';
+
+/** Дополнительные настройки (провайдер KIE/Fal, модели, промпты). Issue #15. */
+export interface AdminSettings {
+  provider: 'kie' | 'fal';
+  defaultImageModel: string;
+  defaultVideoModel: string;
+  imageModelChoice: 'default_only' | 'dropdown';
+  imageModelsInDropdown: string[];
+  imageBackupModel: string;
+  videoModelChoice: 'default_only' | 'dropdown';
+  videoModelsInDropdown: string[];
+  videoBackupModel: string;
+  /** Промпт для картинки: default = стандартный (редактируемый), openai = через Fal, custom = свой текст. */
+  imagePromptMode: PromptMode;
+  /** Текст промпта по умолчанию для примерки (режим default). */
+  imagePromptDefaultText: string;
+  /** Свой промпт для примерки (режим custom). */
+  imagePromptCustom: string;
+  videoPromptMode: PromptMode;
+  videoPromptDefaultText: string;
+  videoPromptCustom: string;
+}
+
 export type CategoryType = 'all' | 'dresses' | 'suits' | 'casual' | 'outerwear' | 'men' | 'women';
 
 export interface CuratedOutfit {

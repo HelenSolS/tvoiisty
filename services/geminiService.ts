@@ -75,7 +75,7 @@ async function generateTryOn(
     }),
   });
 
-  let data: { error?: string; imageUrl?: string };
+  let data: { error?: string; imageUrl?: string; [k: string]: unknown };
   try {
     data = await res.json();
   } catch {
@@ -87,23 +87,24 @@ async function generateTryOn(
   }
 
   const imageUrl = data?.imageUrl;
-  if (typeof imageUrl !== 'string') {
+  if (typeof imageUrl !== 'string' || !imageUrl.trim()) {
     throw new Error('Нет URL изображения в ответе');
   }
-  return imageUrl;
+  return imageUrl.trim();
 }
 
 /**
  * Генерация видео. Один клик = один вызов backend/KIE.
  * model — только для Lab; в production не передаётся (бэкенд использует veo-3-1).
  */
-async function generateVideo(resultImageUrl: string, options?: { model?: string }): Promise<string> {
+async function generateVideo(resultImageUrl: string, options?: { model?: string; prompt?: string }): Promise<string> {
   const res = await fetch(`${API_BASE}/api/generate-video`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       imageUrl: resultImageUrl,
       ...(options?.model ? { model: options.model } : {}),
+      ...(options?.prompt != null && options.prompt !== '' ? { prompt: options.prompt } : {}),
     }),
   });
 

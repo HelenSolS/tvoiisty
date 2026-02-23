@@ -57,7 +57,7 @@
 ### API-маршруты (serverless)
 
 - **Примерка:** `POST /api/generate-image`  
-  Тело: `personImageBase64`, `clothingImageBase64`, `prompt?` (фронт может слать data-URL или base64). Перед KIE: при необходимости загрузка в Vercel Blob → https-URL; затем KIE `jobs/createTask` + polling `jobs/recordInfo`, возвращает `{ imageUrl }`.
+  Тело: `personImageBase64`, `clothingImageBase64`, `prompt?`, `model?`. **Provider Abstraction (Issue #15):** по `model` переключение: `fal-ai/*` → Fal (queue.fal.run), иначе → KIE. Промпт один. Ответ: `imageUrl`, `model`, `duration_ms`, `status`, `credits_used?`. Централизованный маппинг ошибок (timeout → 408, 4xx/5xx). Логика в `lib/providers/fal-image.ts` и `lib/providers/kie-image.ts`, роутер — `lib/generate-image-router.ts`.
 
 - **Видео:** `POST /api/generate-video`  
   Тело: `imageUrl`, `prompt?`. Вызывает KIE `veo/generate` + polling `veo/record-info`, возвращает `{ videoUrl }`.
@@ -69,7 +69,7 @@
 
 ### Переменные окружения (Vercel)
 
-- **KIE_API_KEY** — обязателен для примерки и видео (основной провайдер).
+- **KIE_API_KEY** — обязателен для примерки при выборе модели KIE (flux-2, nano-banana-edit и т.д.) и для видео.
 - **KIE_IMAGE_MODEL** — опционально, по умолчанию `flux-2/flex-image-to-image`.
 - **BLOB_READ_WRITE_TOKEN** — **обязателен для примерки**, если фронт шлёт data-URL/base64.
 - **Переключатель нейросети:** в настройках приложения пользователь может выбрать «Основной» или «Резервный». Для резервного задай **KIE_BACKUP_BASE_URL** и **KIE_BACKUP_API_KEY**. Если не заданы — при выборе «Резервный» используется основной. Опционально **KIE_BASE_URL** — базовый URL основного провайдера (по умолчанию `https://api.kie.ai/api/v1`). Хранилище Blob должно быть **публичным (Public)**: KIE по нашим URL сам запрашивает картинки; если URL на `private.blob.vercel-storage.com`, их серверы не имеют доступа → «Your media file is unavailable». В Vercel: **Storage** → **Blob** → создать хранилище с **Public** доступом, токен этого хранилища задать как `BLOB_READ_WRITE_TOKEN`.

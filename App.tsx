@@ -2,7 +2,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ImageUploader } from './components/ImageUploader';
 import { Lab } from './components/Lab';
-import { prepareTryonPrompt, generateTryOn, generateVideo, IMAGE_MODEL_POOL, VIDEO_MODEL_POOL } from './services/geminiService';
+import { AdminPanel } from './components/AdminPanel';
+import { prepareTryonPrompt, generateTryOn, generateVideo } from './services/geminiService';
+import {
+  getDefaultImageModel,
+  getDefaultVideoModel,
+  getImageModelsForDropdown,
+  getVideoModelsForDropdown,
+  showImageModelDropdown,
+  showVideoModelDropdown,
+  getEffectiveImagePrompt,
+  getEffectiveVideoPrompt,
+} from './services/adminSettings';
 import { TryOnState, User, CuratedOutfit, PersonGalleryItem, HistoryItem, AppTheme, CategoryType } from './types';
 
 const INITIAL_BOUTIQUE: CuratedOutfit[] = [
@@ -28,7 +39,8 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [merchantProducts, setMerchantProducts] = useState<CuratedOutfit[]>([]);
   const [testClothes, setTestClothes] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'home' | 'history' | 'settings' | 'showroom' | 'lab'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'history' | 'settings' | 'showroom' | 'lab' | 'admin'>('home');
+  const [adminUnlockedSession, setAdminUnlockedSession] = useState(false);
   const [activeCategory, setActiveCategory] = useState<CategoryType>('all');
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -55,9 +67,9 @@ const App: React.FC = () => {
   const [resultVideoUrl, setResultVideoUrl] = useState<string | null>(null);
   const [isVideoProcessing, setIsVideoProcessing] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
-  /** Модель для примерки и для видео — выбор перед генерацией (как в ишью). */
-  const [selectedImageModel, setSelectedImageModel] = useState<string>(IMAGE_MODEL_POOL[0]);
-  const [selectedVideoModel, setSelectedVideoModel] = useState<string>(VIDEO_MODEL_POOL[0]);
+  /** Модель для примерки и для видео — из настроек админки или пул по умолчанию. */
+  const [selectedImageModel, setSelectedImageModel] = useState<string>(getDefaultImageModel());
+  const [selectedVideoModel, setSelectedVideoModel] = useState<string>(getDefaultVideoModel());
   /** Видео, созданное из фото в архиве (в модалке просмотра). */
   const [archiveVideoUrl, setArchiveVideoUrl] = useState<string | null>(null);
   const [archiveVideoError, setArchiveVideoError] = useState<string | null>(null);
@@ -140,9 +152,10 @@ const App: React.FC = () => {
       const personBase64 = await urlToBase64(state.personImage!);
       const outfitBase64 = await urlToBase64(outfitUrl);
       setState(prev => ({ ...prev, status: 'Подготовка промпта...' }));
-      const prompt = await prepareTryonPrompt(personBase64, outfitBase64);
+      const prompt = await getEffectiveImagePrompt(() => prepareTryonPrompt(personBase64, outfitBase64));
       setState(prev => ({ ...prev, status: 'Примеряем образ...' }));
-      const imageUrl = await generateTryOn(personBase64, outfitBase64, prompt, { model: selectedImageModel });
+      const imageModel = showImageModelDropdown() ? selectedImageModel : getDefaultImageModel();
+      const imageUrl = await generateTryOn(personBase64, outfitBase64, prompt, { model: imageModel });
       setState(prev => ({ ...prev, resultImage: imageUrl, isProcessing: false, status: '' }));
       const newItem: HistoryItem = { id: `h_${Date.now()}`, resultUrl: imageUrl, outfitUrl, shopUrl, timestamp: Date.now() };
       const newHistory = [newItem, ...history].slice(0, 20);
@@ -187,7 +200,9 @@ const App: React.FC = () => {
     setIsVideoProcessing(true);
     setVideoError(null);
     try {
-      const videoUrl = await generateVideo(state.resultImage, { model: selectedVideoModel });
+      const videoModel = showVideoModelDropdown() ? selectedVideoModel : getDefaultVideoModel();
+      const videoPrompt = getEffectiveVideoPrompt();
+      const videoUrl = await generateVideo(state.resultImage, { model: videoModel, prompt: videoPrompt });
       setResultVideoUrl(videoUrl);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
@@ -307,12 +322,14 @@ const App: React.FC = () => {
 
              {/* Выбор модели для видео и кнопка «Создать видео» */}
              <div className="space-y-3">
-               <div>
-                 <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Модель для видео</label>
-                 <select value={selectedVideoModel} onChange={e => setSelectedVideoModel(e.target.value)} className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme">
-                   {VIDEO_MODEL_POOL.map(m => <option key={m} value={m}>{m}</option>)}
-                 </select>
-               </div>
+               {showVideoModelDropdown() && (
+                 <div>
+                   <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Модель для видео</label>
+                   <select value={selectedVideoModel} onChange={e => setSelectedVideoModel(e.target.value)} className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme">
+                     {getVideoModelsForDropdown().map(m => <option key={m} value={m}>{m}</option>)}
+                   </select>
+                 </div>
+               )}
                <button
                  onClick={handleCreateVideo}
                  disabled={isVideoProcessing}
@@ -380,13 +397,15 @@ const App: React.FC = () => {
                 {/* Step 2: Catalog with Search & Filter */}
                 <div className="space-y-6">
                   <div className="flex justify-between items-end px-1"><h3 className="serif text-2xl font-black italic">Витрина</h3><span className="text-[9px] font-black text-gray-300 uppercase tracking-widest">Шаг 02</span></div>
-                  {/* Выбор модели перед примеркой — без лишних кнопок */}
-                  <div>
-                    <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Модель для примерки</label>
-                    <select value={selectedImageModel} onChange={e => setSelectedImageModel(e.target.value)} className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme">
-                      {IMAGE_MODEL_POOL.map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                  </div>
+                  {/* Выбор модели перед примеркой (если в админке включён выпадающий список) */}
+                  {showImageModelDropdown() && (
+                    <div>
+                      <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Модель для примерки</label>
+                      <select value={selectedImageModel} onChange={e => setSelectedImageModel(e.target.value)} className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme">
+                        {getImageModelsForDropdown().map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </div>
+                  )}
                   {/* Search Bar */}
                   <div className="relative">
                     <input 
@@ -502,6 +521,12 @@ const App: React.FC = () => {
                   </div>
                 </div>
               </div>
+            ) : activeTab === 'admin' ? (
+              <AdminPanel
+                onBack={() => { setAdminUnlockedSession(false); goToTab('settings'); }}
+                unlocked={adminUnlockedSession}
+                onUnlock={() => setAdminUnlockedSession(true)}
+              />
             ) : activeTab === 'lab' ? (
               <Lab onBack={() => goToTab('settings')} />
             ) : (
@@ -518,6 +543,7 @@ const App: React.FC = () => {
                    <button onClick={() => setActiveTab('lab')} className="w-full py-5 bg-theme/90 text-white rounded-[2rem] text-[11px] font-black uppercase tracking-widest shadow-xl active:scale-95 flex items-center justify-center gap-2">
                      <span>⚗️</span> Лаборатория — выбор моделей
                    </button>
+                   <button onClick={() => goToTab('admin')} className="w-full py-5 bg-gray-800 text-white rounded-[2rem] text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95">Дополнительные настройки</button>
                    <button onClick={() => setVerificationModal(true)} className="w-full py-5 bg-white border-2 border-theme text-theme rounded-[2rem] text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95">Бизнес кабинет</button>
                    {user?.isVerifiedMerchant && (
                      <button onClick={() => { const u: User = { ...user!, role: 'user', isVerifiedMerchant: false }; setUser(u); saveToStorage('user', u); goToTab('home'); }} className="w-full py-2 text-red-400 text-[8px] font-black uppercase tracking-widest">Отключить кабинет</button>
@@ -593,18 +619,22 @@ const App: React.FC = () => {
                  >
                    Купить в магазине
                  </button>
+                 {showVideoModelDropdown() && (
                  <div className="col-span-2">
                    <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Модель для видео</label>
                    <select value={selectedVideoModel} onChange={e => setSelectedVideoModel(e.target.value)} className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme">
-                     {VIDEO_MODEL_POOL.map(m => <option key={m} value={m}>{m}</option>)}
+                     {getVideoModelsForDropdown().map(m => <option key={m} value={m}>{m}</option>)}
                    </select>
                  </div>
+                 )}
                  <button
                    onClick={async () => {
                      setArchiveVideoError(null);
                      setIsArchiveVideoProcessing(true);
                      try {
-                       const url = await generateVideo(selectedHistoryItem!.resultUrl, { model: selectedVideoModel });
+                       const videoModel = showVideoModelDropdown() ? selectedVideoModel : getDefaultVideoModel();
+                       const videoPrompt = getEffectiveVideoPrompt();
+                       const url = await generateVideo(selectedHistoryItem!.resultUrl, { model: videoModel, prompt: videoPrompt });
                        const updatedItem = { ...selectedHistoryItem!, videoUrl: url };
                        const nextHistory = history.map(h => h.id === selectedHistoryItem.id ? updatedItem : h);
                        setHistory(nextHistory);
