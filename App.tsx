@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { ImageUploader } from './components/ImageUploader';
+import { MultiImageUploader } from './components/MultiImageUploader';
 import { Lab } from './components/Lab';
 import { AdminPanel } from './components/AdminPanel';
 import { prepareTryonPrompt, generateTryOn, generateVideo } from './services/geminiService';
@@ -56,6 +57,9 @@ const App: React.FC = () => {
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
   
   const [newProduct, setNewProduct] = useState({ name: '', image: '', category: 'casual' as CategoryType, shopUrl: '' });
+  const [collectionModal, setCollectionModal] = useState(false);
+  const [collectionImages, setCollectionImages] = useState<string[]>([]);
+  const [collectionBatch, setCollectionBatch] = useState({ name: '', shopUrl: '', category: 'casual' as CategoryType });
   
   const [state, setState] = useState<TryOnState & { currentShopUrl: string | null }>({
     personImage: null,
@@ -508,9 +512,12 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="space-y-6">
-                  <div className="flex justify-between px-2 items-center">
+                  <div className="flex flex-wrap gap-2 justify-between px-2 items-center">
                     <h4 className="serif text-xl font-bold italic">Ваши товары</h4>
-                    <button onClick={() => setAddProductModal(true)} className="bg-[var(--theme-color)] text-white font-black text-[9px] uppercase px-5 py-2.5 rounded-full shadow-lg border-2 border-[var(--theme-color)] ring-2 ring-black/10">+ Добавить в коллекцию</button>
+                    <div className="flex gap-2">
+                      <button onClick={() => setCollectionModal(true)} className="bg-white border-2 border-[var(--theme-color)] text-[var(--theme-color)] font-black text-[9px] uppercase px-4 py-2.5 rounded-full shadow-lg">Загрузить коллекцию (до 10)</button>
+                      <button onClick={() => setAddProductModal(true)} className="bg-[var(--theme-color)] text-white font-black text-[9px] uppercase px-5 py-2.5 rounded-full shadow-lg border-2 border-[var(--theme-color)] ring-2 ring-black/10">+ Один товар</button>
+                    </div>
                   </div>
                   <div className="space-y-4">
                     {merchantProducts.map(item => (
@@ -568,6 +575,49 @@ const App: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Collection upload modal (up to 10 images). Issue #21 */}
+      {collectionModal && (
+        <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/70 backdrop-blur-md p-6 animate-in fade-in overflow-y-auto">
+          <div className="w-full max-w-[380px] bg-white rounded-[4rem] p-10 space-y-6 animate-in zoom-in-95 shadow-4xl relative my-8">
+            <button onClick={() => { setCollectionModal(false); setCollectionImages([]); setCollectionBatch({ name: '', shopUrl: '', category: 'casual' }); }} className="absolute top-10 right-10 text-gray-300">
+              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+            <h3 className="serif text-2xl font-black italic text-center">Коллекция (до 10 образов)</h3>
+            <MultiImageUploader images={collectionImages} onImagesChange={setCollectionImages} label="Фото коллекции" maxCount={10} />
+            <input type="text" placeholder="Название (для всех)" className="w-full py-4 px-6 rounded-2xl bg-gray-50 border border-gray-100 text-[10px] font-black uppercase tracking-widest outline-none" value={collectionBatch.name} onChange={(e) => setCollectionBatch(p => ({ ...p, name: e.target.value }))} />
+            <input type="url" placeholder="Ссылка на магазин" className="w-full py-4 px-6 rounded-2xl bg-gray-50 border border-gray-100 text-[10px] font-black uppercase tracking-widest outline-none" value={collectionBatch.shopUrl} onChange={(e) => setCollectionBatch(p => ({ ...p, shopUrl: e.target.value }))} />
+            <select className="w-full py-4 px-6 rounded-2xl bg-gray-50 border border-gray-100 text-[10px] font-black uppercase tracking-widest outline-none" value={collectionBatch.category} onChange={(e) => setCollectionBatch(p => ({ ...p, category: e.target.value as CategoryType }))}>
+              {CATEGORIES.filter(c => c.id !== 'all').map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+            </select>
+            <button
+              disabled={collectionImages.length === 0}
+              onClick={() => {
+                const baseName = collectionBatch.name.trim() || 'Образ';
+                const shopUrl = collectionBatch.shopUrl.trim() || '#';
+                const category = collectionBatch.category;
+                const newItems: CuratedOutfit[] = collectionImages.map((imageUrl, i) => ({
+                  id: `m_${Date.now()}_${i}`,
+                  name: collectionImages.length > 1 ? `${baseName} ${i + 1}` : baseName,
+                  imageUrl,
+                  shopUrl,
+                  category,
+                  merchantId: 'me',
+                }));
+                const updated = [...newItems, ...merchantProducts];
+                setMerchantProducts(updated);
+                saveToStorage('merchant_products', updated);
+                setCollectionModal(false);
+                setCollectionImages([]);
+                setCollectionBatch({ name: '', shopUrl: '', category: 'casual' });
+              }}
+              className="w-full py-5 btn-theme rounded-3xl font-black text-[10px] uppercase tracking-widest shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Опубликовать коллекцию
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modals */}
       {addProductModal && (
