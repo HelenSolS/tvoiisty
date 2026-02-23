@@ -288,7 +288,7 @@ const App: React.FC = () => {
     });
   };
 
-  /** Один клик = один вызов API генерации видео. Без авто-повторов. */
+  /** Один клик = один вызов API генерации видео. Без авто-повторов. Видео в архив не сохраняем — пока нет бэка/БД. */
   const handleCreateVideo = async () => {
     if (!state.resultImage) return;
     setIsVideoProcessing(true);
@@ -474,7 +474,7 @@ const App: React.FC = () => {
                        <video src={resultVideoUrl} controls className="w-full h-full object-contain" playsInline />
                      </div>
                    </div>
-                   <button onClick={handleDownloadVideo} className="w-full py-3 bg-white border border-gray-100 rounded-2xl font-black text-[9px] uppercase tracking-widest shadow-lg active:scale-95">
+                   <button onClick={handleDownloadVideo} title="Удалось? Отправьте в Telegram или скачайте. В MVP в архиве только последние примерки — доработаем." className="w-full py-3 bg-white border border-gray-100 rounded-2xl font-black text-[9px] uppercase tracking-widest shadow-lg active:scale-95">
                      Скачать видео
                    </button>
                  </>
@@ -634,7 +634,7 @@ const App: React.FC = () => {
 
                 {metrics !== null && (
                   <div className="space-y-4">
-                    <h4 className="serif text-lg font-bold italic">📊 Статистика</h4>
+                    <h4 className="serif text-lg font-bold italic cursor-help" title="Пока прототип для понимания. Позже будет точная статистика с сортировкой и графиками — базовая и расширенная.">📊 Статистика</h4>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="bg-white p-5 rounded-[2rem] shadow-lg border border-gray-50 text-center">
                         <span className="text-xl font-black text-theme">{metrics.totalTryOns}</span>
@@ -997,12 +997,7 @@ const App: React.FC = () => {
                        const videoPrompt = getEffectiveVideoPrompt();
                        const url = await generateVideo(selectedHistoryItem!.resultUrl, { model: videoModel, prompt: videoPrompt });
                        incrementMetric('totalVideos').then(() => getMetrics().then(setMetrics));
-                       const updatedItem = { ...selectedHistoryItem!, videoUrl: url };
-                       const nextHistory = history.map(h => h.id === selectedHistoryItem.id ? updatedItem : h);
-                       setHistory(nextHistory);
-                       saveHistory(nextHistory, `${STORAGE_VER}_history`);
-                       setSelectedHistoryItem(updatedItem);
-                       setArchiveVideoUrl(null);
+                       setArchiveVideoUrl(url);
                      } catch (err: unknown) {
                        const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
                        setArchiveVideoError(msg);
@@ -1025,15 +1020,16 @@ const App: React.FC = () => {
                  {archiveVideoError && (
                    <p className="col-span-2 text-red-500 text-[9px] font-bold uppercase text-center py-2">{archiveVideoError}</p>
                  )}
-                 {(archiveVideoUrl ?? selectedHistoryItem.videoUrl) && (
+                 {archiveVideoUrl && (
                    <>
                      <div className="col-span-2 rounded-2xl overflow-hidden border-2 border-white shadow-xl aspect-[9/16] max-h-64 bg-black">
-                       <video src={archiveVideoUrl ?? selectedHistoryItem.videoUrl} className="w-full h-full object-contain" controls playsInline />
+                       <video src={archiveVideoUrl} className="w-full h-full object-contain" controls playsInline />
                      </div>
                      <button
+                       title="Удалось? В Telegram или скачайте. В MVP в архиве только последние примерки — доработаем."
                        onClick={() => {
                          const link = document.createElement('a');
-                         link.href = archiveVideoUrl ?? selectedHistoryItem.videoUrl!;
+                         link.href = archiveVideoUrl;
                          link.download = 'look.mp4';
                          link.click();
                        }}
@@ -1041,7 +1037,7 @@ const App: React.FC = () => {
                      >
                        Скачать видео
                      </button>
-                     <button onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(archiveVideoUrl ?? selectedHistoryItem.videoUrl ?? null); }} className="py-4 bg-white border border-gray-100 rounded-3xl font-black text-[9px] uppercase tracking-widest">Поделиться видео</button>
+                     <button onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(archiveVideoUrl); }} className="py-4 bg-white border border-gray-100 rounded-3xl font-black text-[9px] uppercase tracking-widest">Поделиться видео</button>
                    </>
                  )}
                  <button onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }} className="col-span-2 py-4 text-gray-400 font-black text-[9px] uppercase tracking-widest">Закрыть</button>
