@@ -114,12 +114,7 @@ export async function runKieTryOn(
     };
   }
 
-  for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
-    const jobRes = await fetch(
-      `${KIE_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`,
-      { headers: { Authorization: `Bearer ${apiKey}` } }
-    );
-  let jobData: {
+  type KieJobRecord = {
     data?: {
       state?: string;
       successFlag?: number | string;
@@ -128,9 +123,16 @@ export async function runKieTryOn(
       failMsg?: string;
     };
     message?: string;
-  } = {};
+  };
+
+  for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
+    const jobRes = await fetch(
+      `${KIE_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`,
+      { headers: { Authorization: `Bearer ${apiKey}` } }
+    );
+  let jobData: KieJobRecord = {};
   try {
-    jobData = (await jobRes.json()) as typeof jobData;
+    jobData = (await jobRes.json()) as KieJobRecord;
   } catch {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
     continue;
@@ -222,9 +224,9 @@ export async function runKieTryOn(
     `${KIE_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`,
     { headers: { Authorization: `Bearer ${apiKey}` } }
   );
-  let lastData: typeof jobData = {};
+  let lastData: KieJobRecord = {};
   try {
-    lastData = (await lastRes.json()) as typeof lastData;
+    lastData = (await lastRes.json()) as KieJobRecord;
   } catch {
     const duration_ms = Date.now() - startTs;
     return {

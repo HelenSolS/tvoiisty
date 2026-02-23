@@ -28,8 +28,9 @@ export async function generateImage(
     if (falResult.status === 'success' && typeof falResult.imageUrl === 'string' && falResult.imageUrl.trim()) {
       return falResult;
     }
-    if (fallbackOnError && process.env.KIE_API_KEY && falResult.httpStatus !== 408) {
-      console.error('[generate-image-router] Fal error (not timeout), fallback to KIE', { requestedModel: payload.model, httpStatus: falResult.httpStatus });
+    const isFalTimeout = 'httpStatus' in falResult && falResult.httpStatus === 408;
+    if (fallbackOnError && process.env.KIE_API_KEY && !isFalTimeout) {
+      console.error('[generate-image-router] Fal error (not timeout), fallback to KIE', { requestedModel: payload.model, ...('httpStatus' in falResult ? { httpStatus: falResult.httpStatus } : {}) });
       const kiePayload: GenerateImagePayload = { ...payload, model: KIE_FALLBACK_MODEL };
       const kieResult = await runKieTryOn(kiePayload, startTs, {
         KIE_BASE_URL: process.env.KIE_BASE_URL,
