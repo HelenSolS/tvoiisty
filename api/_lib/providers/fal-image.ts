@@ -5,8 +5,8 @@
 import type { GenerateImagePayload, GenerateImageResult } from '../provider-abstraction.js';
 import { DEFAULT_IMAGE_PROMPT } from '../provider-abstraction.js';
 
-/** Долго ждём очередь Fal; укладываемся в лимит Vercel (60s по умолчанию). */
-const FAL_POLL_TIMEOUT_MS = 55_000;
+/** Ждём очередь Fal. При maxDuration=120 на API даём до 115s, чтобы уложиться в лимит. */
+const FAL_POLL_TIMEOUT_MS = 115_000;
 const FAL_POLL_INTERVAL_MS = 1500;
 
 function calcFalIntervalMs(elapsedMs: number): number {

@@ -180,7 +180,7 @@ export const AdminPanel: React.FC<{
             />
             <span className="text-[10px] font-bold">Показывать выбор моделей (фото и видео) на главном экране — для теста</span>
           </label>
-          <p className="text-[8px] text-gray-400 mt-1.5">Выключено: выбор моделей только в Настройки → Лаборатория.</p>
+          <p className="text-[8px] text-gray-400 mt-1.5">Выключено: выбор модели только в Дополнительных настройках.</p>
         </section>
 
         {/* Провайдер */}
@@ -250,7 +250,7 @@ export const AdminPanel: React.FC<{
           </div>
           <div>
             <p className="text-[9px] font-black uppercase text-gray-500 mb-2">Режим выбора модели</p>
-            <p className="text-[9px] text-gray-500 mb-1.5">«Выпадающий список» — выбор модели в Настройках → Лаборатория. Чтобы показывать его ещё и на главном экране, включите опцию «Локально» выше.</p>
+            <p className="text-[9px] text-gray-500 mb-1.5">«Выпадающий список» — выбор модели в Дополнительных настройках. Чтобы показывать его на главном экране, включите опцию «Локально» выше.</p>
             <div className="flex gap-4">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input

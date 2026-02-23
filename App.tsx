@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ImageUploader } from './components/ImageUploader';
-import { Lab } from './components/Lab';
 import { AdminPanel } from './components/AdminPanel';
 import { prepareTryonPrompt, generateTryOn, generateVideo } from './services/geminiService';
 import {
@@ -56,7 +55,7 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [merchantProducts, setMerchantProducts] = useState<CuratedOutfit[]>([]);
   const [testClothes, setTestClothes] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'home' | 'history' | 'settings' | 'showroom' | 'lab' | 'admin'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'history' | 'settings' | 'showroom' | 'admin'>('home');
   const [outfitPage, setOutfitPage] = useState(1);
   const [adminUnlockedSession, setAdminUnlockedSession] = useState(false);
   /** Кто ввёл 888 в этой сессии — показываем шестерёнку в шапке для быстрого перехода в настройки. */
@@ -350,7 +349,7 @@ const App: React.FC = () => {
     window.open(url, '_blank');
   };
 
-  const goToTab = (tab: 'home' | 'history' | 'settings' | 'showroom' | 'lab') => {
+  const goToTab = (tab: 'home' | 'history' | 'settings' | 'showroom' | 'admin') => {
     setActiveTab(tab);
     if (tab === 'home') {
       setState(s => ({ ...s, resultImage: null, error: null }));
@@ -705,8 +704,6 @@ const App: React.FC = () => {
                   setMetrics(next);
                 }}
               />
-            ) : activeTab === 'lab' ? (
-              <Lab onBack={() => goToTab('settings')} />
             ) : (
               <div className="px-5 py-6 space-y-8 animate-in fade-in max-w-[420px] mx-auto">
                 <h3 className="serif text-2xl font-black italic text-center">Настройки</h3>
@@ -719,9 +716,6 @@ const App: React.FC = () => {
 
                 <div className="pt-5 space-y-3 text-center">
                    <button onClick={() => setStylistModalOpen(true)} title="Скоро: персональный стилист подберёт образы под вас. Пока в разработке." className="w-full py-4 bg-white border-2 border-theme text-theme rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95 cursor-help">Позвать стилиста</button>
-                   <button onClick={() => setActiveTab('lab')} className="w-full py-4 bg-white border-2 border-gray-400 text-gray-700 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 hover:border-theme hover:text-theme">
-                     <span>⚗️</span> Лаборатория — выбор моделей
-                   </button>
                    <button onClick={() => goToTab('admin')} className="w-full py-4 bg-gray-800 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95">Дополнительные настройки</button>
                    <button onClick={() => setVerificationModal(true)} className="w-full py-4 bg-white border-2 border-theme text-theme rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95">Бизнес кабинет</button>
                    {user?.isVerifiedMerchant && (

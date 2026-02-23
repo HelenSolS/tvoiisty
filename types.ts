@@ -79,24 +79,3 @@ export interface HistoryItem {
   /** URL видео из «Анимировать» — храним локально (localStorage) */
   videoUrl?: string;
 }
-
-/** Эксперимент лаборатории: примерка (человек + образ → результат). */
-export interface LabTryOnExperiment {
-  id: string;
-  personUrl: string;
-  outfitUrl: string;
-  resultUrl: string;
-  provider: string;
-  durationMs: number;
-  timestamp: number;
-}
-
-/** Эксперимент лаборатории: видео по картинке. */
-export interface LabVideoExperiment {
-  id: string;
-  sourceImageUrl: string;
-  videoUrl: string;
-  provider: string;
-  durationMs: number;
-  timestamp: number;
-}

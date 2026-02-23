@@ -5,6 +5,9 @@
  * Ответ: imageUrl, model, duration_ms, status, credits_used? (Issue #15).
  */
 
+/** Таймаут функции (сек). Fal nano-banana может занимать >60s; даём до 2 мин. */
+export const maxDuration = 120;
+
 import { put } from '@vercel/blob';
 import { generateImage, getImageProvider } from './_lib/provider-abstraction.js';
 
