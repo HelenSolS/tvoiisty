@@ -422,7 +422,7 @@ const App: React.FC = () => {
 
       <div className="flex-1 overflow-y-auto no-scrollbar pb-20">
         {state.resultImage ? (
-          <div className="p-7 space-y-8 animate-in slide-in-from-bottom-10">
+          <div className="px-4 py-5 space-y-6 animate-in slide-in-from-bottom-10 max-w-[420px] mx-auto">
              {/* Результат примерки: целиком в кадре (голова не обрезается), скролл при необходимости */}
              <div className="relative rounded-[3.5rem] overflow-hidden shadow-4xl border-[10px] border-white ring-1 ring-gray-100 bg-gray-50 flex items-center justify-center" style={{ maxHeight: 'min(75vh, 900px)' }}>
                 <img src={state.resultImage} className="w-full max-h-[min(75vh,900px)] object-contain" alt="Результат примерки" />
@@ -488,9 +488,9 @@ const App: React.FC = () => {
              </div>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-4">
             {activeTab === 'home' ? (
-              <div className="space-y-8 px-6 py-6">
+              <div className="space-y-6 px-4 py-4 max-w-[420px] mx-auto">
                 {/* Step 1: Person Selection */}
                 <div className="space-y-4">
                   <div className="flex justify-between items-end px-1"><h3 className="serif text-2xl font-black italic">Ваше фото</h3><span className="text-[9px] font-black text-gray-300 uppercase tracking-widest">Шаг 01</span></div>
@@ -593,8 +593,8 @@ const App: React.FC = () => {
                 </div>
               </div>
             ) : activeTab === 'history' ? (
-              <div className="p-8 space-y-8 animate-in fade-in">
-                <h3 className="serif text-3xl font-black italic text-center">Архив</h3>
+              <div className="px-4 py-5 space-y-6 animate-in fade-in max-w-[420px] mx-auto">
+                <h3 className="serif text-2xl font-black italic text-center">Архив</h3>
                 <p className="text-[9px] text-gray-500 text-center uppercase tracking-widest">Хранятся последние {ARCHIVE_MAX_ITEMS} примерок</p>
                 {history.length === 0 ? (
                   <div className="text-center pt-20 opacity-30">
@@ -611,7 +611,7 @@ const App: React.FC = () => {
                 )}
               </div>
             ) : activeTab === 'showroom' ? (
-              <div className="p-8 space-y-10 animate-in slide-in-from-right-5">
+              <div className="px-4 py-5 space-y-6 animate-in slide-in-from-right-5 max-w-[420px] mx-auto">
                 <div className="text-center space-y-2">
                   <h3 className="serif text-3xl font-black italic">{user?.name}</h3>
                   <p className="text-[10px] font-black uppercase text-theme tracking-widest italic leading-none">Управление коллекцией</p>
@@ -667,7 +667,7 @@ const App: React.FC = () => {
                   <div className="flex flex-wrap gap-3 items-center justify-between px-2">
                     <h4 className="serif text-xl font-bold italic">Ваши товары</h4>
                     <div className="flex flex-wrap gap-2">
-                      <button onClick={() => setStylistModalOpen(true)} className="bg-white border-2 border-[var(--theme-color)] text-[var(--theme-color)] font-black text-[9px] uppercase px-4 py-2.5 rounded-full shadow-lg">Вызвать стилиста</button>
+                      <button onClick={() => setStylistModalOpen(true)} title="Скоро: персональный стилист подберёт образы под вас. Пока в разработке." className="bg-white border-2 border-[var(--theme-color)] text-[var(--theme-color)] font-black text-[9px] uppercase px-4 py-2.5 rounded-full shadow-lg cursor-help">Вызвать стилиста</button>
                       <button onClick={() => setCollectionUploadOpen(true)} className="bg-gray-100 text-gray-800 font-black text-[9px] uppercase px-4 py-2.5 rounded-full shadow-lg border border-gray-200">Загрузить до 10 образов</button>
                       <button onClick={() => setAddProductModal(true)} className="bg-[var(--theme-color)] text-white font-black text-[9px] uppercase px-5 py-2.5 rounded-full shadow-lg border-2 border-[var(--theme-color)] ring-2 ring-black/10">+ Один товар</button>
                     </div>
@@ -708,56 +708,52 @@ const App: React.FC = () => {
             ) : activeTab === 'lab' ? (
               <Lab onBack={() => goToTab('settings')} />
             ) : (
-              <div className="p-10 space-y-12 animate-in fade-in">
-                <h3 className="serif text-3xl font-black italic text-center">Настройки</h3>
+              <div className="px-5 py-6 space-y-8 animate-in fade-in max-w-[420px] mx-auto">
+                <h3 className="serif text-2xl font-black italic text-center">Настройки</h3>
 
-                <div className="flex justify-center gap-8">
+                <div className="flex justify-center gap-6">
                     <button onClick={() => { const u = { ...user!, theme: 'turquoise' as AppTheme }; setUser(u); saveToStorage('user', u); document.body.className = 'theme-turquoise'; }} className={`w-14 h-14 rounded-full bg-[#0d9488] border-4 ${user?.theme === 'turquoise' ? 'border-white scale-125 shadow-2xl' : 'border-transparent opacity-30'} transition-all`}></button>
                     <button onClick={() => { const u = { ...user!, theme: 'lavender' as AppTheme }; setUser(u); saveToStorage('user', u); document.body.className = 'theme-lavender'; }} className={`w-14 h-14 rounded-full bg-[#8b5cf6] border-4 ${user?.theme === 'lavender' ? 'border-white scale-125 shadow-2xl' : 'border-transparent opacity-30'} transition-all`}></button>
                     <button onClick={() => { const u = { ...user!, theme: 'peach' as AppTheme }; setUser(u); saveToStorage('user', u); document.body.className = 'theme-peach'; }} className={`w-14 h-14 rounded-full bg-[#f97316] border-4 ${user?.theme === 'peach' ? 'border-white scale-125 shadow-2xl' : 'border-transparent opacity-30'} transition-all`}></button>
                 </div>
-                
-                {/* Социальные сети — Issue #31 */}
-                <div className="space-y-4">
-                  <h4 className="serif text-lg font-bold italic text-center">Социальные сети</h4>
-                  <p className="text-[9px] text-gray-500 text-center uppercase tracking-widest">Подключите для кнопки «Поделиться»</p>
-                  <div className="space-y-3">
+
+                <div className="pt-5 space-y-3 text-center">
+                   <button onClick={() => setStylistModalOpen(true)} title="Скоро: персональный стилист подберёт образы под вас. Пока в разработке." className="w-full py-4 bg-white border-2 border-theme text-theme rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95 cursor-help">Позвать стилиста</button>
+                   <button onClick={() => setActiveTab('lab')} className="w-full py-4 bg-white border-2 border-gray-400 text-gray-700 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 hover:border-theme hover:text-theme">
+                     <span>⚗️</span> Лаборатория — выбор моделей
+                   </button>
+                   <button onClick={() => goToTab('admin')} className="w-full py-4 bg-gray-800 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95">Дополнительные настройки</button>
+                   <button onClick={() => setVerificationModal(true)} className="w-full py-4 bg-white border-2 border-theme text-theme rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95">Бизнес кабинет</button>
+                   {user?.isVerifiedMerchant && (
+                     <button onClick={() => { const u: User = { ...user!, role: 'user', isVerifiedMerchant: false }; setUser(u); saveToStorage('user', u); goToTab('home'); }} className="w-full py-2 text-red-400 text-[8px] font-black uppercase tracking-widest">Отключить кабинет</button>
+                   )}
+                   <button onClick={handleReset} className="w-full py-2 text-gray-500 text-[8px] font-black uppercase tracking-widest mt-6 hover:text-gray-700">Сбросить все данные</button>
+
+                {/* Социальные сети — маленькие кружочки внизу, кликабельные (Issue #31) */}
+                <div className="pt-6 border-t border-gray-100 mt-6">
+                  <p className="text-[9px] text-gray-500 text-center uppercase tracking-widest mb-3">Соцсети для «Поделиться»</p>
+                  <div className="flex flex-wrap justify-center gap-3">
                     {SOCIAL_PLATFORMS.map((p) => {
                       const connected = socialConnections[p.id];
                       return (
-                        <div key={p.id} className="flex items-center justify-between gap-4 p-4 bg-white rounded-[2rem] border border-gray-100 shadow-sm">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-[10px] font-black" style={{ backgroundColor: p.brandColor }}>{p.short}</div>
-                            <span className="text-[10px] font-black uppercase tracking-wide text-gray-800">{p.label}</span>
-                          </div>
-                          <span className="text-[8px] font-bold uppercase text-gray-400">{connected ? 'Подключено' : 'Не подключено'}</span>
-                          <button
-                            onClick={() => {
-                              const next = { ...socialConnections, [p.id]: !connected };
-                              setSocialConnections(next);
-                              saveSocialConnections(`${STORAGE_VER}_social_connections`, next);
-                            }}
-                            className={`px-4 py-2 rounded-full text-[8px] font-black uppercase tracking-widest ${connected ? 'bg-gray-100 text-gray-600' : 'bg-theme/90 text-white'}`}
-                          >
-                            {connected ? 'Отключить' : 'Подключить'}
-                          </button>
-                        </div>
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            const next = { ...socialConnections, [p.id]: !connected };
+                            setSocialConnections(next);
+                            saveSocialConnections(`${STORAGE_VER}_social_connections`, next);
+                          }}
+                          title={`${p.label}: ${connected ? 'Подключено' : 'Подключить'}`}
+                          className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-[10px] font-black shadow-md transition-all active:scale-95 hover:scale-110 ${connected ? 'ring-2 ring-theme ring-offset-2' : 'opacity-70'}`}
+                          style={{ backgroundColor: p.brandColor }}
+                        >
+                          {p.short}
+                        </button>
                       );
                     })}
                   </div>
                 </div>
-
-                <div className="pt-8 space-y-5 text-center">
-                   <button onClick={() => setStylistModalOpen(true)} className="w-full py-5 bg-white border-2 border-theme text-theme rounded-[2rem] text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95">Позвать стилиста</button>
-                   <button onClick={() => setActiveTab('lab')} className="w-full py-5 bg-theme/90 text-white rounded-[2rem] text-[11px] font-black uppercase tracking-widest shadow-xl active:scale-95 flex items-center justify-center gap-2">
-                     <span>⚗️</span> Лаборатория — выбор моделей
-                   </button>
-                   <button onClick={() => goToTab('admin')} className="w-full py-5 bg-gray-800 text-white rounded-[2rem] text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95">Дополнительные настройки</button>
-                   <button onClick={() => setVerificationModal(true)} className="w-full py-5 bg-white border-2 border-theme text-theme rounded-[2rem] text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95">Бизнес кабинет</button>
-                   {user?.isVerifiedMerchant && (
-                     <button onClick={() => { const u: User = { ...user!, role: 'user', isVerifiedMerchant: false }; setUser(u); saveToStorage('user', u); goToTab('home'); }} className="w-full py-2 text-red-400 text-[8px] font-black uppercase tracking-widest">Отключить кабинет</button>
-                   )}
-                   <button onClick={handleReset} className="w-full py-2 text-gray-300 text-[8px] font-black uppercase tracking-widest mt-10">Сбросить все данные</button>
                 </div>
               </div>
             )}
