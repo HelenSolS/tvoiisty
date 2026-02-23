@@ -17,6 +17,9 @@ import {
   getImageFallbackEnabled,
 } from './services/adminSettings';
 import { TryOnState, User, CuratedOutfit, PersonGalleryItem, HistoryItem, AppTheme, CategoryType } from './types';
+import { getHistory, saveHistory, ARCHIVE_MAX_ITEMS } from './services/historyStorage';
+import { getMetrics, incrementMetric, resetMetrics, type AppMetrics } from './services/metricsStorage';
+import { resizeDataUrl } from './lib/resizeImage';
 
 const INITIAL_BOUTIQUE: CuratedOutfit[] = [
   { id: 'w1', name: 'Шелковое платье Emerald', imageUrl: 'https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?q=80&w=600', shopUrl: 'https://zara.com', category: 'dresses' },
@@ -33,6 +36,8 @@ const CATEGORIES: { id: CategoryType; label: string }[] = [
   { id: 'outerwear', label: 'Верхняя одежда' },
 ];
 
+const OUTFITS_PAGE_SIZE = 8;
+
 const App: React.FC = () => {
   const STORAGE_VER = "v29_business_ready";
   
@@ -42,6 +47,7 @@ const App: React.FC = () => {
   const [merchantProducts, setMerchantProducts] = useState<CuratedOutfit[]>([]);
   const [testClothes, setTestClothes] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'history' | 'settings' | 'showroom' | 'lab' | 'admin'>('home');
+  const [outfitPage, setOutfitPage] = useState(1);
   const [adminUnlockedSession, setAdminUnlockedSession] = useState(false);
   /** Кто ввёл 888 в этой сессии — показываем шестерёнку в шапке для быстрого перехода в настройки. */
   const [adminSessionUnlocked, setAdminSessionUnlocked] = useState(() => typeof sessionStorage !== 'undefined' && sessionStorage.getItem('tvoisty_admin_unlocked') === '1');
@@ -56,6 +62,10 @@ const App: React.FC = () => {
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
   
   const [newProduct, setNewProduct] = useState({ name: '', image: '', category: 'casual' as CategoryType, shopUrl: '' });
+  const [stylistModalOpen, setStylistModalOpen] = useState(false);
+  const [collectionUploadOpen, setCollectionUploadOpen] = useState(false);
+  const [collectionImages, setCollectionImages] = useState<string[]>([]);
+  const [collectionForm, setCollectionForm] = useState({ name: '', shopUrl: '', category: 'casual' as CategoryType });
   
   const [state, setState] = useState<TryOnState & { currentShopUrl: string | null }>({
     personImage: null,
@@ -78,6 +88,10 @@ const App: React.FC = () => {
   const [archiveVideoUrl, setArchiveVideoUrl] = useState<string | null>(null);
   const [archiveVideoError, setArchiveVideoError] = useState<string | null>(null);
   const [isArchiveVideoProcessing, setIsArchiveVideoProcessing] = useState(false);
+  /** Показан ли тост о переполнении архива за эту сессию (не спамить). */
+  const [archiveOverflowToastShown, setArchiveOverflowToastShown] = useState(false);
+  /** Локальные метрики (Issue #29). */
+  const [metrics, setMetrics] = useState<AppMetrics | null>(null);
 
   const initUser = () => {
     const guest: User = { 
@@ -93,8 +107,8 @@ const App: React.FC = () => {
     try {
       const savedPersonGallery = localStorage.getItem(`${STORAGE_VER}_person_gallery`);
       if (savedPersonGallery) setPersonGallery(JSON.parse(savedPersonGallery));
-      const savedHistory = localStorage.getItem(`${STORAGE_VER}_history`);
-      if (savedHistory) setHistory(JSON.parse(savedHistory));
+      getHistory(`${STORAGE_VER}_history`).then(setHistory);
+      getMetrics().then(setMetrics);
       const savedMerchantProducts = localStorage.getItem(`${STORAGE_VER}_merchant_products`);
       if (savedMerchantProducts) setMerchantProducts(JSON.parse(savedMerchantProducts));
       const savedTestClothes = localStorage.getItem(`${STORAGE_VER}_test_clothes`);
@@ -120,6 +134,16 @@ const App: React.FC = () => {
       localStorage.setItem(`${STORAGE_VER}_${key}`, val); 
     } catch (e) {}
   };
+
+  /** Статистика по товарам магазина (локально, по merchantProducts). */
+  const totalShopTryOns = useMemo(
+    () => merchantProducts.reduce((sum, p) => sum + (p.stats?.tryOns ?? 0), 0),
+    [merchantProducts],
+  );
+  const totalShopClicks = useMemo(
+    () => merchantProducts.reduce((sum, p) => sum + (p.stats?.clicks ?? 0), 0),
+    [merchantProducts],
+  );
 
   const filteredOutfits = useMemo(() => {
     let all = [...merchantProducts, ...INITIAL_BOUTIQUE];
@@ -161,10 +185,38 @@ const App: React.FC = () => {
       const imageModel = showImageModelDropdown() ? selectedImageModel : getDefaultImageModel();
       const imageUrl = await generateTryOn(personBase64, outfitBase64, prompt, { model: imageModel, fallbackOnError: getImageFallbackEnabled() });
       setState(prev => ({ ...prev, resultImage: imageUrl, isProcessing: false, status: '' }));
-      const newItem: HistoryItem = { id: `h_${Date.now()}`, resultUrl: imageUrl, outfitUrl, shopUrl, timestamp: Date.now() };
-      const newHistory = [newItem, ...history].slice(0, 20);
-      setHistory(newHistory);
-      saveToStorage('history', newHistory);
+      // Локальная статистика магазина: считаем примерки по товарам мерчанта.
+      if (shopUrl && shopUrl !== '#') {
+        const updatedProducts = merchantProducts.map(p =>
+          p.imageUrl === outfitUrl && p.shopUrl === shopUrl
+            ? {
+                ...p,
+                stats: {
+                  tryOns: (p.stats?.tryOns ?? 0) + 1,
+                  clicks: p.stats?.clicks ?? 0,
+                },
+              }
+            : p,
+        );
+        if (updatedProducts !== merchantProducts) {
+          setMerchantProducts(updatedProducts);
+          saveToStorage('merchant_products', updatedProducts);
+        }
+      }
+      if (!imageUrl.startsWith('data:')) {
+        incrementMetric('totalTryOns').then(() => incrementMetric('totalArchiveSaves')).then(() => getMetrics().then(setMetrics));
+        const newItem: HistoryItem = { id: `h_${Date.now()}`, resultUrl: imageUrl, outfitUrl, shopUrl, timestamp: Date.now() };
+        const prevLen = history.length;
+        const newHistory = [newItem, ...history].slice(0, ARCHIVE_MAX_ITEMS);
+        const didOverflow = prevLen >= ARCHIVE_MAX_ITEMS;
+        setHistory(newHistory);
+        saveHistory(newHistory, `${STORAGE_VER}_history`);
+        if (didOverflow && !archiveOverflowToastShown) {
+          setArchiveOverflowToastShown(true);
+          setSuccessMsg(`В архиве хранятся последние ${ARCHIVE_MAX_ITEMS} примерок. Самая старая запись удалена.`);
+          setTimeout(() => setSuccessMsg(null), 4000);
+        }
+      }
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : '';
       const isNetwork = /failed to fetch|network error|load failed/i.test(raw) || raw === '';
@@ -176,6 +228,7 @@ const App: React.FC = () => {
     }
   };
 
+  /** URL или data URL → base64/data URL для API. Не уменьшаем: фото уже адаптированы при загрузке; повторно не жмём. */
   const urlToBase64 = (url: string): Promise<string> => {
     return new Promise((resolve, reject) => {
       if (url.startsWith('data:')) return resolve(url);
@@ -183,15 +236,13 @@ const App: React.FC = () => {
       img.crossOrigin = 'anonymous';
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1024;
-        let width = img.width, height = img.height;
-        if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
-        canvas.width = width; canvas.height = height;
+        canvas.width = img.width;
+        canvas.height = img.height;
         const ctx = canvas.getContext('2d');
         if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          try { resolve(canvas.toDataURL('image/png', 0.8)); } catch (e) { reject(e); }
-        }
+          ctx.drawImage(img, 0, 0);
+          try { resolve(canvas.toDataURL('image/png', 0.9)); } catch (e) { reject(e); }
+        } else { reject(new Error('Canvas context')); }
       };
       img.onerror = () => reject(new Error('Ошибка загрузки'));
       img.src = url;
@@ -208,6 +259,7 @@ const App: React.FC = () => {
       const videoPrompt = getEffectiveVideoPrompt();
       const videoUrl = await generateVideo(state.resultImage, { model: videoModel, prompt: videoPrompt });
       setResultVideoUrl(videoUrl);
+      incrementMetric('totalVideos').then(() => getMetrics().then(setMetrics));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
       setVideoError(msg);
@@ -238,6 +290,23 @@ const App: React.FC = () => {
        setSuccessMsg("Ссылка на магазин не указана");
        setTimeout(() => setSuccessMsg(null), 2000);
        return;
+    }
+    incrementMetric('totalShopClicks').then(() => getMetrics().then(setMetrics));
+    // Локальная статистика: считаем клики по товарам магазина.
+    const updated = merchantProducts.map(p =>
+      p.shopUrl === url
+        ? {
+            ...p,
+            stats: {
+              tryOns: p.stats?.tryOns ?? 0,
+              clicks: (p.stats?.clicks ?? 0) + 1,
+            },
+          }
+        : p,
+    );
+    if (updated !== merchantProducts) {
+      setMerchantProducts(updated);
+      saveToStorage('merchant_products', updated);
     }
     window.open(url, '_blank');
   };
@@ -375,7 +444,7 @@ const App: React.FC = () => {
 
              <div className="grid grid-cols-2 gap-4">
                 <button onClick={() => handleDownload(state.resultImage!)} className="py-4 bg-white border border-gray-200 rounded-3xl font-black text-[9px] uppercase tracking-widest shadow-xl active:scale-95 text-gray-800">Скачать</button>
-                <button onClick={() => setSocialModal(state.resultImage)} className="py-4 bg-white border border-gray-200 rounded-3xl font-black text-[9px] uppercase tracking-widest shadow-xl active:scale-95 text-gray-800">Поделиться</button>
+                <button onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(state.resultImage); }} className="py-4 bg-white border border-gray-200 rounded-3xl font-black text-[9px] uppercase tracking-widest shadow-xl active:scale-95 text-gray-800">Поделиться</button>
                 <button onClick={() => { setState(s => ({ ...s, resultImage: null })); setResultVideoUrl(null); setVideoError(null); }} className="col-span-2 py-4 text-gray-500 font-black text-[9px] uppercase tracking-widest active:scale-95">Примерить другое</button>
              </div>
           </div>
@@ -440,23 +509,35 @@ const App: React.FC = () => {
                     ))}
                   </div>
 
-                  {/* Dynamic Grid */}
+                  {/* Dynamic Grid with lazy \"Показать ещё\" */}
                   <div className="grid grid-cols-2 gap-5 min-h-[400px]">
-                    {filteredOutfits.map(outfit => (
-                      <div key={outfit.id} className="relative aspect-[3/4] rounded-[2.5rem] overflow-hidden border-[5px] border-white shadow-xl group transition-all hover:scale-[1.02] animate-in fade-in duration-500">
-                        <img src={outfit.imageUrl} className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all flex flex-col justify-end p-4 gap-2 backdrop-blur-[2px]">
-                           <button onClick={() => handleQuickTryOn(outfit.imageUrl, outfit.shopUrl)} className="w-full py-2.5 btn-theme rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg">Примерить</button>
-                           {outfit.shopUrl && outfit.shopUrl !== '#' && (
+                    {filteredOutfits
+                      .slice(0, outfitPage * OUTFITS_PAGE_SIZE)
+                      .map(outfit => (
+                        <div key={outfit.id} className="relative aspect-[3/4] rounded-[2.5rem] overflow-hidden border-[5px] border-white shadow-xl group transition-all hover:scale-[1.02] animate-in fade-in duration-500">
+                          <img src={outfit.imageUrl} className="w-full h-full object-cover" />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all flex flex-col justify-end p-4 gap-2 backdrop-blur-[2px]">
+                            <button onClick={() => handleQuickTryOn(outfit.imageUrl, outfit.shopUrl)} className="w-full py-2.5 btn-theme rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg">Примерить</button>
+                            {outfit.shopUrl && outfit.shopUrl !== '#' && (
                               <button onClick={(e) => { e.stopPropagation(); openInStore(outfit.shopUrl); }} className="w-full py-2 bg-white text-black rounded-full text-[7px] font-black uppercase tracking-widest shadow-lg">В магазин</button>
-                           )}
+                            )}
+                          </div>
+                          {outfit.merchantId === 'me' && (
+                            <div className="absolute top-3 left-3 bg-theme/90 text-white px-2 py-1 rounded-full text-[6px] font-black uppercase tracking-tighter shadow-md">Ваше</div>
+                          )}
                         </div>
-                        {outfit.merchantId === 'me' && (
-                           <div className="absolute top-3 left-3 bg-theme/90 text-white px-2 py-1 rounded-full text-[6px] font-black uppercase tracking-tighter shadow-md">Ваше</div>
-                        )}
-                      </div>
-                    ))}
+                      ))}
                   </div>
+                  {filteredOutfits.length > outfitPage * OUTFITS_PAGE_SIZE && (
+                    <div className="flex justify-center pt-4">
+                      <button
+                        onClick={() => setOutfitPage(p => p + 1)}
+                        className="px-6 py-3 rounded-full bg-white border border-gray-200 text-[9px] font-black uppercase tracking-widest shadow-md"
+                      >
+                        Показать ещё
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Upload Your Own */}
@@ -475,6 +556,7 @@ const App: React.FC = () => {
             ) : activeTab === 'history' ? (
               <div className="p-8 space-y-8 animate-in fade-in">
                 <h3 className="serif text-3xl font-black italic text-center">Архив</h3>
+                <p className="text-[9px] text-gray-500 text-center uppercase tracking-widest">Хранятся последние {ARCHIVE_MAX_ITEMS} примерок</p>
                 {history.length === 0 ? (
                   <div className="text-center pt-20 opacity-30">
                     <p className="text-[10px] font-black uppercase tracking-widest">Пусто</p>
@@ -496,21 +578,60 @@ const App: React.FC = () => {
                   <p className="text-[10px] font-black uppercase text-theme tracking-widest italic leading-none">Управление коллекцией</p>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white p-7 rounded-[2.5rem] shadow-xl border border-gray-50 text-center">
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-white p-7 rounded-[2.5rem] shadow-xl border border-gray-50 text-center col-span-1">
                     <span className="text-2xl font-black text-theme">{merchantProducts.length}</span>
                     <p className="text-[8px] font-black uppercase text-gray-400 tracking-widest">Товаров</p>
                   </div>
-                  <div className="bg-white p-7 rounded-[2.5rem] shadow-xl border border-gray-50 text-center">
-                    <span className="text-2xl font-black text-theme">0</span>
-                    <p className="text-[8px] font-black uppercase text-gray-400 tracking-widest">Кликов</p>
+                  <div className="bg-white p-7 rounded-[2.5rem] shadow-xl border border-gray-50 text-center col-span-1">
+                    <span className="text-2xl font-black text-theme">{totalShopTryOns}</span>
+                    <p className="text-[8px] font-black uppercase text-gray-400 tracking-widest">Примерок</p>
+                  </div>
+                  <div className="bg-white p-7 rounded-[2.5rem] shadow-xl border border-gray-50 text-center col-span-1">
+                    <span className="text-2xl font-black text-theme">{totalShopClicks}</span>
+                    <p className="text-[8px] font-black uppercase text-gray-400 tracking-widest">Переходов</p>
                   </div>
                 </div>
 
+                {metrics !== null && (
+                  <div className="space-y-4">
+                    <h4 className="serif text-lg font-bold italic">📊 Статистика</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-white p-5 rounded-[2rem] shadow-lg border border-gray-50 text-center">
+                        <span className="text-xl font-black text-theme">{metrics.totalTryOns}</span>
+                        <p className="text-[8px] font-black uppercase text-gray-400 tracking-widest mt-1">Примерок</p>
+                      </div>
+                      <div className="bg-white p-5 rounded-[2rem] shadow-lg border border-gray-50 text-center">
+                        <span className="text-xl font-black text-theme">{metrics.totalVideos}</span>
+                        <p className="text-[8px] font-black uppercase text-gray-400 tracking-widest mt-1">Видео</p>
+                      </div>
+                      <div className="bg-white p-5 rounded-[2rem] shadow-lg border border-gray-50 text-center">
+                        <span className="text-xl font-black text-theme">{metrics.totalShopClicks}</span>
+                        <p className="text-[8px] font-black uppercase text-gray-400 tracking-widest mt-1">Переходов в магазин</p>
+                      </div>
+                      <div className="bg-white p-5 rounded-[2rem] shadow-lg border border-gray-50 text-center">
+                        <span className="text-xl font-black text-theme">{metrics.totalArchiveSaves}</span>
+                        <p className="text-[8px] font-black uppercase text-gray-400 tracking-widest mt-1">Сохранений в архив</p>
+                      </div>
+                    </div>
+                    {metrics.totalTryOns > 0 && (
+                      <div className="grid grid-cols-3 gap-3 text-center text-[9px] font-bold uppercase tracking-widest text-gray-500">
+                        <span>CTR: {Math.round((100 * metrics.totalShopClicks) / metrics.totalTryOns)}%</span>
+                        <span>Видео: {Math.round((100 * metrics.totalVideos) / metrics.totalTryOns)}%</span>
+                        <span>Сохр.: {Math.round((100 * metrics.totalArchiveSaves) / metrics.totalTryOns)}%</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="space-y-6">
-                  <div className="flex justify-between px-2 items-center">
+                  <div className="flex flex-wrap gap-3 items-center justify-between px-2">
                     <h4 className="serif text-xl font-bold italic">Ваши товары</h4>
-                    <button onClick={() => setAddProductModal(true)} className="bg-[var(--theme-color)] text-white font-black text-[9px] uppercase px-5 py-2.5 rounded-full shadow-lg border-2 border-[var(--theme-color)] ring-2 ring-black/10">+ Добавить в коллекцию</button>
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={() => setStylistModalOpen(true)} className="bg-white border-2 border-[var(--theme-color)] text-[var(--theme-color)] font-black text-[9px] uppercase px-4 py-2.5 rounded-full shadow-lg">Вызвать стилиста</button>
+                      <button onClick={() => setCollectionUploadOpen(true)} className="bg-gray-100 text-gray-800 font-black text-[9px] uppercase px-4 py-2.5 rounded-full shadow-lg border border-gray-200">Загрузить до 10 образов</button>
+                      <button onClick={() => setAddProductModal(true)} className="bg-[var(--theme-color)] text-white font-black text-[9px] uppercase px-5 py-2.5 rounded-full shadow-lg border-2 border-[var(--theme-color)] ring-2 ring-black/10">+ Один товар</button>
+                    </div>
                   </div>
                   <div className="space-y-4">
                     {merchantProducts.map(item => (
@@ -538,6 +659,11 @@ const App: React.FC = () => {
                   setAdminUnlockedSession(true);
                   setAdminSessionUnlocked(true);
                   if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('tvoisty_admin_unlocked', '1');
+                }}
+                metrics={metrics}
+                onResetMetrics={async () => {
+                  const next = await resetMetrics();
+                  setMetrics(next);
                 }}
               />
             ) : activeTab === 'lab' ? (
@@ -617,6 +743,101 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {/* Стилист — заглушка */}
+      {stylistModalOpen && (
+        <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/70 backdrop-blur-md p-6 animate-in fade-in">
+          <div className="w-full max-w-[380px] bg-white rounded-[4rem] p-10 space-y-6 animate-in zoom-in-95 shadow-4xl relative text-center">
+            <button onClick={() => setStylistModalOpen(false)} className="absolute top-10 right-10 text-gray-300">
+              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+            <h3 className="serif text-2xl font-black italic">Стилист</h3>
+            <p className="text-[11px] text-gray-600 leading-relaxed">Здесь будет ваш виртуальный помощник по образам, а пока его нет.</p>
+            <button onClick={() => setStylistModalOpen(false)} className="w-full py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest bg-gray-100 text-gray-700">Закрыть</button>
+          </div>
+        </div>
+      )}
+
+      {/* Загрузка до 10 образов */}
+      {collectionUploadOpen && (
+        <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/70 backdrop-blur-md p-6 animate-in fade-in overflow-y-auto">
+          <div className="w-full max-w-[420px] bg-white rounded-[4rem] p-8 space-y-6 animate-in zoom-in-95 shadow-4xl relative my-8">
+            <button onClick={() => { setCollectionUploadOpen(false); setCollectionImages([]); setCollectionForm({ name: '', shopUrl: '', category: 'casual' }); }} className="absolute top-8 right-8 text-gray-300 z-10">
+              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+            <h3 className="serif text-2xl font-black italic text-center">Коллекция (до 10 образов)</h3>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="w-full text-[10px]"
+              onChange={async (e) => {
+                const files = Array.from(e.target.files || []).slice(0, 10);
+                const next: string[] = [];
+                for (const file of files) {
+                  const dataUrl = await new Promise<string>((res, rej) => {
+                    const r = new FileReader();
+                    r.onloadend = () => res(r.result as string);
+                    r.onerror = () => rej(new Error('Read failed'));
+                    r.readAsDataURL(file);
+                  });
+                  const adapted = await resizeDataUrl(dataUrl);
+                  next.push(adapted);
+                }
+                setCollectionImages(prev => [...prev, ...next].slice(0, 10));
+                e.target.value = '';
+              }}
+            />
+            {collectionImages.length > 0 && (
+              <>
+                <p className="text-[9px] text-gray-500 uppercase tracking-widest">Выбрано: {collectionImages.length} из 10</p>
+                <div className="grid grid-cols-5 gap-2 max-h-32 overflow-y-auto">
+                  {collectionImages.map((src, i) => (
+                    <div key={i} className="relative aspect-square rounded-xl overflow-hidden border border-gray-200">
+                      <img src={src} alt="" className="w-full h-full object-cover" />
+                      <button type="button" onClick={() => setCollectionImages(prev => prev.filter((_, j) => j !== i))} className="absolute top-0 right-0 w-6 h-6 bg-red-400/90 text-white text-[10px] font-black rounded-bl">×</button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            <input type="text" placeholder="Название коллекции" className="w-full py-4 px-6 rounded-2xl bg-gray-50 border border-gray-100 text-[10px] font-black uppercase tracking-widest outline-none" value={collectionForm.name} onChange={e => setCollectionForm(f => ({ ...f, name: e.target.value }))} />
+            <input type="url" placeholder="Ссылка на магазин" className="w-full py-4 px-6 rounded-2xl bg-gray-50 border border-gray-100 text-[10px] font-black uppercase tracking-widest outline-none" value={collectionForm.shopUrl} onChange={e => setCollectionForm(f => ({ ...f, shopUrl: e.target.value }))} />
+            <select className="w-full py-4 px-6 rounded-2xl bg-gray-50 border border-gray-100 text-[10px] font-black uppercase tracking-widest outline-none appearance-none" value={collectionForm.category} onChange={e => setCollectionForm(f => ({ ...f, category: e.target.value as CategoryType }))}>
+              {CATEGORIES.filter(c => c.id !== 'all').map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+            </select>
+            <button
+              onClick={() => {
+                if (collectionImages.length === 0) return;
+                const name = collectionForm.name.trim() || 'Коллекция';
+                const shopUrl = collectionForm.shopUrl.trim() || '#';
+                const category = collectionForm.category;
+                const newItems: CuratedOutfit[] = collectionImages.map((imageUrl, i) => ({
+                  id: `m_${Date.now()}_${i}`,
+                  name,
+                  imageUrl,
+                  shopUrl,
+                  category,
+                  merchantId: 'me',
+                }));
+                incrementMetric('totalCollectionsCreated').then(() => incrementMetric('totalOutfitsUploaded', newItems.length)).then(() => getMetrics().then(setMetrics));
+                const updated = [...newItems, ...merchantProducts];
+                setMerchantProducts(updated);
+                saveToStorage('merchant_products', updated);
+                setCollectionUploadOpen(false);
+                setCollectionImages([]);
+                setCollectionForm({ name: '', shopUrl: '', category: 'casual' });
+                setSuccessMsg(`Добавлено образов: ${newItems.length}`);
+                setTimeout(() => setSuccessMsg(null), 2500);
+              }}
+              disabled={collectionImages.length === 0}
+              className="w-full py-5 btn-theme rounded-3xl font-black text-[10px] uppercase tracking-widest shadow-xl disabled:opacity-50"
+            >
+              Опубликовать коллекцию
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Selected History Item Modal */}
       {selectedHistoryItem && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-white/98 backdrop-blur-3xl p-6 animate-in zoom-in-95 overflow-y-auto">
@@ -648,10 +869,11 @@ const App: React.FC = () => {
                        const videoModel = showVideoModelDropdown() ? selectedVideoModel : getDefaultVideoModel();
                        const videoPrompt = getEffectiveVideoPrompt();
                        const url = await generateVideo(selectedHistoryItem!.resultUrl, { model: videoModel, prompt: videoPrompt });
+                       incrementMetric('totalVideos').then(() => getMetrics().then(setMetrics));
                        const updatedItem = { ...selectedHistoryItem!, videoUrl: url };
                        const nextHistory = history.map(h => h.id === selectedHistoryItem.id ? updatedItem : h);
                        setHistory(nextHistory);
-                       saveToStorage('history', nextHistory);
+                       saveHistory(nextHistory, `${STORAGE_VER}_history`);
                        setSelectedHistoryItem(updatedItem);
                        setArchiveVideoUrl(null);
                      } catch (err: unknown) {
@@ -672,7 +894,7 @@ const App: React.FC = () => {
                    link.download = 'look.png';
                    link.click();
                  }} className="py-4 bg-white border border-gray-100 rounded-3xl font-black text-[9px] uppercase tracking-widest">Скачать фото</button>
-                 <button onClick={() => setSocialModal(selectedHistoryItem.resultUrl)} className="py-4 bg-white border border-gray-100 rounded-3xl font-black text-[9px] uppercase tracking-widest">Поделиться</button>
+                 <button onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(selectedHistoryItem.resultUrl); }} className="py-4 bg-white border border-gray-100 rounded-3xl font-black text-[9px] uppercase tracking-widest">Поделиться</button>
                  {archiveVideoError && (
                    <p className="col-span-2 text-red-500 text-[9px] font-bold uppercase text-center py-2">{archiveVideoError}</p>
                  )}
@@ -688,10 +910,11 @@ const App: React.FC = () => {
                          link.download = 'look.mp4';
                          link.click();
                        }}
-                       className="col-span-2 py-4 rounded-3xl font-black text-[9px] uppercase tracking-widest bg-[var(--theme-color)] text-white border-2 border-[var(--theme-color)]"
+                       className="py-4 rounded-3xl font-black text-[9px] uppercase tracking-widest bg-[var(--theme-color)] text-white border-2 border-[var(--theme-color)]"
                      >
                        Скачать видео
                      </button>
+                     <button onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(archiveVideoUrl ?? selectedHistoryItem.videoUrl ?? null); }} className="py-4 bg-white border border-gray-100 rounded-3xl font-black text-[9px] uppercase tracking-widest">Поделиться видео</button>
                    </>
                  )}
                  <button onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }} className="col-span-2 py-4 text-gray-400 font-black text-[9px] uppercase tracking-widest">Закрыть</button>
