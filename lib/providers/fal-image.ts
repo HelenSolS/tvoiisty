@@ -5,7 +5,7 @@
 import type { GenerateImagePayload, GenerateImageResult } from '../provider-abstraction';
 import { DEFAULT_IMAGE_PROMPT } from '../provider-abstraction';
 
-const FAL_POLL_TIMEOUT_MS = 35_000;
+const FAL_POLL_TIMEOUT_MS = 55_000;
 const FAL_POLL_INTERVAL_MS = 1500;
 
 type FalQueuePayload = {
@@ -107,12 +107,52 @@ export async function runFalTryOn(
   while (true) {
     if (Date.now() - pollStartedAt > FAL_POLL_TIMEOUT_MS) {
       const duration_ms = Date.now() - startTs;
+      const finalRes = await fetch(statusUrl, {
+        headers: { Authorization: `Key ${falKey}` },
+      });
+      const finalRaw = await finalRes.text();
+      let finalData: FalQueuePayload;
+      try {
+        finalData = JSON.parse(finalRaw) as FalQueuePayload;
+      } catch {
+        return {
+          status: 'error',
+          model,
+          duration_ms,
+          httpStatus: 408,
+          error: 'Превышено время ожидания. Попробуйте ещё раз.',
+        };
+      }
+      if (finalData?.status === 'COMPLETED') {
+        let imageUrl = firstImageUrl(finalData);
+        if (!imageUrl && finalData.response_url) {
+          const resultRes = await fetch(finalData.response_url, {
+            headers: { Authorization: `Key ${falKey}` },
+          });
+          const resultRaw = await resultRes.text();
+          try {
+            const resultJson = JSON.parse(resultRaw) as FalQueuePayload;
+            imageUrl = firstImageUrl(resultJson);
+          } catch {
+            return {
+              status: 'error',
+              model,
+              duration_ms,
+              httpStatus: 502,
+              error: 'Не удалось получить результат. Попробуйте другую модель.',
+            };
+          }
+        }
+        if (imageUrl) {
+          return { status: 'success', model, duration_ms, imageUrl };
+        }
+      }
       return {
         status: 'error',
         model,
         duration_ms,
-        httpStatus: 503,
-        error: 'Сервис примерки занят. Попробуйте через минуту.',
+        httpStatus: 408,
+        error: 'Превышено время ожидания. Попробуйте ещё раз.',
       };
     }
 

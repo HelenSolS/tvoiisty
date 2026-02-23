@@ -1,5 +1,6 @@
 /**
- * Router: по model выбирает Fal или KIE. При ошибке KIE — повтор в Fal (fallback).
+ * Router: по model выбирает Fal или KIE.
+ * KIE ошибка → fallback на Fal. Fal явная ошибка (не таймаут) → fallback на KIE. При таймауте Fal не дублируем в KIE.
  */
 
 import type { GenerateImagePayload, GenerateImageResult } from './provider-abstraction';
@@ -7,11 +8,10 @@ import { getImageProvider } from './provider-abstraction';
 import { runFalTryOn } from './providers/fal-image';
 import { runKieTryOn } from './providers/kie-image';
 
-/** Модель Fal для fallback, когда KIE ответил ошибкой. */
 const FAL_FALLBACK_MODEL = 'fal-ai/image-apps-v2/virtual-try-on';
+const KIE_FALLBACK_MODEL = 'flux-2/flex-image-to-image';
 
 export type GenerateImageOptions = {
-  /** Если false — при ошибке KIE не вызывать Fal, вернуть ошибку сразу. Задаётся из панели настроек. */
   fallbackOnError?: boolean;
 };
 
@@ -24,7 +24,22 @@ export async function generateImage(
   const fallbackOnError = options?.fallbackOnError === true;
 
   if (provider === 'fal') {
-    return runFalTryOn(payload, startTs);
+    const falResult = await runFalTryOn(payload, startTs);
+    if (falResult.status === 'success' && typeof falResult.imageUrl === 'string' && falResult.imageUrl.trim()) {
+      return falResult;
+    }
+    if (fallbackOnError && process.env.KIE_API_KEY && falResult.httpStatus !== 408) {
+      console.error('[generate-image-router] Fal error (not timeout), fallback to KIE', { requestedModel: payload.model, httpStatus: falResult.httpStatus });
+      const kiePayload: GenerateImagePayload = { ...payload, model: KIE_FALLBACK_MODEL };
+      const kieResult = await runKieTryOn(kiePayload, startTs, {
+        KIE_BASE_URL: process.env.KIE_BASE_URL,
+        KIE_API_KEY: process.env.KIE_API_KEY,
+      });
+      if (kieResult.status === 'success' && typeof kieResult.imageUrl === 'string' && kieResult.imageUrl.trim()) {
+        return kieResult;
+      }
+    }
+    return falResult;
   }
 
   const kieResult = await runKieTryOn(payload, startTs, {
