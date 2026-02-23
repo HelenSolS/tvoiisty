@@ -2,8 +2,8 @@
  * KIE (Kernel Image Engine) image try-on provider. createTask + recordInfo polling.
  */
 
-import type { GenerateImagePayload, GenerateImageResult } from '../provider-abstraction';
-import { DEFAULT_IMAGE_PROMPT } from '../provider-abstraction';
+import type { GenerateImagePayload, GenerateImageResult } from '../provider-abstraction.js';
+import { DEFAULT_IMAGE_PROMPT } from '../provider-abstraction.js';
 
 const DEFAULT_KIE_BASE = 'https://api.kie.ai/api/v1';
 const POLL_INTERVAL_MS = 2000;

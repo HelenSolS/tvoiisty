@@ -23,6 +23,7 @@ export const AdminPanel: React.FC<{ onBack: () => void; unlocked: boolean; onUnl
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [settings, setSettings] = useState<AdminSettings>(DEFAULT_ADMIN_SETTINGS);
   const [saved, setSaved] = useState(false);
+  const [restored, setRestored] = useState(false);
 
   useEffect(() => {
     if (unlocked) setSettings(getAdminSettings());
@@ -43,6 +44,19 @@ export const AdminPanel: React.FC<{ onBack: () => void; unlocked: boolean; onUnl
     setAdminSettings(settings);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  /** Сброс в стабильное состояние для показа: Fal Banana (картинка), Kling (видео), без выбора на главном. Сразу сохраняем. */
+  const handleRestoreStability = () => {
+    const stable: AdminSettings = {
+      ...DEFAULT_ADMIN_SETTINGS,
+      imageModelsInDropdown: [...DEFAULT_ADMIN_SETTINGS.imageModelsInDropdown],
+      videoModelsInDropdown: [...DEFAULT_ADMIN_SETTINGS.videoModelsInDropdown],
+    };
+    setSettings(stable);
+    setAdminSettings(stable);
+    setRestored(true);
+    setTimeout(() => setRestored(false), 2500);
   };
 
   const toggleImageModelInDropdown = (model: string) => {
@@ -98,13 +112,24 @@ export const AdminPanel: React.FC<{ onBack: () => void; unlocked: boolean; onUnl
             onClick={handleSave}
             className="py-2.5 px-5 min-w-[100px] bg-gray-800 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-gray-700 active:bg-gray-900"
           >
-            {saved ? 'Сохранено' : 'Сохранить'}
+            {restored ? 'Стабильность восстановлена' : saved ? 'Сохранено' : 'Сохранить'}
           </button>
         </div>
 
         <h2 className="serif text-2xl font-black italic text-gray-900">Настройки</h2>
 
         <p className="text-[9px] text-gray-500 mb-4">Для пользователей без доступа в админку (пароль 888) действуют настройки по умолчанию: одна модель, без выбора. Ниже — настройки только для этого устройства (локально).</p>
+
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={handleRestoreStability}
+            className="w-full py-3 px-4 rounded-xl border-2 border-theme bg-theme/10 text-theme font-black text-[10px] uppercase tracking-widest hover:bg-theme/20 active:bg-theme/30"
+          >
+            Вернуть стабильность
+          </button>
+          <p className="text-[8px] text-gray-400">Fal Banana (картинка), Kling (видео), без выбора на главном. Сразу сохраняет.</p>
+        </div>
 
         {/* Локально: где показывать выбор моделей */}
         <section className="p-4 rounded-2xl bg-gray-100/80 border border-gray-200">

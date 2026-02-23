@@ -2,10 +2,10 @@
  * Router: по model выбирает Fal или KIE. При ошибке KIE — повтор в Fal (fallback).
  */
 
-import type { GenerateImagePayload, GenerateImageResult } from './provider-abstraction';
-import { getImageProvider } from './provider-abstraction';
-import { runFalTryOn } from './providers/fal-image';
-import { runKieTryOn } from './providers/kie-image';
+import type { GenerateImagePayload, GenerateImageResult } from './provider-abstraction.js';
+import { getImageProvider } from './provider-abstraction.js';
+import { runFalTryOn } from './providers/fal-image.js';
+import { runKieTryOn } from './providers/kie-image.js';
 
 const FAL_FALLBACK_MODEL = 'fal-ai/image-apps-v2/virtual-try-on';
 

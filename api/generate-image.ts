@@ -6,7 +6,7 @@
  */
 
 import { put } from '@vercel/blob';
-import { generateImage, getImageProvider } from './_lib/provider-abstraction';
+import { generateImage, getImageProvider } from './_lib/provider-abstraction.js';
 
 /** Модели KIE (Lab + production). */
 const KIE_IMAGE_MODEL_POOL = [

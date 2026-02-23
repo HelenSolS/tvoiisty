@@ -54,4 +54,4 @@ export function mapToHttpError(
   }
 }
 
-export { generateImage } from './generate-image-router';
+export { generateImage } from './generate-image-router.js';

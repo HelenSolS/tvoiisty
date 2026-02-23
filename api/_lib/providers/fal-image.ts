@@ -2,8 +2,8 @@
  * Fal AI image try-on provider. Queue: IN_QUEUE → poll status_url → COMPLETED/FAILED.
  */
 
-import type { GenerateImagePayload, GenerateImageResult } from '../provider-abstraction';
-import { DEFAULT_IMAGE_PROMPT } from '../provider-abstraction';
+import type { GenerateImagePayload, GenerateImageResult } from '../provider-abstraction.js';
+import { DEFAULT_IMAGE_PROMPT } from '../provider-abstraction.js';
 
 const FAL_POLL_TIMEOUT_MS = 35_000;
 const FAL_POLL_INTERVAL_MS = 1500;
