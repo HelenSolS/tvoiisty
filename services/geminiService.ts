@@ -62,7 +62,7 @@ async function generateTryOn(
   personImageBase64: string,
   clothingImageBase64: string,
   prompt?: string,
-  options?: { model?: string; fallbackOnError?: boolean }
+  options?: { model?: string; fallbackOnError?: boolean; consent?: boolean }
 ): Promise<string> {
   const res = await fetch(`${API_BASE}/api/generate-image`, {
     method: 'POST',
@@ -71,6 +71,7 @@ async function generateTryOn(
       personImageBase64,
       clothingImageBase64,
       prompt: prompt || undefined,
+      ...(options?.consent ? { consent: true } : {}),
       ...(options?.model ? { model: options.model } : {}),
       fallbackOnError: options?.fallbackOnError === true,
     }),
@@ -98,7 +99,10 @@ async function generateTryOn(
  * Генерация видео. Один клик = один вызов backend/KIE.
  * model — только для Lab; в production не передаётся (бэкенд использует veo-3-1).
  */
-async function generateVideo(resultImageUrl: string, options?: { model?: string; prompt?: string }): Promise<string> {
+async function generateVideo(
+  resultImageUrl: string,
+  options?: { model?: string; prompt?: string; consent?: boolean }
+): Promise<string> {
   const res = await fetch(`${API_BASE}/api/generate-video`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -106,6 +110,7 @@ async function generateVideo(resultImageUrl: string, options?: { model?: string;
       imageUrl: resultImageUrl,
       ...(options?.model ? { model: options.model } : {}),
       ...(options?.prompt != null && options.prompt !== '' ? { prompt: options.prompt } : {}),
+      ...(options?.consent ? { consent: true } : {}),
     }),
   });
 

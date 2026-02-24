@@ -18,6 +18,8 @@ export interface User {
   role: 'user' | 'merchant';
   isVerifiedMerchant: boolean;
   theme: AppTheme;
+  /** Пользователь дал согласие на обработку персональных данных. */
+  hasConsent?: boolean;
 }
 
 /** Режим промпта: стандартный (редактируемый текст), через ИИ (Fal/OpenAI), свой текст. */
