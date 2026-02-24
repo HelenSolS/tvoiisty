@@ -1002,10 +1002,13 @@ const App: React.FC = () => {
 
       {/* Selected History Item Modal */}
       {selectedHistoryItem && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-white/98 backdrop-blur-3xl p-6 pt-12 animate-in zoom-in-95 overflow-y-auto">
-           <div className="w-full max-w-[420px] min-h-full flex flex-col pt-4 pb-24">
-              <button onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }} className="absolute top-10 right-8 text-gray-400 z-10"><svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
-              <div className="relative rounded-[3.5rem] overflow-hidden shadow-4xl border-[10px] border-white ring-1 ring-gray-100 mt-6 shrink-0 bg-gray-50 flex items-center justify-center" style={{ maxHeight: 'min(70vh, 800px)' }}>
+        <div className="fixed inset-0 z-[120] flex items-start justify-center bg-white/98 backdrop-blur-3xl p-6 pt-16 pb-24 animate-in zoom-in-95 overflow-y-auto">
+           <div className="w-full max-w-[420px] flex flex-col relative">
+              <button onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }} className="absolute top-6 right-6 text-gray-400 z-10"><svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+              <div
+                className="relative rounded-[3rem] overflow-hidden shadow-4xl border-[3px] border-white ring-2 ring-[var(--theme-color)]/40 mt-4 shrink-0 bg-white flex items-center justify-center"
+                style={{ maxHeight: 'min(72vh, 820px)' }}
+              >
                 <img src={selectedHistoryItem.resultUrl} className="w-full max-h-[min(70vh,800px)] object-contain" alt="" />
               </div>
               <div className="mt-10 grid grid-cols-2 gap-4">
