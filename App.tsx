@@ -29,6 +29,8 @@ import {
   type SocialConnectionsState,
   type SocialPlatformId,
 } from './services/socials';
+import { SCENES, type SceneType } from './lib/ai/scenes.config';
+import { buildPrompt as buildScenePrompt } from './lib/ai/prompt-builder';
 
 const INITIAL_BOUTIQUE: CuratedOutfit[] = [
   { id: 'w1', name: 'Шелковое платье Emerald', imageUrl: 'https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?q=80&w=600', shopUrl: 'https://zara.com', category: 'dresses' },
@@ -105,6 +107,8 @@ const App: React.FC = () => {
   const [socialConnections, setSocialConnections] = useState<SocialConnectionsState>(createDefaultSocialConnections());
   /** Тултип при клике на неактивную соцсеть в веере. */
   const [shareTooltip, setShareTooltip] = useState<string | null>(null);
+  /** Выбранная локация съёмки (sceneType для промпта). */
+  const [sceneType, setSceneType] = useState<SceneType>('minimal');
   /** Согласие на обработку ПД в модалке «Клуб Стиля». */
   const [joinConsent, setJoinConsent] = useState(false);
   /** URL карточек, по которым уже запущена загрузка+сжатие (чтобы не дублировать). */
@@ -232,7 +236,10 @@ const App: React.FC = () => {
         outfitBase64 = stored;
       }
       setState(prev => ({ ...prev, status: 'Подготовка промпта...' }));
-      const prompt = await getEffectiveImagePrompt(() => prepareTryonPrompt(personBase64, outfitBase64));
+      const prompt =
+        sceneType === 'minimal'
+          ? await getEffectiveImagePrompt(() => prepareTryonPrompt(personBase64, outfitBase64))
+          : buildScenePrompt(sceneType);
       setState(prev => ({ ...prev, status: 'Примеряем образ...' }));
       const imageModel = showImageModelDropdown() ? selectedImageModel : getDefaultImageModel();
       const imageUrl = await generateTryOn(personBase64, outfitBase64, prompt, {
@@ -545,6 +552,21 @@ const App: React.FC = () => {
                       </select>
                     </div>
                   ) : null}
+                  {/* Локация съёмки (sceneType) — влияет на фон и атмосферу результата. */}
+                  <div>
+                    <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Локация съёмки</label>
+                    <select
+                      value={sceneType}
+                      onChange={(e) => setSceneType(e.target.value as SceneType)}
+                      className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme"
+                    >
+                      {SCENES.map((scene) => (
+                        <option key={scene.id} value={scene.id}>
+                          {scene.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   {/* Search Bar */}
                   <div className="relative">
                     <input 
