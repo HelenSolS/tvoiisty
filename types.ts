@@ -18,6 +18,8 @@ export interface User {
   role: 'user' | 'merchant';
   isVerifiedMerchant: boolean;
   theme: AppTheme;
+  /** Пользователь дал согласие на обработку персональных данных. */
+  hasConsent?: boolean;
 }
 
 /** Режим промпта: стандартный (редактируемый текст), через ИИ (Fal/OpenAI), свой текст. */
@@ -78,25 +80,4 @@ export interface HistoryItem {
   timestamp: number;
   /** URL видео из «Анимировать» — храним локально (localStorage) */
   videoUrl?: string;
-}
-
-/** Эксперимент лаборатории: примерка (человек + образ → результат). */
-export interface LabTryOnExperiment {
-  id: string;
-  personUrl: string;
-  outfitUrl: string;
-  resultUrl: string;
-  provider: string;
-  durationMs: number;
-  timestamp: number;
-}
-
-/** Эксперимент лаборатории: видео по картинке. */
-export interface LabVideoExperiment {
-  id: string;
-  sourceImageUrl: string;
-  videoUrl: string;
-  provider: string;
-  durationMs: number;
-  timestamp: number;
 }

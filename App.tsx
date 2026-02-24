@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ImageUploader } from './components/ImageUploader';
-import { Lab } from './components/Lab';
 import { AdminPanel } from './components/AdminPanel';
 import { prepareTryonPrompt, generateTryOn, generateVideo } from './services/geminiService';
 import {
@@ -30,6 +29,8 @@ import {
   type SocialConnectionsState,
   type SocialPlatformId,
 } from './services/socials';
+import { SCENES, type SceneType } from './lib/ai/scenes.config';
+import { buildPrompt as buildScenePrompt } from './lib/ai/prompt-builder';
 
 const INITIAL_BOUTIQUE: CuratedOutfit[] = [
   { id: 'w1', name: 'Шелковое платье Emerald', imageUrl: 'https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?q=80&w=600', shopUrl: 'https://zara.com', category: 'dresses' },
@@ -56,7 +57,7 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [merchantProducts, setMerchantProducts] = useState<CuratedOutfit[]>([]);
   const [testClothes, setTestClothes] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'home' | 'history' | 'settings' | 'showroom' | 'lab' | 'admin'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'history' | 'settings' | 'showroom' | 'admin'>('home');
   const [outfitPage, setOutfitPage] = useState(1);
   const [adminUnlockedSession, setAdminUnlockedSession] = useState(false);
   /** Кто ввёл 888 в этой сессии — показываем шестерёнку в шапке для быстрого перехода в настройки. */
@@ -106,13 +107,17 @@ const App: React.FC = () => {
   const [socialConnections, setSocialConnections] = useState<SocialConnectionsState>(createDefaultSocialConnections());
   /** Тултип при клике на неактивную соцсеть в веере. */
   const [shareTooltip, setShareTooltip] = useState<string | null>(null);
+  /** Выбранная локация съёмки (sceneType для промпта). */
+  const [sceneType, setSceneType] = useState<SceneType>('minimal');
+  /** Согласие на обработку ПД в модалке «Клуб Стиля». */
+  const [joinConsent, setJoinConsent] = useState(false);
   /** URL карточек, по которым уже запущена загрузка+сжатие (чтобы не дублировать). */
   const loadingUrls = useRef<Set<string>>(new Set());
 
   const initUser = () => {
     const guest: User = { 
       name: 'Гость', avatar: '', isRegistered: false, tryOnCount: 0, 
-      role: 'user', isVerifiedMerchant: false, theme: 'turquoise' 
+      role: 'user', isVerifiedMerchant: false, theme: 'turquoise', hasConsent: false,
     };
     setUser(guest);
     document.body.className = `theme-${guest.theme}`;
@@ -143,6 +148,29 @@ const App: React.FC = () => {
       initUser();
     }
   }, []);
+
+  // При возвращении из background (visibilitychange) восстанавливаем последний результат примерки из архива,
+  // если он уже есть в истории, но потерялся в состоянии (например, после выгрузки вкладки на мобилке).
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const handleVisibility = () => {
+      if (document.visibilityState !== 'visible') return;
+      setState((prev) => {
+        if (prev.resultImage || prev.isProcessing) return prev;
+        if (!history.length) return prev;
+        const last = history[0];
+        return {
+          ...prev,
+          resultImage: last.resultUrl,
+          currentShopUrl: last.shopUrl || prev.currentShopUrl,
+        };
+      });
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [history]);
 
   const saveToStorage = (key: string, data: any) => {
     try { 
@@ -208,10 +236,17 @@ const App: React.FC = () => {
         outfitBase64 = stored;
       }
       setState(prev => ({ ...prev, status: 'Подготовка промпта...' }));
-      const prompt = await getEffectiveImagePrompt(() => prepareTryonPrompt(personBase64, outfitBase64));
+      const prompt =
+        sceneType === 'minimal'
+          ? await getEffectiveImagePrompt(() => prepareTryonPrompt(personBase64, outfitBase64))
+          : buildScenePrompt(sceneType);
       setState(prev => ({ ...prev, status: 'Примеряем образ...' }));
       const imageModel = showImageModelDropdown() ? selectedImageModel : getDefaultImageModel();
-      const imageUrl = await generateTryOn(personBase64, outfitBase64, prompt, { model: imageModel, fallbackOnError: getImageFallbackEnabled() });
+      const imageUrl = await generateTryOn(personBase64, outfitBase64, prompt, {
+        model: imageModel,
+        fallbackOnError: getImageFallbackEnabled(),
+        consent: user?.hasConsent === true,
+      });
       setState(prev => ({ ...prev, resultImage: imageUrl, isProcessing: false, status: '' }));
       // Локальная статистика магазина: считаем примерки по товарам мерчанта.
       if (shopUrl && shopUrl !== '#') {
@@ -296,7 +331,11 @@ const App: React.FC = () => {
     try {
       const videoModel = showVideoModelDropdown() ? selectedVideoModel : getDefaultVideoModel();
       const videoPrompt = getEffectiveVideoPrompt();
-      const videoUrl = await generateVideo(state.resultImage, { model: videoModel, prompt: videoPrompt });
+      const videoUrl = await generateVideo(state.resultImage, {
+        model: videoModel,
+        prompt: videoPrompt,
+        consent: user?.hasConsent === true,
+      });
       setResultVideoUrl(videoUrl);
       incrementMetric('totalVideos').then(() => getMetrics().then(setMetrics));
     } catch (err: unknown) {
@@ -310,18 +349,7 @@ const App: React.FC = () => {
   /** Скачать видео по URL (fetch + blob для кросс-домена). */
   const handleDownloadVideo = async () => {
     if (!resultVideoUrl) return;
-    try {
-      const res = await fetch(resultVideoUrl, { mode: 'cors' });
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `look_video_${Date.now()}.mp4`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      window.open(resultVideoUrl, '_blank');
-    }
+    await downloadUrlAsFile(resultVideoUrl, `look_video_${Date.now()}.mp4`);
   };
 
   const openInStore = (url: string) => {
@@ -350,7 +378,7 @@ const App: React.FC = () => {
     window.open(url, '_blank');
   };
 
-  const goToTab = (tab: 'home' | 'history' | 'settings' | 'showroom' | 'lab') => {
+  const goToTab = (tab: 'home' | 'history' | 'settings' | 'showroom' | 'admin') => {
     setActiveTab(tab);
     if (tab === 'home') {
       setState(s => ({ ...s, resultImage: null, error: null }));
@@ -441,8 +469,8 @@ const App: React.FC = () => {
              <div className="space-y-3">
                {showVideoModelDropdown() && showModelChoiceOnHome() && (
                  <div>
-                   <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Модель для видео</label>
-                   <select value={selectedVideoModel} onChange={e => setSelectedVideoModel(e.target.value)} className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme">
+                  <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Модель для видео</label>
+                  <select value={selectedVideoModel} onChange={e => setSelectedVideoModel(e.target.value)} className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme">
                      {getVideoModelsForDropdown().map(m => <option key={m} value={m}>{m}</option>)}
                    </select>
                  </div>
@@ -497,7 +525,8 @@ const App: React.FC = () => {
                   <div className="flex gap-4 overflow-x-auto no-scrollbar py-2">
                     <div className="flex-shrink-0 w-24 h-32">
                       <ImageUploader label="Добавить" image={null} onImageSelect={(img) => { 
-                        const updated = [{id:`p_${Date.now()}`, imageUrl:img}, ...personGallery].slice(0, 5); 
+                        const MAX_PERSON_PHOTOS = 10;
+                        const updated = [{id:`p_${Date.now()}`, imageUrl:img}, ...personGallery].slice(0, MAX_PERSON_PHOTOS); 
                         setPersonGallery(updated); 
                         saveToStorage('person_gallery', updated); 
                         setState(p=>({...p, personImage:img})); 
@@ -523,6 +552,21 @@ const App: React.FC = () => {
                       </select>
                     </div>
                   ) : null}
+                  {/* Локация съёмки (sceneType) — влияет на фон и атмосферу результата. */}
+                  <div>
+                    <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Локация съёмки</label>
+                    <select
+                      value={sceneType}
+                      onChange={(e) => setSceneType(e.target.value as SceneType)}
+                      className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme"
+                    >
+                      {SCENES.map((scene) => (
+                        <option key={scene.id} value={scene.id}>
+                          {scene.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   {/* Search Bar */}
                   <div className="relative">
                     <input 
@@ -705,8 +749,6 @@ const App: React.FC = () => {
                   setMetrics(next);
                 }}
               />
-            ) : activeTab === 'lab' ? (
-              <Lab onBack={() => goToTab('settings')} />
             ) : (
               <div className="px-5 py-6 space-y-8 animate-in fade-in max-w-[420px] mx-auto">
                 <h3 className="serif text-2xl font-black italic text-center">Настройки</h3>
@@ -719,9 +761,6 @@ const App: React.FC = () => {
 
                 <div className="pt-5 space-y-3 text-center">
                    <button onClick={() => setStylistModalOpen(true)} title="Скоро: персональный стилист подберёт образы под вас. Пока в разработке." className="w-full py-4 bg-white border-2 border-theme text-theme rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95 cursor-help">Позвать стилиста</button>
-                   <button onClick={() => setActiveTab('lab')} className="w-full py-4 bg-white border-2 border-gray-400 text-gray-700 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 hover:border-theme hover:text-theme">
-                     <span>⚗️</span> Лаборатория — выбор моделей
-                   </button>
                    <button onClick={() => goToTab('admin')} className="w-full py-4 bg-gray-800 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95">Дополнительные настройки</button>
                    <button onClick={() => setVerificationModal(true)} className="w-full py-4 bg-white border-2 border-theme text-theme rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95">Бизнес кабинет</button>
                    {user?.isVerifiedMerchant && (
@@ -963,10 +1002,10 @@ const App: React.FC = () => {
 
       {/* Selected History Item Modal */}
       {selectedHistoryItem && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-white/98 backdrop-blur-3xl p-6 animate-in zoom-in-95 overflow-y-auto">
-           <div className="w-full max-w-[420px] min-h-full flex flex-col pt-10 pb-24">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-white/98 backdrop-blur-3xl p-6 pt-12 animate-in zoom-in-95 overflow-y-auto">
+           <div className="w-full max-w-[420px] min-h-full flex flex-col pt-4 pb-24">
               <button onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }} className="absolute top-10 right-8 text-gray-400 z-10"><svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
-              <div className="relative rounded-[3.5rem] overflow-hidden shadow-4xl border-[10px] border-white ring-1 ring-gray-100 mt-10 shrink-0 bg-gray-50 flex items-center justify-center" style={{ maxHeight: 'min(70vh, 800px)' }}>
+              <div className="relative rounded-[3.5rem] overflow-hidden shadow-4xl border-[10px] border-white ring-1 ring-gray-100 mt-6 shrink-0 bg-gray-50 flex items-center justify-center" style={{ maxHeight: 'min(70vh, 800px)' }}>
                 <img src={selectedHistoryItem.resultUrl} className="w-full max-h-[min(70vh,800px)] object-contain" alt="" />
               </div>
               <div className="mt-10 grid grid-cols-2 gap-4">
@@ -1006,12 +1045,16 @@ const App: React.FC = () => {
                  >
                    {isArchiveVideoProcessing ? 'Создаём видео...' : 'Анимировать'}
                  </button>
-                 <button onClick={() => { 
-                   const link = document.createElement('a');
-                   link.href = selectedHistoryItem.resultUrl;
-                   link.download = 'look.png';
-                   link.click();
-                 }} className="py-4 bg-white border border-gray-100 rounded-3xl font-black text-[9px] uppercase tracking-widest">Скачать фото</button>
+                <button
+                  onClick={() => {
+                    if (selectedHistoryItem) {
+                      downloadUrlAsFile(selectedHistoryItem.resultUrl, 'look.png');
+                    }
+                  }}
+                  className="py-4 bg-white border border-gray-100 rounded-3xl font-black text-[9px] uppercase tracking-widest"
+                >
+                  Скачать фото
+                </button>
                  <button onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(selectedHistoryItem.resultUrl); }} className="py-4 bg-white border border-gray-100 rounded-3xl font-black text-[9px] uppercase tracking-widest">Поделиться</button>
                  {archiveVideoError && (
                    <p className="col-span-2 text-red-500 text-[9px] font-bold uppercase text-center py-2">{archiveVideoError}</p>
@@ -1024,10 +1067,9 @@ const App: React.FC = () => {
                      <button
                        title="Удалось? В Telegram или скачайте. В MVP в архиве только последние примерки — доработаем."
                        onClick={() => {
-                         const link = document.createElement('a');
-                         link.href = archiveVideoUrl;
-                         link.download = 'look.mp4';
-                         link.click();
+                         if (archiveVideoUrl) {
+                           downloadUrlAsFile(archiveVideoUrl, 'look.mp4');
+                         }
                        }}
                        className="py-4 rounded-3xl font-black text-[9px] uppercase tracking-widest bg-[var(--theme-color)] text-white border-2 border-[var(--theme-color)]"
                      >
@@ -1048,8 +1090,8 @@ const App: React.FC = () => {
           <div className="w-full max-w-[420px] bg-white rounded-[4rem] p-12 space-y-8 animate-in slide-in-from-bottom-20 shadow-4xl text-center">
             <h2 className="serif text-3xl font-black italic text-gray-900 leading-tight">Верификация<br/>Бизнеса</h2>
             <div className="space-y-4">
-              <button onClick={() => { const u: User = { ...user!, role: 'merchant', isVerifiedMerchant: true, isRegistered: true, name: 'Стильный Бренд' }; setUser(u); saveToStorage('user', u); setVerificationModal(false); goToTab('showroom'); }} className="w-full py-6 bg-[#0055a4] text-white rounded-[2rem] font-black text-[10px] uppercase tracking-widest shadow-xl">Госуслуги</button>
-              <button onClick={() => { const u: User = { ...user!, role: 'merchant', isVerifiedMerchant: true, isRegistered: true, name: 'T-Brand Store' }; setUser(u); saveToStorage('user', u); setVerificationModal(false); goToTab('showroom'); }} className="w-full py-6 bg-[#ffdd2d] text-black rounded-[2rem] font-black text-[10px] uppercase tracking-widest shadow-xl">T-Bank ID</button>
+              <button onClick={() => { const u: User = { ...user!, role: 'merchant', isVerifiedMerchant: true, isRegistered: true, name: 'Стильный Бренд', hasConsent: user?.hasConsent ?? true }; setUser(u); saveToStorage('user', u); setVerificationModal(false); goToTab('showroom'); }} className="w-full py-6 bg-[#0055a4] text-white rounded-[2rem] font-black text-[10px] uppercase tracking-widest shadow-xl">Госуслуги</button>
+              <button onClick={() => { const u: User = { ...user!, role: 'merchant', isVerifiedMerchant: true, isRegistered: true, name: 'T-Brand Store', hasConsent: user?.hasConsent ?? true }; setUser(u); saveToStorage('user', u); setVerificationModal(false); goToTab('showroom'); }} className="w-full py-6 bg-[#ffdd2d] text-black rounded-[2rem] font-black text-[10px] uppercase tracking-widest shadow-xl">T-Bank ID</button>
               <button onClick={() => setVerificationModal(false)} className="w-full py-2 text-gray-300 text-[9px] font-black uppercase mt-4">Позже</button>
             </div>
           </div>
@@ -1059,10 +1101,40 @@ const App: React.FC = () => {
       {/* Auth Modal */}
       {authModal && (
         <div className="fixed inset-0 z-[130] flex items-end justify-center bg-black/70 backdrop-blur-xl p-8 animate-in fade-in">
-          <div className="w-full max-w-[420px] bg-white rounded-[4rem] p-12 space-y-10 shadow-4xl text-center">
+          <div className="w-full max-w-[420px] bg-white rounded-[4rem] p-12 space-y-8 shadow-4xl text-center">
             <h2 className="serif text-4xl font-black italic text-gray-900">Клуб Стиля</h2>
-            <button onClick={() => { const u = { ...user!, isRegistered: true, name: 'Модный Пользователь' }; setUser(u); saveToStorage('user', u); setAuthModal(false); }} className="w-full py-7 btn-theme rounded-[2rem] font-black text-[11px] uppercase tracking-widest shadow-2xl">Вступить в клуб</button>
-            <button onClick={() => setAuthModal(false)} className="w-full py-2 text-gray-300 text-[9px] font-black uppercase">Пропустить</button>
+            <div className="space-y-4 text-left mt-4">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={joinConsent}
+                  onChange={(e) => setJoinConsent(e.target.checked)}
+                  className="mt-0.5 rounded border-2 border-theme text-theme w-4 h-4"
+                />
+                <span className="text-[9px] text-gray-600 leading-snug">
+                  Я даю согласие на обработку персональных данных и принимаю условия использования сервиса.
+                </span>
+              </label>
+            </div>
+            <button
+              onClick={() => {
+                if (!user || !joinConsent) return;
+                const u: User = { ...user, isRegistered: true, name: 'Модный Пользователь', hasConsent: true };
+                setUser(u);
+                saveToStorage('user', u);
+                setAuthModal(false);
+                setJoinConsent(false);
+              }}
+              disabled={!joinConsent}
+              className={`w-full py-7 rounded-[2rem] font-black text-[11px] uppercase tracking-widest shadow-2xl transition-all ${
+                joinConsent ? 'btn-theme' : 'bg-gray-200 text-gray-400'
+              }`}
+            >
+              Вступить в клуб
+            </button>
+            <button onClick={() => { setAuthModal(false); setJoinConsent(false); }} className="w-full py-2 text-gray-300 text-[9px] font-black uppercase">
+              Пропустить
+            </button>
           </div>
         </div>
       )}
@@ -1096,23 +1168,36 @@ const App: React.FC = () => {
 };
 
 function handleDownload(imgUrl: string) {
-  // Для надёжного скачивания (особенно с чужих доменов) делаем fetch + blob,
-  // как для видео: иначе браузер может просто открыть картинку в этом же табе.
-  (async () => {
+  downloadUrlAsFile(imgUrl, `look_${Date.now()}.png`);
+}
+
+async function downloadUrlAsFile(url: string, filename: string) {
+  try {
+    const res = await fetch(url, { mode: 'cors' });
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objectUrl);
+  } catch {
+    // Если fetch/blobs недоступны (CORS или ограничения браузера),
+    // пробуем прямой download-ссылкой как fallback.
     try {
-      const res = await fetch(imgUrl, { mode: 'cors' });
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `look_${Date.now()}.png`;
+      a.download = filename;
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      a.remove();
     } catch {
-      // В крайнем случае открываем в новом табе, чтобы не потерять приложение.
-      window.open(imgUrl, '_blank');
+      // В самом крайнем случае браузер сам решит, что делать с URL.
+      window.open(url, '_blank');
     }
-  })();
+  }
 }
 
 export default App;
