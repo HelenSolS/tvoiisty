@@ -30,41 +30,11 @@ import {
   type SocialPlatformId,
 } from './services/socials';
 
-// Демо-фото и образы (локальные файлы).
-import demoPerson1 from './demo-person-1.jpg';
-import demoPerson2 from './demo-person-2.jpg';
-import demoPerson3 from './demo-person-3.jpg';
-import demoShop1Look1 from './demo-shop1-look-1.jpg';
-import demoShop1Look2 from './demo-shop1-look-2.jpg';
-import demoShop1Look3 from './demo-shop1-look-3.jpg';
-import demoShop2Look1 from './demo-shop2-look-1.jpg';
-import demoShop2Look2 from './demo-shop2-look-2.jpg';
-import demoShop2Look3 from './demo-shop2-look-3.jpg';
-import demoShop2Look4 from './demo-shop2-look-4.jpg';
-import demoShop2Look5 from './demo-shop2-look-5.jpg';
-import demoShop2Look6 from './demo-shop2-look-6.jpg';
-
-const DEMO_SHOP_1 = 'demo_shop1';
-const DEMO_SHOP_2 = 'demo_shop2';
-
-const DEMO_PERSONS: PersonGalleryItem[] = [
-  { id: 'demo_p1', imageUrl: demoPerson1 },
-  { id: 'demo_p2', imageUrl: demoPerson2 },
-  { id: 'demo_p3', imageUrl: demoPerson3 },
-];
-
 const INITIAL_BOUTIQUE: CuratedOutfit[] = [
-  // Магазин 1
-  { id: 's1_1', name: 'Изумрудное вечернее платье', imageUrl: demoShop1Look1, shopUrl: 'https://shop1.demo', category: 'dresses', merchantId: DEMO_SHOP_1 },
-  { id: 's1_2', name: 'Льняной городской образ', imageUrl: demoShop1Look2, shopUrl: 'https://shop1.demo', category: 'casual', merchantId: DEMO_SHOP_1 },
-  { id: 's1_3', name: 'Пальто для межсезонья', imageUrl: demoShop1Look3, shopUrl: 'https://shop1.demo', category: 'outerwear', merchantId: DEMO_SHOP_1 },
-  // Магазин 2
-  { id: 's2_1', name: 'Минималистичный total look', imageUrl: demoShop2Look1, shopUrl: 'https://shop2.demo', category: 'casual', merchantId: DEMO_SHOP_2 },
-  { id: 's2_2', name: 'Деловой костюм New Office', imageUrl: demoShop2Look2, shopUrl: 'https://shop2.demo', category: 'suits', merchantId: DEMO_SHOP_2 },
-  { id: 's2_3', name: 'Платье для встречи с друзьями', imageUrl: demoShop2Look3, shopUrl: 'https://shop2.demo', category: 'dresses', merchantId: DEMO_SHOP_2 },
-  { id: 's2_4', name: 'Уютный свитер выходного дня', imageUrl: demoShop2Look4, shopUrl: 'https://shop2.demo', category: 'outerwear', merchantId: DEMO_SHOP_2 },
-  { id: 's2_5', name: 'Вечерний городской образ', imageUrl: demoShop2Look5, shopUrl: 'https://shop2.demo', category: 'casual', merchantId: DEMO_SHOP_2 },
-  { id: 's2_6', name: 'Total black с акцентом', imageUrl: demoShop2Look6, shopUrl: 'https://shop2.demo', category: 'suits', merchantId: DEMO_SHOP_2 },
+  { id: 'w1', name: 'Шелковое платье Emerald', imageUrl: 'https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?q=80&w=600', shopUrl: 'https://zara.com', category: 'dresses' },
+  { id: 'w2', name: 'Летний сарафан Linen', imageUrl: 'https://images.unsplash.com/photo-1525507119028-ed4c629a60a3?q=80&w=600', shopUrl: 'https://mango.com', category: 'casual' },
+  { id: 'm1', name: 'Пиджак Royal Blue', imageUrl: 'https://images.unsplash.com/photo-1617137968427-85924c800a22?q=80&w=600', shopUrl: 'https://asos.com', category: 'suits' },
+  { id: 'm2', name: 'Свитер Cashmere', imageUrl: 'https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?q=80&w=600', shopUrl: 'https://nike.com', category: 'outerwear' },
 ];
 
 const CATEGORIES: { id: CategoryType; label: string }[] = [
@@ -153,12 +123,7 @@ const App: React.FC = () => {
   useEffect(() => {
     try {
       const savedPersonGallery = localStorage.getItem(`${STORAGE_VER}_person_gallery`);
-      if (savedPersonGallery) {
-        setPersonGallery(JSON.parse(savedPersonGallery));
-      } else {
-        // Демо-фото, чтобы сразу был контент в «Ваше фото».
-        setPersonGallery(DEMO_PERSONS);
-      }
+      if (savedPersonGallery) setPersonGallery(JSON.parse(savedPersonGallery));
       getHistory(`${STORAGE_VER}_history`).then(setHistory);
       getMetrics().then(setMetrics);
       getMerchantProducts(`${STORAGE_VER}_merchant_products`).then(setMerchantProducts);
@@ -253,11 +218,7 @@ const App: React.FC = () => {
     setVideoError(null);
     try {
       // Инвариант: только готовые данные из хранилища. Никакого resize/загрузки по URL здесь.
-      // Для демо-фото (URL) конвертируем в data URL один раз.
-      let personBase64 = state.personImage!;
-      if (!personBase64.startsWith('data:')) {
-        personBase64 = await urlToBase64(personBase64);
-      }
+      const personBase64 = state.personImage!;
       let outfitBase64: string;
       if (outfitUrl.startsWith('data:')) {
         outfitBase64 = outfitUrl;
@@ -557,7 +518,8 @@ const App: React.FC = () => {
                   <div className="flex gap-4 overflow-x-auto no-scrollbar py-2">
                     <div className="flex-shrink-0 w-24 h-32">
                       <ImageUploader label="Добавить" image={null} onImageSelect={(img) => { 
-                        const updated = [{id:`p_${Date.now()}`, imageUrl:img}, ...personGallery].slice(0, 5); 
+                        const MAX_PERSON_PHOTOS = 10;
+                        const updated = [{id:`p_${Date.now()}`, imageUrl:img}, ...personGallery].slice(0, MAX_PERSON_PHOTOS); 
                         setPersonGallery(updated); 
                         saveToStorage('person_gallery', updated); 
                         setState(p=>({...p, personImage:img})); 
