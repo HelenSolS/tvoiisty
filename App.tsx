@@ -451,8 +451,11 @@ const App: React.FC = () => {
       <div className="flex-1 overflow-y-auto no-scrollbar pb-20">
         {state.resultImage ? (
           <div className="px-4 py-5 space-y-6 animate-in slide-in-from-bottom-10 max-w-[420px] mx-auto">
-             {/* Результат примерки: целиком в кадре (голова не обрезается), скролл при необходимости */}
-             <div className="relative rounded-[3.5rem] overflow-hidden shadow-4xl border-[10px] border-white ring-1 ring-gray-100 bg-gray-50 flex items-center justify-center" style={{ maxHeight: 'min(75vh, 900px)' }}>
+             {/* Результат примерки: тонкая рамка в тон темы, без тяжёлых бордеров */}
+             <div
+               className="relative rounded-[3rem] overflow-hidden shadow-4xl border-[3px] border-white ring-2 ring-[var(--theme-color)]/40 bg-white flex items-center justify-center"
+               style={{ maxHeight: 'min(75vh, 900px)' }}
+             >
                 <img src={state.resultImage} className="w-full max-h-[min(75vh,900px)] object-contain" alt="Результат примерки" />
              </div>
 
@@ -497,7 +500,7 @@ const App: React.FC = () => {
                )}
                {resultVideoUrl && (
                  <>
-                   <div className="rounded-[3rem] overflow-hidden border-4 border-white shadow-xl bg-black">
+                  <div className="rounded-[3rem] overflow-hidden border-[2px] border-white shadow-xl bg-black">
                      <div className="aspect-[9/16] max-h-[70vh] w-full mx-auto">
                        <video src={resultVideoUrl} controls className="w-full h-full object-contain" playsInline />
                      </div>
@@ -533,7 +536,13 @@ const App: React.FC = () => {
                       }} icon={<svg className="w-8 h-8 text-theme" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"/></svg>} />
                     </div>
                     {personGallery.map(item => (
-                      <button key={item.id} onClick={() => setState(s=>({...s, personImage:item.imageUrl}))} className={`flex-shrink-0 w-24 h-32 rounded-[2rem] overflow-hidden border-4 transition-all ${state.personImage === item.imageUrl ? 'border-theme shadow-3xl scale-105' : 'border-white opacity-80'}`}>
+                      <button
+                        key={item.id}
+                        onClick={() => setState(s=>({...s, personImage:item.imageUrl}))}
+                        className={`flex-shrink-0 w-24 h-32 rounded-[2rem] overflow-hidden border-[2px] transition-all ${
+                          state.personImage === item.imageUrl ? 'border-theme shadow-3xl scale-105' : 'border-white opacity-80'
+                        }`}
+                      >
                         <img src={item.imageUrl} className="w-full h-full object-cover" />
                       </button>
                     ))}
@@ -597,7 +606,10 @@ const App: React.FC = () => {
                     {filteredOutfits
                       .slice(0, outfitPage * OUTFITS_PAGE_SIZE)
                       .map(outfit => (
-                        <div key={outfit.id} className="relative aspect-[3/4] rounded-[2.5rem] overflow-hidden border-[5px] border-white shadow-xl group transition-all hover:scale-[1.02] animate-in fade-in duration-500">
+                        <div
+                          key={outfit.id}
+                          className="relative aspect-[3/4] rounded-[2.5rem] overflow-hidden border-[2px] border-white shadow-xl group transition-all hover:scale-[1.02] animate-in fade-in duration-500"
+                        >
                           <img src={outfit.imageUrl} className="w-full h-full object-cover" onLoad={() => loadThenCompressAndStore(outfit.imageUrl)} alt="" />
                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all flex flex-col justify-end p-4 gap-2 backdrop-blur-[2px]">
                             <button onClick={() => handleQuickTryOn(outfit.imageUrl, outfit.shopUrl)} className="w-full py-2.5 btn-theme rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg">Примерить</button>
@@ -647,7 +659,11 @@ const App: React.FC = () => {
                 ) : (
                   <div className="grid grid-cols-2 gap-4">
                     {history.map(item => (
-                      <div key={item.id} className="aspect-[3/4] rounded-[2.5rem] overflow-hidden border-4 border-white shadow-xl active:scale-95" onClick={() => setSelectedHistoryItem(item)}>
+                      <div
+                        key={item.id}
+                        className="aspect-[3/4] rounded-[2.5rem] overflow-hidden border-[2px] border-white shadow-xl active:scale-95"
+                        onClick={() => setSelectedHistoryItem(item)}
+                      >
                         <img src={item.resultUrl} className="w-full h-full object-cover" />
                       </div>
                     ))}
@@ -1175,6 +1191,17 @@ function handleDownload(imgUrl: string) {
 }
 
 async function downloadUrlAsFile(url: string, filename: string) {
+  // В Telegram Mini App нет классического скачивания файлов, открываем ссылку во внешнем браузере.
+  try {
+    const anyWindow = window as unknown as { Telegram?: { WebApp?: { openLink?: (link: string) => void } } };
+    if (anyWindow.Telegram?.WebApp?.openLink) {
+      anyWindow.Telegram.WebApp.openLink(url);
+      return;
+    }
+  } catch {
+    // ignore, падаем в обычный сценарий
+  }
+
   try {
     const res = await fetch(url, { mode: 'cors' });
     const blob = await res.blob();
