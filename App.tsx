@@ -88,7 +88,7 @@ const App: React.FC = () => {
     error: null,
   });
 
-  /** URL готового видео (после «Создать видео»). Один клик = один вызов API. */
+  /** URL готового видео (после «Создать видео» для текущего результата). */
   const [resultVideoUrl, setResultVideoUrl] = useState<string | null>(null);
   const [isVideoProcessing, setIsVideoProcessing] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
@@ -267,8 +267,17 @@ const App: React.FC = () => {
         }
       }
       if (!imageUrl.startsWith('data:')) {
-        incrementMetric('totalTryOns').then(() => incrementMetric('totalArchiveSaves')).then(() => getMetrics().then(setMetrics));
-        const newItem: HistoryItem = { id: `h_${Date.now()}`, resultUrl: imageUrl, outfitUrl, shopUrl, timestamp: Date.now() };
+        incrementMetric('totalTryOns')
+          .then(() => incrementMetric('totalArchiveSaves'))
+          .then(() => getMetrics().then(setMetrics));
+        const now = Date.now();
+        const newItem: HistoryItem = {
+          id: `h_${now}`,
+          resultUrl: imageUrl,
+          outfitUrl,
+          shopUrl,
+          timestamp: now,
+        };
         const prevLen = history.length;
         const newHistory = [newItem, ...history].slice(0, ARCHIVE_MAX_ITEMS);
         const didOverflow = prevLen >= ARCHIVE_MAX_ITEMS;
@@ -338,6 +347,25 @@ const App: React.FC = () => {
       });
       setResultVideoUrl(videoUrl);
       incrementMetric('totalVideos').then(() => getMetrics().then(setMetrics));
+
+      // Привязываем видео к последней примерке в истории (если есть).
+      if (!videoUrl.startsWith('data:') && history.length > 0) {
+        const currentImage = state.resultImage;
+        const matchIndex = history.findIndex(
+          (h) =>
+            h.resultUrl === currentImage &&
+            (state.currentShopUrl ? h.shopUrl === state.currentShopUrl : true),
+        );
+        const idx = matchIndex >= 0 ? matchIndex : 0;
+        const target = history[idx];
+        if (target) {
+          const updated: HistoryItem = { ...target, videoUrl };
+          const nextHistory = [...history];
+          nextHistory[idx] = updated;
+          setHistory(nextHistory);
+          saveHistory(nextHistory, `${STORAGE_VER}_history`);
+        }
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
       setVideoError(msg);
@@ -661,10 +689,19 @@ const App: React.FC = () => {
                     {history.map(item => (
                       <div
                         key={item.id}
-                        className="aspect-[3/4] rounded-[2.5rem] overflow-hidden border-[2px] border-white shadow-xl active:scale-95"
+                        className="aspect-[3/4] rounded-[2.5rem] overflow-hidden border-[2px] border-white shadow-xl active:scale-95 relative"
                         onClick={() => setSelectedHistoryItem(item)}
                       >
                         <img src={item.resultUrl} className="w-full h-full object-cover" />
+                        {item.videoUrl && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                            <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+                              <svg className="w-4 h-4 text-gray-800" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M6.5 5.5v9l7-4.5-7-4.5z" />
+                              </svg>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
