@@ -31,7 +31,7 @@ const DEFAULT_ADMIN_SETTINGS: AdminSettings = {
   /** По умолчанию выбор моделей только в Лаборатории, не на главном — чтобы не ломать показ инвестору. */
   showModelChoiceOnHome: false,
   /** По умолчанию берём образы с нейрониколь (сжатые демо-фото). */
-  demoBoutiqueBaseUrl: 'https://animo.neyronikol.ru/public/foto_1',
+  demoBoutiqueBaseUrl: 'https://animo.neyronikol.ru/foto_1',
 };
 
 export function getAdminSettings(): AdminSettings {

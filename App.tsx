@@ -119,6 +119,8 @@ const App: React.FC = () => {
   const [sceneType, setSceneType] = useState<SceneType>('minimal');
   /** Согласие на обработку ПД в модалке «Клуб Стиля». */
   const [joinConsent, setJoinConsent] = useState(false);
+  /** Модалка подтверждения полного сброса данных. */
+  const [resetModalOpen, setResetModalOpen] = useState(false);
   /** URL карточек, по которым уже запущена загрузка+сжатие (чтобы не дублировать). Клиентские загрузки жмём, свои демо-образы — нет. */
   const loadingUrls = useRef<Set<string>>(new Set());
   /** Блок с видео на экране результата — для автопрокрутки, когда видео готово. */
@@ -452,21 +454,7 @@ const App: React.FC = () => {
   };
 
   const handleReset = () => {
-    if (window.confirm("Вы уверены, что хотите сбросить все данные? Это удалит вашу историю и настройки.")) {
-      localStorage.clear();
-      setPersonGallery([]);
-      setHistory([]);
-      setMerchantProducts([]);
-      setTestClothes(null);
-      setState({ personImage: null, outfitImage: null, resultImage: null, currentShopUrl: null, isProcessing: false, status: '', error: null });
-      setResultVideoUrl(null);
-      setIsVideoProcessing(false);
-      setVideoError(null);
-      initUser();
-      goToTab('home');
-      setSuccessMsg("Данные сброшены");
-      setTimeout(() => setSuccessMsg(null), 2000);
-    }
+    setResetModalOpen(true);
   };
 
   const isGlobalLoading = state.isProcessing || isVideoProcessing || isArchiveVideoProcessing;
@@ -1319,6 +1307,56 @@ const App: React.FC = () => {
             >
               Продолжить без входа
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Reset All Data Modal */}
+      {resetModalOpen && (
+        <div className="fixed inset-0 z-[180] flex items-center justify-center bg-black/60 backdrop-blur-md p-6 animate-in fade-in">
+          <div className="w-full max-w-[360px] bg-white rounded-[3rem] p-8 space-y-5 shadow-4xl">
+            <h3 className="serif text-2xl font-black italic text-center text-gray-900">Сбросить всё?</h3>
+            <p className="text-[10px] text-gray-600 text-center leading-relaxed">
+              Мы удалим историю примерок, витрину магазина, подключённые соцсети и локальные настройки этого устройства.
+              Демо-образы витрины и сама приложение останутся без изменений.
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  localStorage.clear();
+                  setPersonGallery([]);
+                  setHistory([]);
+                  setMerchantProducts([]);
+                  setTestClothes(null);
+                  setState({
+                    personImage: null,
+                    outfitImage: null,
+                    resultImage: null,
+                    currentShopUrl: null,
+                    isProcessing: false,
+                    status: '',
+                    error: null,
+                  });
+                  setResultVideoUrl(null);
+                  setIsVideoProcessing(false);
+                  setVideoError(null);
+                  initUser();
+                  goToTab('home');
+                  setResetModalOpen(false);
+                  setSuccessMsg('Данные для этого устройства сброшены');
+                  setTimeout(() => setSuccessMsg(null), 2500);
+                }}
+                className="w-full py-4 rounded-2xl bg-red-500 text-white text-[10px] font-black uppercase tracking-widest shadow-xl active:scale-95"
+              >
+                Да, удалить локальные данные
+              </button>
+              <button
+                onClick={() => setResetModalOpen(false)}
+                className="w-full py-3 rounded-2xl bg-gray-100 text-gray-600 text-[9px] font-black uppercase tracking-widest active:scale-95"
+              >
+                Отмена
+              </button>
+            </div>
           </div>
         </div>
       )}
