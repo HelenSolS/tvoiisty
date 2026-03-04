@@ -32,11 +32,36 @@ import {
 import { SCENES, type SceneType } from './lib/ai/scenes.config';
 import { buildPrompt as buildScenePrompt } from './lib/ai/prompt-builder';
 
+// Стартовая витрина для демо — красивые образы с Unsplash (как было раньше).
 const INITIAL_BOUTIQUE: CuratedOutfit[] = [
-  { id: 'w1', name: 'Шелковое платье Emerald', imageUrl: 'https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?q=80&w=600', shopUrl: 'https://zara.com', category: 'dresses' },
-  { id: 'w2', name: 'Летний сарафан Linen', imageUrl: 'https://images.unsplash.com/photo-1525507119028-ed4c629a60a3?q=80&w=600', shopUrl: 'https://mango.com', category: 'casual' },
-  { id: 'm1', name: 'Пиджак Royal Blue', imageUrl: 'https://images.unsplash.com/photo-1617137968427-85924c800a22?q=80&w=600', shopUrl: 'https://asos.com', category: 'suits' },
-  { id: 'm2', name: 'Свитер Cashmere', imageUrl: 'https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?q=80&w=600', shopUrl: 'https://nike.com', category: 'outerwear' },
+  {
+    id: 'w1',
+    name: 'Шелковое платье Emerald',
+    imageUrl: 'https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?q=80&w=800',
+    shopUrl: 'https://zara.com',
+    category: 'dresses',
+  },
+  {
+    id: 'w2',
+    name: 'Летний сарафан Linen',
+    imageUrl: 'https://images.unsplash.com/photo-1525507119028-ed4c629a60a3?q=80&w=800',
+    shopUrl: 'https://mango.com',
+    category: 'casual',
+  },
+  {
+    id: 'm1',
+    name: 'Пиджак Royal Blue',
+    imageUrl: 'https://images.unsplash.com/photo-1617137968427-85924c800a22?q=80&w=800',
+    shopUrl: 'https://asos.com',
+    category: 'suits',
+  },
+  {
+    id: 'm2',
+    name: 'Свитер Cashmere',
+    imageUrl: 'https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?q=80&w=800',
+    shopUrl: 'https://nike.com',
+    category: 'outerwear',
+  },
 ];
 
 const CATEGORIES: { id: CategoryType; label: string }[] = [
@@ -111,8 +136,12 @@ const App: React.FC = () => {
   const [sceneType, setSceneType] = useState<SceneType>('minimal');
   /** Согласие на обработку ПД в модалке «Клуб Стиля». */
   const [joinConsent, setJoinConsent] = useState(false);
-  /** URL карточек, по которым уже запущена загрузка+сжатие (чтобы не дублировать). */
+  /** Модалка подтверждения полного сброса данных. */
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  /** URL карточек, по которым уже запущена загрузка+сжатие (чтобы не дублировать). Клиентские загрузки жмём, свои демо-образы — нет. */
   const loadingUrls = useRef<Set<string>>(new Set());
+  /** Блок с видео на экране результата — для автопрокрутки, когда видео готово. */
+  const resultVideoRef = useRef<HTMLDivElement | null>(null);
 
   const initUser = () => {
     const guest: User = { 
@@ -148,6 +177,17 @@ const App: React.FC = () => {
       initUser();
     }
   }, []);
+
+  // Когда видео для текущего результата готово — автоматически прокручиваем к нему.
+  useEffect(() => {
+    if (resultVideoUrl && resultVideoRef.current) {
+      try {
+        resultVideoRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch {
+        // ignore
+      }
+    }
+  }, [resultVideoUrl]);
 
   // При возвращении из background (visibilitychange) восстанавливаем последний результат примерки из архива,
   // если он уже есть в истории, но потерялся в состоянии (например, после выгрузки вкладки на мобилке).
@@ -229,7 +269,12 @@ const App: React.FC = () => {
       } else {
         const stored = await getCompressedByUrl(outfitUrl);
         if (!stored) {
-          setState((prev) => ({ ...prev, isProcessing: false, error: 'Дождитесь загрузки изображения', status: '' }));
+          setState((prev) => ({
+            ...prev,
+            isProcessing: false,
+            error: 'Дождитесь загрузки изображения',
+            status: '',
+          }));
           setTimeout(() => setState((p) => ({ ...p, error: null })), 3000);
           return;
         }
@@ -348,6 +393,10 @@ const App: React.FC = () => {
       setResultVideoUrl(videoUrl);
       incrementMetric('totalVideos').then(() => getMetrics().then(setMetrics));
 
+      // Явный сигнал пользователю: видео готово.
+      setSuccessMsg('Видео готово. Посмотрите его ниже или в архиве.');
+      setTimeout(() => setSuccessMsg(null), 4000);
+
       // Привязываем видео к последней примерке в истории (если есть).
       if (!videoUrl.startsWith('data:') && history.length > 0) {
         const currentImage = state.resultImage;
@@ -367,7 +416,12 @@ const App: React.FC = () => {
         }
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
+      const raw = err instanceof Error ? err.message : '';
+      const isNetwork =
+        /failed to fetch|network error|load failed/i.test(raw) || raw === '';
+      const msg = isNetwork
+        ? 'Нет связи с сервером. Проверьте интернет и попробуйте снова.'
+        : (raw || 'Не удалось создать видео. Попробуйте снова.');
       setVideoError(msg);
     } finally {
       setIsVideoProcessing(false);
@@ -417,31 +471,30 @@ const App: React.FC = () => {
   };
 
   const handleReset = () => {
-    if (window.confirm("Вы уверены, что хотите сбросить все данные? Это удалит вашу историю и настройки.")) {
-      localStorage.clear();
-      setPersonGallery([]);
-      setHistory([]);
-      setMerchantProducts([]);
-      setTestClothes(null);
-      setState({ personImage: null, outfitImage: null, resultImage: null, currentShopUrl: null, isProcessing: false, status: '', error: null });
-      setResultVideoUrl(null);
-      setIsVideoProcessing(false);
-      setVideoError(null);
-      initUser();
-      goToTab('home');
-      setSuccessMsg("Данные сброшены");
-      setTimeout(() => setSuccessMsg(null), 2000);
-    }
+    setResetModalOpen(true);
   };
+
+  const isGlobalLoading = state.isProcessing || isVideoProcessing || isArchiveVideoProcessing;
+  const globalStatus =
+    state.isProcessing && state.status
+      ? state.status
+      : isArchiveVideoProcessing
+      ? 'Создаём видео из архива...'
+      : isVideoProcessing
+      ? 'Создаём видео...'
+      : '';
 
   return (
     <div className={`app-container flex flex-col h-screen overflow-hidden`}>
-      {/* Loader */}
-      {state.isProcessing && (
-        <div className="fixed inset-0 z-[200] bg-white/95 backdrop-blur-3xl flex flex-col items-center justify-center p-12">
-           <div className="w-16 h-16 border-[5px] border-theme border-t-transparent rounded-full animate-spin mb-8 shadow-2xl"></div>
-           <h2 className="serif text-2xl font-black italic text-theme text-center">{state.status}</h2>
-           <p className="text-[9px] font-bold text-gray-400 mt-4 uppercase tracking-[0.2em] animate-pulse">ИИ создает ваш идеальный образ</p>
+      {/* Глобальный индикатор загрузки (фото или видео) — компактный, не блокирует интерфейс. */}
+      {isGlobalLoading && (
+        <div className="fixed top-0 left-0 right-0 z-[200] flex justify-center pointer-events-none">
+          <div className="mt-20 inline-flex items-center gap-2 px-5 py-2 rounded-full bg-white/95 border border-gray-200 shadow-2xl pointer-events-auto">
+            <div className="w-4 h-4 border-[3px] border-theme border-t-transparent rounded-full animate-spin" />
+            <span className="text-[9px] font-black uppercase tracking-[0.25em] text-gray-700">
+              {globalStatus || 'Создаём образ...'}
+            </span>
+          </div>
         </div>
       )}
 
@@ -454,7 +507,8 @@ const App: React.FC = () => {
               <svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.64.304 1.24.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
             )}
           </div>
-          <p className="text-[7px] font-bold uppercase tracking-[0.3em] text-gray-400 mt-1">Digital Atelier</p>
+          {/* Подзаголовок без английских слов */}
+          <p className="text-[7px] font-bold uppercase tracking-[0.3em] text-gray-400 mt-1">Онлайн примерочная</p>
         </div>
         <div className="flex items-center gap-5">
           {adminSessionUnlocked && (
@@ -490,7 +544,7 @@ const App: React.FC = () => {
              {/* Главные действия сразу под картинкой — всегда видны */}
              <button 
                onClick={() => openInStore(state.currentShopUrl!)} 
-               className="w-full py-5 rounded-3xl font-black text-[12px] uppercase tracking-widest shadow-2xl active:scale-95 flex items-center justify-center gap-3 bg-[var(--theme-color)] text-white border-2 border-[var(--theme-color)] ring-2 ring-black/10"
+               className="w-full py-4 rounded-3xl font-black text-[11px] uppercase tracking-widest shadow-2xl active:scale-95 flex items-center justify-center gap-2 bg-[var(--theme-color)] text-white border-2 border-[var(--theme-color)] ring-2 ring-black/10"
              >
                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
                Купить в магазине
@@ -509,17 +563,29 @@ const App: React.FC = () => {
                <button
                  onClick={handleCreateVideo}
                  disabled={isVideoProcessing}
-                 className="w-full py-5 bg-white border-2 border-theme text-theme rounded-3xl font-black text-[12px] uppercase tracking-widest shadow-xl active:scale-95 flex items-center justify-center gap-3 disabled:opacity-60"
+                 className="w-full py-4 bg-white border-2 border-theme text-theme rounded-3xl font-black text-[11px] uppercase tracking-widest shadow-xl active:scale-95 flex items-center justify-center gap-2 disabled:opacity-60"
+                 title={resultVideoUrl ? 'Пересоздать видео для этого образа' : 'Создать видео по этому образу'}
                >
                  {isVideoProcessing ? (
-                   <>Создаём видео...</>
+                   <>
+                     <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24">
+                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 100 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z" />
+                     </svg>
+                     Создаём видео...
+                   </>
                  ) : (
                    <>
-                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/><path d="M4 5h2v14H4z"/></svg>
-                     Создать видео
+                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/><path d="M4 5h2v14H4z"/></svg>
+                     {resultVideoUrl ? 'Переделать видео' : 'Создать видео'}
                    </>
                  )}
                </button>
+               {isVideoProcessing && !resultVideoUrl && (
+                 <p className="text-[9px] text-gray-400 text-center uppercase tracking-[0.18em]">
+                   Создаём видео, это может занять до 40 секунд
+                 </p>
+               )}
                {videoError && (
                  <p className="text-red-500 text-[10px] font-bold text-center">
                    {videoError}
@@ -527,23 +593,47 @@ const App: React.FC = () => {
                  </p>
                )}
                {resultVideoUrl && (
-                 <>
-                  <div className="rounded-[3rem] overflow-hidden border-[2px] border-white shadow-xl bg-black">
-                     <div className="aspect-[9/16] max-h-[70vh] w-full mx-auto">
-                       <video src={resultVideoUrl} controls className="w-full h-full object-contain" playsInline />
-                     </div>
-                   </div>
-                   <button onClick={handleDownloadVideo} title="Удалось? Отправьте в Telegram или скачайте. В MVP в архиве только последние примерки — доработаем." className="w-full py-3 bg-white border border-gray-100 rounded-2xl font-black text-[9px] uppercase tracking-widest shadow-lg active:scale-95">
-                     Скачать видео
-                   </button>
-                 </>
+                <>
+                 <div
+                   ref={resultVideoRef}
+                   className="rounded-[3rem] overflow-hidden border-[3px] border-white shadow-4xl bg-white ring-2 ring-[var(--theme-color)]/30"
+                 >
+                    <div className="aspect-[9/16] max-h-[70vh] w-full mx-auto">
+                      <video src={resultVideoUrl} controls className="w-full h-full object-contain" playsInline />
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleDownloadVideo}
+                    title="Скачать текущее видео на устройство"
+                    className="w-full py-3 bg-white border border-gray-100 rounded-2xl font-black text-[9px] uppercase tracking-widest shadow-lg active:scale-95"
+                  >
+                    Скачать видео
+                  </button>
+                </>
                )}
              </div>
 
-             <div className="grid grid-cols-2 gap-4">
-                <button onClick={() => handleDownload(state.resultImage!)} className="py-4 bg-white border border-gray-200 rounded-3xl font-black text-[9px] uppercase tracking-widest shadow-xl active:scale-95 text-gray-800">Скачать</button>
-                <button onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(state.resultImage); }} className="py-4 bg-white border border-gray-200 rounded-3xl font-black text-[9px] uppercase tracking-widest shadow-xl active:scale-95 text-gray-800">Поделиться</button>
-                <button onClick={() => { setState(s => ({ ...s, resultImage: null })); setResultVideoUrl(null); setVideoError(null); }} className="col-span-2 py-4 text-gray-500 font-black text-[9px] uppercase tracking-widest active:scale-95">Примерить другое</button>
+             <div className="grid grid-cols-2 gap-3">
+               <button
+                 onClick={() => handleDownload(state.resultImage!)}
+                 title="Скачать итоговое фото примерки"
+                 className="py-3 bg-white border border-gray-200 rounded-3xl font-black text-[8px] uppercase tracking-widest shadow-xl active:scale-95 text-gray-800"
+               >
+                 Скачать фото
+               </button>
+               <button
+                 onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(state.resultImage); }}
+                 title="Поделиться итоговым фото"
+                 className="py-3 bg-white border border-gray-200 rounded-3xl font-black text-[8px] uppercase tracking-widest shadow-xl active:scale-95 text-gray-800"
+               >
+                 Поделиться
+               </button>
+               <button
+                 onClick={() => { setState(s => ({ ...s, resultImage: null })); setResultVideoUrl(null); setVideoError(null); }}
+                 className="col-span-2 py-3 text-gray-500 font-black text-[9px] uppercase tracking-widest active:scale-95"
+               >
+                 Примерить другое
+               </button>
              </div>
           </div>
         ) : (
@@ -567,11 +657,22 @@ const App: React.FC = () => {
                       <button
                         key={item.id}
                         onClick={() => setState(s=>({...s, personImage:item.imageUrl}))}
-                        className={`flex-shrink-0 w-24 h-32 rounded-[2rem] overflow-hidden border-[2px] transition-all ${
-                          state.personImage === item.imageUrl ? 'border-theme shadow-3xl scale-105' : 'border-white opacity-80'
+                        className={`relative flex-shrink-0 w-24 h-32 rounded-[2rem] overflow-hidden border-[2px] transition-all ${
+                          state.personImage === item.imageUrl
+                            ? 'border-theme shadow-3xl scale-105 ring-2 ring-theme'
+                            : 'border-white opacity-60'
                         }`}
                       >
                         <img src={item.imageUrl} className="w-full h-full object-cover" />
+                        {state.personImage === item.imageUrl && (
+                          <div className="absolute inset-0 pointer-events-none">
+                            <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-theme text-white flex items-center justify-center shadow-lg">
+                              <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3.25-3.25a1 1 0 111.414-1.414L8.5 11.086l6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                          </div>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -663,18 +764,6 @@ const App: React.FC = () => {
                   )}
                 </div>
 
-                {/* Upload Your Own */}
-                <div className="pt-8 space-y-6 border-t border-gray-100 text-center">
-                  <h3 className="serif text-xl font-black italic">Своя вещь</h3>
-                  <div className="h-44 rounded-[2.5rem] overflow-hidden shadow-2xl">
-                    <ImageUploader 
-                      label={testClothes ? "Загружено" : "Загрузить фото вещи"} 
-                      image={testClothes} 
-                      onImageSelect={(img) => { setTestClothes(img); saveToStorage('test_clothes', img); handleQuickTryOn(img, '#'); }} 
-                      icon={<svg className="w-10 h-10 text-theme" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>} 
-                    />
-                  </div>
-                </div>
               </div>
             ) : activeTab === 'history' ? (
               <div className="px-4 py-5 space-y-6 animate-in fade-in max-w-[420px] mx-auto">
@@ -690,7 +779,12 @@ const App: React.FC = () => {
                       <div
                         key={item.id}
                         className="aspect-[3/4] rounded-[2.5rem] overflow-hidden border-[2px] border-white shadow-xl active:scale-95 relative"
-                        onClick={() => setSelectedHistoryItem(item)}
+                        onClick={() => {
+                          setSelectedHistoryItem(item);
+                          // Если к этой примерке уже есть видео, сразу подхватываем его в модалку.
+                          setArchiveVideoUrl(item.videoUrl ?? null);
+                          setArchiveVideoError(null);
+                        }}
                       >
                         <img src={item.resultUrl} className="w-full h-full object-cover" />
                         {item.videoUrl && (
@@ -1056,87 +1150,120 @@ const App: React.FC = () => {
       {/* Selected History Item Modal */}
       {selectedHistoryItem && (
         <div className="fixed inset-0 z-[120] flex items-start justify-center bg-white/98 backdrop-blur-3xl p-6 pt-16 pb-24 animate-in zoom-in-95 overflow-y-auto">
-           <div className="w-full max-w-[420px] flex flex-col relative">
-              <button onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }} className="absolute top-6 right-6 text-gray-400 z-10"><svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
-              <div
-                className="relative rounded-[3rem] overflow-hidden shadow-4xl border-[3px] border-white ring-2 ring-[var(--theme-color)]/40 mt-4 shrink-0 bg-white flex items-center justify-center"
-                style={{ maxHeight: 'min(72vh, 820px)' }}
+          <div className="w-full max-w-[420px] flex flex-col relative">
+            <button
+              onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }}
+              className="absolute top-4 right-4 text-gray-500 z-10 flex items-center gap-2 px-2 py-1 rounded-full bg-white/80 shadow-lg"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+              <span className="text-[8px] font-black uppercase tracking-widest">Назад</span>
+            </button>
+
+            <div
+              className="relative rounded-[3rem] overflow-hidden shadow-4xl border-[3px] border-white ring-2 ring-[var(--theme-color)]/40 mt-4 shrink-0 bg-white flex items-center justify-center"
+              style={{ maxHeight: 'min(72vh, 820px)' }}
+            >
+              <img src={selectedHistoryItem.resultUrl} className="w-full max-h-[min(70vh,800px)] object-contain" alt="" />
+            </div>
+
+            <div className="mt-8 grid grid-cols-2 gap-3">
+              <button
+                onClick={() => openInStore(selectedHistoryItem.shopUrl)}
+                className="col-span-2 py-4 rounded-3xl font-black text-[11px] uppercase tracking-widest shadow-2xl flex items-center justify-center gap-2 bg-[var(--theme-color)] text-white border-2 border-[var(--theme-color)] ring-2 ring-black/10"
               >
-                <img src={selectedHistoryItem.resultUrl} className="w-full max-h-[min(70vh,800px)] object-contain" alt="" />
-              </div>
-              <div className="mt-10 grid grid-cols-2 gap-4">
-                 <button 
-                   onClick={() => openInStore(selectedHistoryItem.shopUrl)} 
-                   className="col-span-2 py-5 rounded-3xl font-black text-[12px] uppercase tracking-widest shadow-2xl flex items-center justify-center gap-3 bg-[var(--theme-color)] text-white border-2 border-[var(--theme-color)] ring-2 ring-black/10"
-                 >
-                   Купить в магазине
-                 </button>
-                 {showVideoModelDropdown() && showModelChoiceOnHome() && (
-                 <div className="col-span-2">
-                   <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Модель для видео</label>
-                   <select value={selectedVideoModel} onChange={e => setSelectedVideoModel(e.target.value)} className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme">
-                     {getVideoModelsForDropdown().map(m => <option key={m} value={m}>{m}</option>)}
-                   </select>
-                 </div>
-                 )}
-                 <button
-                   onClick={async () => {
-                     setArchiveVideoError(null);
-                     setIsArchiveVideoProcessing(true);
-                     try {
-                       const videoModel = showVideoModelDropdown() ? selectedVideoModel : getDefaultVideoModel();
-                       const videoPrompt = getEffectiveVideoPrompt();
-                       const url = await generateVideo(selectedHistoryItem!.resultUrl, { model: videoModel, prompt: videoPrompt });
-                       incrementMetric('totalVideos').then(() => getMetrics().then(setMetrics));
-                       setArchiveVideoUrl(url);
-                     } catch (err: unknown) {
-                       const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
-                       setArchiveVideoError(msg);
-                     } finally {
-                       setIsArchiveVideoProcessing(false);
-                     }
-                   }}
-                   disabled={isArchiveVideoProcessing}
-                   className="col-span-2 py-5 bg-white border-2 border-theme text-theme rounded-3xl font-black text-[10px] uppercase tracking-widest shadow-xl disabled:opacity-50 flex items-center justify-center gap-2"
-                 >
-                   {isArchiveVideoProcessing ? 'Создаём видео...' : 'Анимировать'}
-                 </button>
-                <button
-                  onClick={() => {
-                    if (selectedHistoryItem) {
-                      downloadUrlAsFile(selectedHistoryItem.resultUrl, 'look.png');
-                    }
-                  }}
-                  className="py-4 bg-white border border-gray-100 rounded-3xl font-black text-[9px] uppercase tracking-widest"
-                >
-                  Скачать фото
-                </button>
-                 <button onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(selectedHistoryItem.resultUrl); }} className="py-4 bg-white border border-gray-100 rounded-3xl font-black text-[9px] uppercase tracking-widest">Поделиться</button>
-                 {archiveVideoError && (
-                   <p className="col-span-2 text-red-500 text-[9px] font-bold uppercase text-center py-2">{archiveVideoError}</p>
-                 )}
-                 {archiveVideoUrl && (
-                   <>
-                     <div className="col-span-2 rounded-2xl overflow-hidden border-2 border-white shadow-xl aspect-[9/16] max-h-64 bg-black">
-                       <video src={archiveVideoUrl} className="w-full h-full object-contain" controls playsInline />
-                     </div>
-                     <button
-                       title="Удалось? В Telegram или скачайте. В MVP в архиве только последние примерки — доработаем."
-                       onClick={() => {
-                         if (archiveVideoUrl) {
-                           downloadUrlAsFile(archiveVideoUrl, 'look.mp4');
-                         }
-                       }}
-                       className="py-4 rounded-3xl font-black text-[9px] uppercase tracking-widest bg-[var(--theme-color)] text-white border-2 border-[var(--theme-color)]"
-                     >
-                       Скачать видео
-                     </button>
-                     <button onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(archiveVideoUrl); }} className="py-4 bg-white border border-gray-100 rounded-3xl font-black text-[9px] uppercase tracking-widest">Поделиться видео</button>
-                   </>
-                 )}
-                 <button onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }} className="col-span-2 py-4 text-gray-400 font-black text-[9px] uppercase tracking-widest">Закрыть</button>
-              </div>
-           </div>
+                Купить в магазине
+              </button>
+              <button
+                onClick={() => {
+                  if (selectedHistoryItem) {
+                    downloadUrlAsFile(selectedHistoryItem.resultUrl, 'look.png');
+                  }
+                }}
+                className="py-3 bg-white border border-gray-100 rounded-3xl font-black text-[8px] uppercase tracking-widest"
+              >
+                Скачать фото
+              </button>
+              <button
+                onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(selectedHistoryItem.resultUrl); }}
+                className="py-3 bg-white border border-gray-100 rounded-3xl font-black text-[8px] uppercase tracking-widest"
+              >
+                Поделиться
+              </button>
+
+              {archiveVideoError && (
+                <p className="col-span-2 text-red-500 text-[9px] font-bold uppercase text-center py-2">{archiveVideoError}</p>
+              )}
+
+              {archiveVideoUrl && (
+                <>
+                  <div
+                    className="col-span-2 rounded-[3rem] overflow-hidden border-[3px] border-white shadow-4xl mt-4 bg-white ring-2 ring-[var(--theme-color)]/30 flex items-center justify-center"
+                    style={{ maxHeight: 'min(72vh, 820px)' }}
+                  >
+                    <video src={archiveVideoUrl} className="w-full max-h-[min(70vh,800px)] object-contain" controls playsInline />
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (archiveVideoUrl) {
+                        downloadUrlAsFile(archiveVideoUrl, 'look.mp4');
+                      }
+                    }}
+                    className="col-span-2 py-3 rounded-3xl font-black text-[8px] uppercase tracking-widest bg-white text-gray-900 border border-gray-200"
+                  >
+                    Скачать видео
+                  </button>
+                  <div className="col-span-2 grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(archiveVideoUrl); }}
+                      className="py-3 bg-white border border-gray-100 rounded-3xl font-black text-[8px] uppercase tracking-widest"
+                    >
+                      Поделиться видео
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setArchiveVideoError(null);
+                        setIsArchiveVideoProcessing(true);
+                        try {
+                          const videoModel = showVideoModelDropdown() ? selectedVideoModel : getDefaultVideoModel();
+                          const videoPrompt = getEffectiveVideoPrompt();
+                          const url = await generateVideo(selectedHistoryItem!.resultUrl, { model: videoModel, prompt: videoPrompt });
+                          incrementMetric('totalVideos').then(() => getMetrics().then(setMetrics));
+                          setArchiveVideoUrl(url);
+                          const idx = history.findIndex((h) => h.id === selectedHistoryItem.id);
+                          if (idx >= 0) {
+                            const updated: HistoryItem = { ...history[idx], videoUrl: url };
+                            const next = [...history];
+                            next[idx] = updated;
+                            setHistory(next);
+                            saveHistory(next, `${STORAGE_VER}_history`);
+                            setSelectedHistoryItem(updated);
+                          }
+                        } catch (err: unknown) {
+                          const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
+                          setArchiveVideoError(msg);
+                        } finally {
+                          setIsArchiveVideoProcessing(false);
+                        }
+                      }}
+                      disabled={isArchiveVideoProcessing}
+                      className="py-3 bg-white border border-theme text-theme rounded-3xl font-black text-[8px] uppercase tracking-widest shadow-md disabled:opacity-50 col-span-2"
+                    >
+                      {isArchiveVideoProcessing ? 'Создаём видео...' : 'Переделать видео'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              <button
+                onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }}
+                className="col-span-2 py-3 text-gray-400 font-black text-[9px] uppercase tracking-widest"
+              >
+                Назад в архив
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1159,6 +1286,9 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[130] flex items-end justify-center bg-black/70 backdrop-blur-xl p-8 animate-in fade-in">
           <div className="w-full max-w-[420px] bg-white rounded-[4rem] p-12 space-y-8 shadow-4xl text-center">
             <h2 className="serif text-4xl font-black italic text-gray-900">Клуб Стиля</h2>
+            <p className="text-[9px] text-gray-500 uppercase tracking-widest mt-1">
+              Войдите, чтобы примерять и сохранять образы
+            </p>
             <div className="space-y-4 text-left mt-4">
               <label className="flex items-start gap-3 cursor-pointer">
                 <input
@@ -1188,9 +1318,62 @@ const App: React.FC = () => {
             >
               Вступить в клуб
             </button>
-            <button onClick={() => { setAuthModal(false); setJoinConsent(false); }} className="w-full py-2 text-gray-300 text-[9px] font-black uppercase">
-              Пропустить
+            <button
+              onClick={() => { setAuthModal(false); setJoinConsent(false); }}
+              className="w-full py-2 text-gray-400 text-[9px] font-black uppercase"
+            >
+              Продолжить без входа
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Reset All Data Modal */}
+      {resetModalOpen && (
+        <div className="fixed inset-0 z-[180] flex items-center justify-center bg-black/60 backdrop-blur-md p-6 animate-in fade-in">
+          <div className="w-full max-w-[360px] bg-white rounded-[3rem] p-8 space-y-5 shadow-4xl">
+            <h3 className="serif text-2xl font-black italic text-center text-gray-900">Сбросить всё?</h3>
+            <p className="text-[10px] text-gray-600 text-center leading-relaxed">
+              Мы удалим историю примерок, витрину магазина, подключённые соцсети и локальные настройки этого устройства.
+              Демо-образы витрины и сама приложение останутся без изменений.
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  localStorage.clear();
+                  setPersonGallery([]);
+                  setHistory([]);
+                  setMerchantProducts([]);
+                  setTestClothes(null);
+                  setState({
+                    personImage: null,
+                    outfitImage: null,
+                    resultImage: null,
+                    currentShopUrl: null,
+                    isProcessing: false,
+                    status: '',
+                    error: null,
+                  });
+                  setResultVideoUrl(null);
+                  setIsVideoProcessing(false);
+                  setVideoError(null);
+                  initUser();
+                  goToTab('home');
+                  setResetModalOpen(false);
+                  setSuccessMsg('Данные для этого устройства сброшены');
+                  setTimeout(() => setSuccessMsg(null), 2500);
+                }}
+                className="w-full py-4 rounded-2xl bg-red-500 text-white text-[10px] font-black uppercase tracking-widest shadow-xl active:scale-95"
+              >
+                Да, удалить локальные данные
+              </button>
+              <button
+                onClick={() => setResetModalOpen(false)}
+                className="w-full py-3 rounded-2xl bg-gray-100 text-gray-600 text-[9px] font-black uppercase tracking-widest active:scale-95"
+              >
+                Отмена
+              </button>
+            </div>
           </div>
         </div>
       )}

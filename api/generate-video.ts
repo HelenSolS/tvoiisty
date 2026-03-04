@@ -380,98 +380,122 @@ export default async function handler(req: Req, res: Res) {
       });
     }
 
-    // Не-Veo (kling, hailuo, wan, grok): jobs/createTask + jobs/recordInfo
+    // Не-Veo (kling, hailuo, wan, grok): jobs/createTask + jobs/recordInfo. При "Server exception" KIE часто падает с первого раза — делаем один автоматический retry.
     const inputPayload = buildJobsCreateTaskInput(model, imageUrl, videoPrompt);
-    const createRes = await fetch(`${KIE_BASE}/jobs/createTask`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        input: inputPayload,
-      }),
-    });
+    const maxTries = 2;
+    let lastFailMsg: string | undefined;
 
-    let createData: { data?: { taskId?: string; creditsUsed?: number }; message?: string; msg?: string; code?: number } = {};
-    try {
-      createData = await createRes.json();
-    } catch (e) {
-      const endTs = Date.now();
-      console.error('[generate-video] jobs/createTask', { model, startTs, endTs, durationMs: endTs - startTs, httpStatus: createRes.status, error: 'response not JSON' });
-      return res.status(502).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
-    }
+    for (let tryNum = 0; tryNum < maxTries; tryNum++) {
+      if (tryNum > 0) {
+        console.error('[generate-video] retry', { model, tryNum, delayMs: 2000 });
+        await new Promise((r) => setTimeout(r, 2000));
+      }
 
-    const endTs = Date.now();
-    const creditsUsed = createData?.data?.creditsUsed;
-    console.error('[generate-video] jobs/createTask', { model, startTs, endTs, durationMs: endTs - startTs, httpStatus: createRes.status, creditsUsed, ...(createData?.msg ? { msg: createData.msg } : {}) });
-
-    if (!createRes.ok || (createData.code !== undefined && createData.code !== 200)) {
-      return res.status(502).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
-    }
-
-    const taskId = createData?.data?.taskId;
-    if (!taskId) {
-      return res.status(502).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
-    }
-
-    for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
-      const jobRes = await fetch(`${KIE_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
-        headers: { Authorization: `Bearer ${apiKey}` },
+      const createRes = await fetch(`${KIE_BASE}/jobs/createTask`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          input: inputPayload,
+        }),
       });
-      let jobData: { data?: { state?: string; resultJson?: string; failMsg?: string }; message?: string } = {};
+
+      let createData: { data?: { taskId?: string; creditsUsed?: number }; message?: string; msg?: string; code?: number } = {};
       try {
-        jobData = await jobRes.json();
-      } catch {
-        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-        continue;
-      }
-      if (!jobRes.ok) {
-        const totalMs = Date.now() - startTs;
-        console.error('[generate-video] jobs/recordInfo', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: jobRes.status });
-        return res.status(502).json({ error: 'Не удалось получить видео. Попробуйте позже.' });
+        createData = await createRes.json();
+      } catch (e) {
+        const endTs = Date.now();
+        console.error('[generate-video] jobs/createTask', { model, startTs, endTs, durationMs: endTs - startTs, httpStatus: createRes.status, error: 'response not JSON' });
+        return res.status(502).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
       }
 
-      const state = jobData?.data?.state;
-      if (state === 'success') {
-        let videoUrl: string | undefined;
-        const resultJson = jobData?.data?.resultJson;
-        if (typeof resultJson === 'string') {
-          try {
-            const parsed = JSON.parse(resultJson) as Record<string, unknown>;
-            videoUrl = extractVideoUrl(parsed);
-            if (!videoUrl && Array.isArray(parsed?.result_urls)) videoUrl = (parsed.result_urls as string[])[0];
-            if (!videoUrl && Array.isArray(parsed?.resultUrls)) videoUrl = (parsed.resultUrls as string[])[0];
-          } catch {
-            // ignore
-          }
-        }
-        if (videoUrl) {
-          const totalMs = Date.now() - startTs;
-          console.error('[generate-video] success', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 200 });
-          const mirroredUrl = await mirrorVideoToBlob(videoUrl, 'video.mp4');
-          return res.status(200).json({ videoUrl: mirroredUrl });
-        }
-        const totalMs = Date.now() - startTs;
-        console.error('[generate-video] success but no videoUrl in resultJson', { model, startTs, endTs: Date.now(), durationMs: totalMs });
-        return res.status(500).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
+      const endTs = Date.now();
+      const creditsUsed = createData?.data?.creditsUsed;
+      console.error('[generate-video] jobs/createTask', { model, startTs, endTs, durationMs: endTs - startTs, httpStatus: createRes.status, creditsUsed, tryNum, ...(createData?.msg ? { msg: createData.msg } : {}) });
+
+      if (!createRes.ok || (createData.code !== undefined && createData.code !== 200)) {
+        return res.status(502).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
       }
-      if (state === 'fail') {
-        const totalMs = Date.now() - startTs;
-        console.error('[generate-video] fail', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 422, errorMessage: jobData?.data?.failMsg });
-        return res.status(422).json({
-          error: 'Генерация видео не удалась. Попробуйте снова.',
+
+      const taskId = createData?.data?.taskId;
+      if (!taskId) {
+        return res.status(502).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
+      }
+
+      let retryableFail = false;
+      for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
+        const jobRes = await fetch(`${KIE_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
+          headers: { Authorization: `Bearer ${apiKey}` },
         });
+        let jobData: { data?: { state?: string; resultJson?: string; failMsg?: string }; message?: string } = {};
+        try {
+          jobData = await jobRes.json();
+        } catch {
+          await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+          continue;
+        }
+        if (!jobRes.ok) {
+          const totalMs = Date.now() - startTs;
+          console.error('[generate-video] jobs/recordInfo', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: jobRes.status });
+          return res.status(502).json({ error: 'Не удалось получить видео. Попробуйте позже.' });
+        }
+
+        const state = jobData?.data?.state;
+        if (state === 'success') {
+          let videoUrl: string | undefined;
+          const resultJson = jobData?.data?.resultJson;
+          if (typeof resultJson === 'string') {
+            try {
+              const parsed = JSON.parse(resultJson) as Record<string, unknown>;
+              videoUrl = extractVideoUrl(parsed);
+              if (!videoUrl && Array.isArray(parsed?.result_urls)) videoUrl = (parsed.result_urls as string[])[0];
+              if (!videoUrl && Array.isArray(parsed?.resultUrls)) videoUrl = (parsed.resultUrls as string[])[0];
+            } catch {
+              // ignore
+            }
+          }
+          if (videoUrl) {
+            const totalMs = Date.now() - startTs;
+            console.error('[generate-video] success', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 200, tryNum });
+            const mirroredUrl = await mirrorVideoToBlob(videoUrl, 'video.mp4');
+            return res.status(200).json({ videoUrl: mirroredUrl });
+          }
+          const totalMs = Date.now() - startTs;
+          console.error('[generate-video] success but no videoUrl in resultJson', { model, startTs, endTs: Date.now(), durationMs: totalMs });
+          return res.status(500).json({ error: 'Не удалось создать видео. Попробуйте позже.' });
+        }
+        if (state === 'fail') {
+          lastFailMsg = jobData?.data?.failMsg;
+          const totalMs = Date.now() - startTs;
+          console.error('[generate-video] fail', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 422, errorMessage: lastFailMsg, tryNum });
+          const retryable = typeof lastFailMsg === 'string' && /server exception|please try again|try again later/i.test(lastFailMsg);
+          if (retryable && tryNum < maxTries - 1) {
+            retryableFail = true;
+            break; // выходим из poll-цикла, следующий tryNum сделает новый createTask
+          }
+          return res.status(422).json({
+            error: 'Генерация видео не удалась. Попробуйте снова.',
+          });
+        }
+
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
       }
 
-      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+      if (retryableFail) continue; // следующая итерация tryNum
+      const totalMs = Date.now() - startTs;
+      console.error('[generate-video] timeout', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 408, tryNum });
+      return res.status(408).json({
+        error: 'Превышено время ожидания для видео. Попробуйте ещё раз.',
+      });
     }
 
     const totalMs = Date.now() - startTs;
-    console.error('[generate-video] timeout', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 408 });
-    return res.status(408).json({
-      error: 'Превышено время ожидания для видео. Попробуйте ещё раз.',
+    console.error('[generate-video] fail after retries', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 422, lastFailMsg });
+    return res.status(422).json({
+      error: 'Генерация видео не удалась. Попробуйте снова.',
     });
   } catch (err: unknown) {
     const totalMs = Date.now() - startTs;
