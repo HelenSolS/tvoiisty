@@ -459,7 +459,8 @@ const App: React.FC = () => {
               <svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.64.304 1.24.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
             )}
           </div>
-          <p className="text-[7px] font-bold uppercase tracking-[0.3em] text-gray-400 mt-1">Digital Atelier</p>
+          {/* Подзаголовок без английских слов */}
+          <p className="text-[7px] font-bold uppercase tracking-[0.3em] text-gray-400 mt-1">Онлайн примерочная</p>
         </div>
         <div className="flex items-center gap-5">
           {adminSessionUnlocked && (
@@ -701,18 +702,6 @@ const App: React.FC = () => {
                   )}
                 </div>
 
-                {/* Upload Your Own */}
-                <div className="pt-8 space-y-6 border-t border-gray-100 text-center">
-                  <h3 className="serif text-xl font-black italic">Своя вещь</h3>
-                  <div className="h-44 rounded-[2.5rem] overflow-hidden shadow-2xl">
-                    <ImageUploader 
-                      label={testClothes ? "Загружено" : "Загрузить фото вещи"} 
-                      image={testClothes} 
-                      onImageSelect={(img) => { setTestClothes(img); saveToStorage('test_clothes', img); handleQuickTryOn(img, '#'); }} 
-                      icon={<svg className="w-10 h-10 text-theme" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>} 
-                    />
-                  </div>
-                </div>
               </div>
             ) : activeTab === 'history' ? (
               <div className="px-4 py-5 space-y-6 animate-in fade-in max-w-[420px] mx-auto">
@@ -1099,97 +1088,120 @@ const App: React.FC = () => {
       {/* Selected History Item Modal */}
       {selectedHistoryItem && (
         <div className="fixed inset-0 z-[120] flex items-start justify-center bg-white/98 backdrop-blur-3xl p-6 pt-16 pb-24 animate-in zoom-in-95 overflow-y-auto">
-           <div className="w-full max-w-[420px] flex flex-col relative">
-              <button onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }} className="absolute top-6 right-6 text-gray-400 z-10"><svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
-              <div
-                className="relative rounded-[3rem] overflow-hidden shadow-4xl border-[3px] border-white ring-2 ring-[var(--theme-color)]/40 mt-4 shrink-0 bg-white flex items-center justify-center"
-                style={{ maxHeight: 'min(72vh, 820px)' }}
+          <div className="w-full max-w-[420px] flex flex-col relative">
+            <button
+              onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }}
+              className="absolute top-4 right-4 text-gray-500 z-10 flex items-center gap-2 px-2 py-1 rounded-full bg-white/80 shadow-lg"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+              <span className="text-[8px] font-black uppercase tracking-widest">Назад</span>
+            </button>
+
+            <div
+              className="relative rounded-[3rem] overflow-hidden shadow-4xl border-[3px] border-white ring-2 ring-[var(--theme-color)]/40 mt-4 shrink-0 bg-white flex items-center justify-center"
+              style={{ maxHeight: 'min(72vh, 820px)' }}
+            >
+              <img src={selectedHistoryItem.resultUrl} className="w-full max-h-[min(70vh,800px)] object-contain" alt="" />
+            </div>
+
+            <div className="mt-8 grid grid-cols-2 gap-3">
+              <button
+                onClick={() => openInStore(selectedHistoryItem.shopUrl)}
+                className="col-span-2 py-4 rounded-3xl font-black text-[11px] uppercase tracking-widest shadow-2xl flex items-center justify-center gap-2 bg-[var(--theme-color)] text-white border-2 border-[var(--theme-color)] ring-2 ring-black/10"
               >
-                <img src={selectedHistoryItem.resultUrl} className="w-full max-h-[min(70vh,800px)] object-contain" alt="" />
-              </div>
-              <div className="mt-10 grid grid-cols-2 gap-4">
-                 <button 
-                   onClick={() => openInStore(selectedHistoryItem.shopUrl)} 
-                   className="col-span-2 py-5 rounded-3xl font-black text-[12px] uppercase tracking-widest shadow-2xl flex items-center justify-center gap-3 bg-[var(--theme-color)] text-white border-2 border-[var(--theme-color)] ring-2 ring-black/10"
-                 >
-                   Купить в магазине
-                 </button>
-                 {showVideoModelDropdown() && showModelChoiceOnHome() && (
-                 <div className="col-span-2">
-                   <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Модель для видео</label>
-                   <select value={selectedVideoModel} onChange={e => setSelectedVideoModel(e.target.value)} className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme">
-                     {getVideoModelsForDropdown().map(m => <option key={m} value={m}>{m}</option>)}
-                   </select>
-                 </div>
-                 )}
-                 <button
-                   onClick={async () => {
-                     setArchiveVideoError(null);
-                     setIsArchiveVideoProcessing(true);
-                     try {
-                       const videoModel = showVideoModelDropdown() ? selectedVideoModel : getDefaultVideoModel();
-                       const videoPrompt = getEffectiveVideoPrompt();
-                       const url = await generateVideo(selectedHistoryItem!.resultUrl, { model: videoModel, prompt: videoPrompt });
-                       incrementMetric('totalVideos').then(() => getMetrics().then(setMetrics));
-                       setArchiveVideoUrl(url);
-                       // Обновляем видео и в истории: одна примерка = одно текущее видео.
-                       const idx = history.findIndex((h) => h.id === selectedHistoryItem.id);
-                       if (idx >= 0) {
-                         const updated: HistoryItem = { ...history[idx], videoUrl: url };
-                         const next = [...history];
-                         next[idx] = updated;
-                         setHistory(next);
-                         saveHistory(next, `${STORAGE_VER}_history`);
-                         setSelectedHistoryItem(updated);
-                       }
-                     } catch (err: unknown) {
-                       const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
-                       setArchiveVideoError(msg);
-                     } finally {
-                       setIsArchiveVideoProcessing(false);
-                     }
-                   }}
-                   disabled={isArchiveVideoProcessing}
-                   className="col-span-2 py-5 bg-white border-2 border-theme text-theme rounded-3xl font-black text-[10px] uppercase tracking-widest shadow-xl disabled:opacity-50 flex items-center justify-center gap-2"
-                 >
-                   {isArchiveVideoProcessing ? 'Создаём видео...' : 'Анимировать'}
-                 </button>
-                <button
-                  onClick={() => {
-                    if (selectedHistoryItem) {
-                      downloadUrlAsFile(selectedHistoryItem.resultUrl, 'look.png');
-                    }
-                  }}
-                  className="py-4 bg-white border border-gray-100 rounded-3xl font-black text-[9px] uppercase tracking-widest"
-                >
-                  Скачать фото
-                </button>
-                 <button onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(selectedHistoryItem.resultUrl); }} className="py-4 bg-white border border-gray-100 rounded-3xl font-black text-[9px] uppercase tracking-widest">Поделиться</button>
-                 {archiveVideoError && (
-                   <p className="col-span-2 text-red-500 text-[9px] font-bold uppercase text-center py-2">{archiveVideoError}</p>
-                 )}
-                 {archiveVideoUrl && (
-                   <>
-                     <div className="col-span-2 rounded-2xl overflow-hidden border-2 border-white shadow-xl aspect-[9/16] max-h-64 bg-black">
-                       <video src={archiveVideoUrl} className="w-full h-full object-contain" controls playsInline />
-                     </div>
-                     <button
-                       title="Удалось? В Telegram или скачайте. В MVP в архиве только последние примерки — доработаем."
-                       onClick={() => {
-                         if (archiveVideoUrl) {
-                           downloadUrlAsFile(archiveVideoUrl, 'look.mp4');
-                         }
-                       }}
-                       className="py-4 rounded-3xl font-black text-[9px] uppercase tracking-widest bg-[var(--theme-color)] text-white border-2 border-[var(--theme-color)]"
-                     >
-                       Скачать видео
-                     </button>
-                     <button onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(archiveVideoUrl); }} className="py-4 bg-white border border-gray-100 rounded-3xl font-black text-[9px] uppercase tracking-widest">Поделиться видео</button>
-                   </>
-                 )}
-                 <button onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }} className="col-span-2 py-4 text-gray-400 font-black text-[9px] uppercase tracking-widest">Закрыть</button>
-              </div>
-           </div>
+                Купить в магазине
+              </button>
+              <button
+                onClick={() => {
+                  if (selectedHistoryItem) {
+                    downloadUrlAsFile(selectedHistoryItem.resultUrl, 'look.png');
+                  }
+                }}
+                className="py-3 bg-white border border-gray-100 rounded-3xl font-black text-[8px] uppercase tracking-widest"
+              >
+                Скачать фото
+              </button>
+              <button
+                onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(selectedHistoryItem.resultUrl); }}
+                className="py-3 bg-white border border-gray-100 rounded-3xl font-black text-[8px] uppercase tracking-widest"
+              >
+                Поделиться
+              </button>
+
+              {archiveVideoError && (
+                <p className="col-span-2 text-red-500 text-[9px] font-bold uppercase text-center py-2">{archiveVideoError}</p>
+              )}
+
+              {archiveVideoUrl && (
+                <>
+                  <div
+                    className="col-span-2 rounded-[3rem] overflow-hidden border-[2px] border-white shadow-xl mt-4 bg-black flex items-center justify-center"
+                    style={{ maxHeight: 'min(72vh, 820px)' }}
+                  >
+                    <video src={archiveVideoUrl} className="w-full max-h-[min(70vh,800px)] object-contain" controls playsInline />
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (archiveVideoUrl) {
+                        downloadUrlAsFile(archiveVideoUrl, 'look.mp4');
+                      }
+                    }}
+                    className="col-span-2 py-3 rounded-3xl font-black text-[8px] uppercase tracking-widest bg-white text-gray-900 border border-gray-200"
+                  >
+                    Скачать видео
+                  </button>
+                  <div className="col-span-2 grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(archiveVideoUrl); }}
+                      className="py-3 bg-white border border-gray-100 rounded-3xl font-black text-[8px] uppercase tracking-widest"
+                    >
+                      Поделиться видео
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setArchiveVideoError(null);
+                        setIsArchiveVideoProcessing(true);
+                        try {
+                          const videoModel = showVideoModelDropdown() ? selectedVideoModel : getDefaultVideoModel();
+                          const videoPrompt = getEffectiveVideoPrompt();
+                          const url = await generateVideo(selectedHistoryItem!.resultUrl, { model: videoModel, prompt: videoPrompt });
+                          incrementMetric('totalVideos').then(() => getMetrics().then(setMetrics));
+                          setArchiveVideoUrl(url);
+                          const idx = history.findIndex((h) => h.id === selectedHistoryItem.id);
+                          if (idx >= 0) {
+                            const updated: HistoryItem = { ...history[idx], videoUrl: url };
+                            const next = [...history];
+                            next[idx] = updated;
+                            setHistory(next);
+                            saveHistory(next, `${STORAGE_VER}_history`);
+                            setSelectedHistoryItem(updated);
+                          }
+                        } catch (err: unknown) {
+                          const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
+                          setArchiveVideoError(msg);
+                        } finally {
+                          setIsArchiveVideoProcessing(false);
+                        }
+                      }}
+                      disabled={isArchiveVideoProcessing}
+                      className="py-3 bg-white border border-theme text-theme rounded-3xl font-black text-[8px] uppercase tracking-widest shadow-md disabled:opacity-50 col-span-2"
+                    >
+                      {isArchiveVideoProcessing ? 'Создаём видео...' : 'Переделать видео'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              <button
+                onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }}
+                className="col-span-2 py-3 text-gray-400 font-black text-[9px] uppercase tracking-widest"
+              >
+                Назад в архив
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
