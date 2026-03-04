@@ -49,6 +49,8 @@ export interface AdminSettings {
   imageFallbackEnabled: boolean;
   /** Локально: показывать выбор моделей (фото/видео) на главном экране. false = только в Настройках → Лаборатория. Не влияет на пользователей без доступа в админку. */
   showModelChoiceOnHome: boolean;
+  /** Базовый URL папки с демо-образами витрины (нейрониколь). Из неё берём 6 стартовых картинок. */
+  demoBoutiqueBaseUrl: string;
 }
 
 export type CategoryType = 'all' | 'dresses' | 'suits' | 'casual' | 'outerwear' | 'men' | 'women';

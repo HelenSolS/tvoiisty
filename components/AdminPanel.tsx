@@ -183,6 +183,29 @@ export const AdminPanel: React.FC<{
           <p className="text-[8px] text-gray-400 mt-1.5">Выключено: выбор модели только в Дополнительных настройках.</p>
         </section>
 
+        {/* Демо-витрина: базовый URL папки с образами на нейрониколь */}
+        <section className="p-4 rounded-2xl bg-white border border-gray-200 space-y-2">
+          <p className="text-[9px] font-black uppercase text-gray-500">
+            Демо-витрина: папка с образами
+          </p>
+          <p className="text-[8px] text-gray-400">
+            Отсюда берём 6 стартовых образов для витрины (112.jpg, 113.jpg, 114.jpg, 333.webp, 444.jpg, 111.jpg). 
+            Файлы лежат на вашем сервере, здесь задаётся только базовый URL папки.
+          </p>
+          <input
+            type="url"
+            className="w-full py-2.5 px-4 rounded-xl border-2 border-gray-200 bg-gray-50 text-[10px] font-mono"
+            value={settings.demoBoutiqueBaseUrl}
+            onChange={(e) =>
+              setSettings((s) => ({
+                ...s,
+                demoBoutiqueBaseUrl: e.target.value,
+              }))
+            }
+            placeholder="https://animo.neyronikol.ru/public/foto_1"
+          />
+        </section>
+
         {/* Провайдер */}
         <section>
           <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Провайдер (KIE / Fal)</p>

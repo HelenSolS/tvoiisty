@@ -30,6 +30,8 @@ const DEFAULT_ADMIN_SETTINGS: AdminSettings = {
   imageFallbackEnabled: true,
   /** По умолчанию выбор моделей только в Лаборатории, не на главном — чтобы не ломать показ инвестору. */
   showModelChoiceOnHome: false,
+  /** По умолчанию берём образы с нейрониколь (сжатые демо-фото). */
+  demoBoutiqueBaseUrl: 'https://animo.neyronikol.ru/public/foto_1',
 };
 
 export function getAdminSettings(): AdminSettings {
@@ -54,6 +56,10 @@ export function getAdminSettings(): AdminSettings {
       videoPromptCustom: typeof parsed.videoPromptCustom === 'string' ? parsed.videoPromptCustom : '',
       imageFallbackEnabled: parsed.imageFallbackEnabled === true,
       showModelChoiceOnHome: parsed.showModelChoiceOnHome === true,
+      demoBoutiqueBaseUrl:
+        typeof parsed.demoBoutiqueBaseUrl === 'string' && parsed.demoBoutiqueBaseUrl.trim()
+          ? parsed.demoBoutiqueBaseUrl.trim()
+          : DEFAULT_ADMIN_SETTINGS.demoBoutiqueBaseUrl,
     };
   } catch {
     return DEFAULT_ADMIN_SETTINGS;
@@ -111,6 +117,14 @@ export function getImageFallbackEnabled(): boolean {
 /** Локально: показывать выбор моделей на главном экране (для теста). false = только в Лаборатории. */
 export function showModelChoiceOnHome(): boolean {
   return getAdminSettings().showModelChoiceOnHome === true;
+}
+
+/** Базовый URL папки с демо-витриной (нейрониколь). */
+export function getDemoBoutiqueBaseUrl(): string {
+  const s = getAdminSettings();
+  return s.demoBoutiqueBaseUrl && s.demoBoutiqueBaseUrl.trim()
+    ? s.demoBoutiqueBaseUrl.trim()
+    : DEFAULT_ADMIN_SETTINGS.demoBoutiqueBaseUrl;
 }
 
 /** Запасная модель для картинок (при авто-переключении). */
