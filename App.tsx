@@ -367,7 +367,12 @@ const App: React.FC = () => {
         }
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
+      const raw = err instanceof Error ? err.message : '';
+      const isNetwork =
+        /failed to fetch|network error|load failed/i.test(raw) || raw === '';
+      const msg = isNetwork
+        ? 'Нет связи с сервером. Проверьте интернет и попробуйте снова.'
+        : (raw || 'Не удалось создать видео. Попробуйте снова.');
       setVideoError(msg);
     } finally {
       setIsVideoProcessing(false);
@@ -490,7 +495,7 @@ const App: React.FC = () => {
              {/* Главные действия сразу под картинкой — всегда видны */}
              <button 
                onClick={() => openInStore(state.currentShopUrl!)} 
-               className="w-full py-5 rounded-3xl font-black text-[12px] uppercase tracking-widest shadow-2xl active:scale-95 flex items-center justify-center gap-3 bg-[var(--theme-color)] text-white border-2 border-[var(--theme-color)] ring-2 ring-black/10"
+               className="w-full py-4 rounded-3xl font-black text-[11px] uppercase tracking-widest shadow-2xl active:scale-95 flex items-center justify-center gap-2 bg-[var(--theme-color)] text-white border-2 border-[var(--theme-color)] ring-2 ring-black/10"
              >
                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
                Купить в магазине
@@ -509,14 +514,15 @@ const App: React.FC = () => {
                <button
                  onClick={handleCreateVideo}
                  disabled={isVideoProcessing}
-                 className="w-full py-5 bg-white border-2 border-theme text-theme rounded-3xl font-black text-[12px] uppercase tracking-widest shadow-xl active:scale-95 flex items-center justify-center gap-3 disabled:opacity-60"
+                 className="w-full py-4 bg-white border-2 border-theme text-theme rounded-3xl font-black text-[11px] uppercase tracking-widest shadow-xl active:scale-95 flex items-center justify-center gap-2 disabled:opacity-60"
+                 title={resultVideoUrl ? 'Пересоздать видео для этого образа' : 'Создать видео по этому образу'}
                >
                  {isVideoProcessing ? (
                    <>Создаём видео...</>
                  ) : (
                    <>
-                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/><path d="M4 5h2v14H4z"/></svg>
-                     Создать видео
+                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/><path d="M4 5h2v14H4z"/></svg>
+                     {resultVideoUrl ? 'Переделать видео' : 'Создать видео'}
                    </>
                  )}
                </button>
@@ -527,23 +533,44 @@ const App: React.FC = () => {
                  </p>
                )}
                {resultVideoUrl && (
-                 <>
-                  <div className="rounded-[3rem] overflow-hidden border-[2px] border-white shadow-xl bg-black">
-                     <div className="aspect-[9/16] max-h-[70vh] w-full mx-auto">
-                       <video src={resultVideoUrl} controls className="w-full h-full object-contain" playsInline />
-                     </div>
-                   </div>
-                   <button onClick={handleDownloadVideo} title="Удалось? Отправьте в Telegram или скачайте. В MVP в архиве только последние примерки — доработаем." className="w-full py-3 bg-white border border-gray-100 rounded-2xl font-black text-[9px] uppercase tracking-widest shadow-lg active:scale-95">
-                     Скачать видео
-                   </button>
-                 </>
+                <>
+                 <div className="rounded-[3rem] overflow-hidden border-[2px] border-white shadow-xl bg-black">
+                    <div className="aspect-[9/16] max-h-[70vh] w-full mx-auto">
+                      <video src={resultVideoUrl} controls className="w-full h-full object-contain" playsInline />
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleDownloadVideo}
+                    title="Скачать текущее видео на устройство"
+                    className="w-full py-3 bg-white border border-gray-100 rounded-2xl font-black text-[9px] uppercase tracking-widest shadow-lg active:scale-95"
+                  >
+                    Скачать видео
+                  </button>
+                </>
                )}
              </div>
 
-             <div className="grid grid-cols-2 gap-4">
-                <button onClick={() => handleDownload(state.resultImage!)} className="py-4 bg-white border border-gray-200 rounded-3xl font-black text-[9px] uppercase tracking-widest shadow-xl active:scale-95 text-gray-800">Скачать</button>
-                <button onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(state.resultImage); }} className="py-4 bg-white border border-gray-200 rounded-3xl font-black text-[9px] uppercase tracking-widest shadow-xl active:scale-95 text-gray-800">Поделиться</button>
-                <button onClick={() => { setState(s => ({ ...s, resultImage: null })); setResultVideoUrl(null); setVideoError(null); }} className="col-span-2 py-4 text-gray-500 font-black text-[9px] uppercase tracking-widest active:scale-95">Примерить другое</button>
+             <div className="grid grid-cols-2 gap-3">
+               <button
+                 onClick={() => handleDownload(state.resultImage!)}
+                 title="Скачать итоговое фото примерки"
+                 className="py-3 bg-white border border-gray-200 rounded-3xl font-black text-[8px] uppercase tracking-widest shadow-xl active:scale-95 text-gray-800"
+               >
+                 Скачать фото
+               </button>
+               <button
+                 onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(state.resultImage); }}
+                 title="Поделиться итоговым фото"
+                 className="py-3 bg-white border border-gray-200 rounded-3xl font-black text-[8px] uppercase tracking-widest shadow-xl active:scale-95 text-gray-800"
+               >
+                 Поделиться
+               </button>
+               <button
+                 onClick={() => { setState(s => ({ ...s, resultImage: null })); setResultVideoUrl(null); setVideoError(null); }}
+                 className="col-span-2 py-3 text-gray-500 font-black text-[9px] uppercase tracking-widest active:scale-95"
+               >
+                 Примерить другое
+               </button>
              </div>
           </div>
         ) : (
@@ -567,11 +594,22 @@ const App: React.FC = () => {
                       <button
                         key={item.id}
                         onClick={() => setState(s=>({...s, personImage:item.imageUrl}))}
-                        className={`flex-shrink-0 w-24 h-32 rounded-[2rem] overflow-hidden border-[2px] transition-all ${
-                          state.personImage === item.imageUrl ? 'border-theme shadow-3xl scale-105' : 'border-white opacity-80'
+                        className={`relative flex-shrink-0 w-24 h-32 rounded-[2rem] overflow-hidden border-[2px] transition-all ${
+                          state.personImage === item.imageUrl
+                            ? 'border-theme shadow-3xl scale-105 ring-2 ring-theme'
+                            : 'border-white opacity-60'
                         }`}
                       >
                         <img src={item.imageUrl} className="w-full h-full object-cover" />
+                        {state.personImage === item.imageUrl && (
+                          <div className="absolute inset-0 pointer-events-none">
+                            <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-theme text-white flex items-center justify-center shadow-lg">
+                              <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3.25-3.25a1 1 0 111.414-1.414L8.5 11.086l6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                          </div>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -690,7 +728,12 @@ const App: React.FC = () => {
                       <div
                         key={item.id}
                         className="aspect-[3/4] rounded-[2.5rem] overflow-hidden border-[2px] border-white shadow-xl active:scale-95 relative"
-                        onClick={() => setSelectedHistoryItem(item)}
+                        onClick={() => {
+                          setSelectedHistoryItem(item);
+                          // Если к этой примерке уже есть видео, сразу подхватываем его в модалку.
+                          setArchiveVideoUrl(item.videoUrl ?? null);
+                          setArchiveVideoError(null);
+                        }}
                       >
                         <img src={item.resultUrl} className="w-full h-full object-cover" />
                         {item.videoUrl && (
@@ -1089,6 +1132,16 @@ const App: React.FC = () => {
                        const url = await generateVideo(selectedHistoryItem!.resultUrl, { model: videoModel, prompt: videoPrompt });
                        incrementMetric('totalVideos').then(() => getMetrics().then(setMetrics));
                        setArchiveVideoUrl(url);
+                       // Обновляем видео и в истории: одна примерка = одно текущее видео.
+                       const idx = history.findIndex((h) => h.id === selectedHistoryItem.id);
+                       if (idx >= 0) {
+                         const updated: HistoryItem = { ...history[idx], videoUrl: url };
+                         const next = [...history];
+                         next[idx] = updated;
+                         setHistory(next);
+                         saveHistory(next, `${STORAGE_VER}_history`);
+                         setSelectedHistoryItem(updated);
+                       }
                      } catch (err: unknown) {
                        const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
                        setArchiveVideoError(msg);
@@ -1159,6 +1212,9 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[130] flex items-end justify-center bg-black/70 backdrop-blur-xl p-8 animate-in fade-in">
           <div className="w-full max-w-[420px] bg-white rounded-[4rem] p-12 space-y-8 shadow-4xl text-center">
             <h2 className="serif text-4xl font-black italic text-gray-900">Клуб Стиля</h2>
+            <p className="text-[9px] text-gray-500 uppercase tracking-widest mt-1">
+              Войдите, чтобы примерять и сохранять образы
+            </p>
             <div className="space-y-4 text-left mt-4">
               <label className="flex items-start gap-3 cursor-pointer">
                 <input
@@ -1188,8 +1244,11 @@ const App: React.FC = () => {
             >
               Вступить в клуб
             </button>
-            <button onClick={() => { setAuthModal(false); setJoinConsent(false); }} className="w-full py-2 text-gray-300 text-[9px] font-black uppercase">
-              Пропустить
+            <button
+              onClick={() => { setAuthModal(false); setJoinConsent(false); }}
+              className="w-full py-2 text-gray-400 text-[9px] font-black uppercase"
+            >
+              Продолжить без входа
             </button>
           </div>
         </div>
