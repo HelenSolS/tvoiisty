@@ -44,6 +44,9 @@ const INITIAL_BOUTIQUE: CuratedOutfit[] = [
   { id: 'n111', name: 'Образ 111', imageUrl: `${DEMO_BOUTIQUE_BASE}/111.jpg`, shopUrl: '#', category: 'casual' },
 ];
 
+const isDemoOutfitUrl = (url: string): boolean =>
+  !!DEMO_BOUTIQUE_BASE && url.startsWith(DEMO_BOUTIQUE_BASE);
+
 const CATEGORIES: { id: CategoryType; label: string }[] = [
   { id: 'all', label: 'Все' },
   { id: 'dresses', label: 'Платья' },
@@ -116,7 +119,7 @@ const App: React.FC = () => {
   const [sceneType, setSceneType] = useState<SceneType>('minimal');
   /** Согласие на обработку ПД в модалке «Клуб Стиля». */
   const [joinConsent, setJoinConsent] = useState(false);
-  /** URL карточек, по которым уже запущена загрузка+сжатие (чтобы не дублировать). */
+  /** URL карточек, по которым уже запущена загрузка+сжатие (чтобы не дублировать). Клиентские загрузки жмём, свои демо-образы — нет. */
   const loadingUrls = useRef<Set<string>>(new Set());
   /** Блок с видео на экране результата — для автопрокрутки, когда видео готово. */
   const resultVideoRef = useRef<HTMLDivElement | null>(null);
@@ -244,6 +247,9 @@ const App: React.FC = () => {
       let outfitBase64: string;
       if (outfitUrl.startsWith('data:')) {
         outfitBase64 = outfitUrl;
+      } else if (isDemoOutfitUrl(outfitUrl)) {
+        // Наши демо-образы с нейрониколь: не жмём, не блокируем — просто берём как есть.
+        outfitBase64 = await urlToBase64(outfitUrl);
       } else {
         const stored = await getCompressedByUrl(outfitUrl);
         if (!stored) {
@@ -318,9 +324,11 @@ const App: React.FC = () => {
     }
   };
 
-  /** Загрузили картинку по URL → сразу сжали → сохранили в IndexedDB. Handler примерки только читает оттуда. */
+  /** Загрузили картинку по URL → сразу сжали → сохранили в IndexedDB. Handler примерки только читает оттуда (кроме наших демо-образов). */
   const loadThenCompressAndStore = (url: string) => {
     if (!url.startsWith('http') || loadingUrls.current.has(url)) return;
+    // Демо-образы витрины (нейрониколь) не жмём — они и так подготовлены.
+    if (isDemoOutfitUrl(url)) return;
     loadingUrls.current.add(url);
     urlToBase64(url)
       .then(resizeDataUrlForStorage)
@@ -365,6 +373,10 @@ const App: React.FC = () => {
       });
       setResultVideoUrl(videoUrl);
       incrementMetric('totalVideos').then(() => getMetrics().then(setMetrics));
+
+      // Явный сигнал пользователю: видео готово.
+      setSuccessMsg('Видео готово. Посмотрите его ниже или в архиве.');
+      setTimeout(() => setSuccessMsg(null), 4000);
 
       // Привязываем видео к последней примерке в истории (если есть).
       if (!videoUrl.startsWith('data:') && history.length > 0) {
@@ -457,14 +469,27 @@ const App: React.FC = () => {
     }
   };
 
+  const isGlobalLoading = state.isProcessing || isVideoProcessing || isArchiveVideoProcessing;
+  const globalStatus =
+    state.isProcessing && state.status
+      ? state.status
+      : isArchiveVideoProcessing
+      ? 'Создаём видео из архива...'
+      : isVideoProcessing
+      ? 'Создаём видео...'
+      : '';
+
   return (
     <div className={`app-container flex flex-col h-screen overflow-hidden`}>
-      {/* Loader */}
-      {state.isProcessing && (
-        <div className="fixed inset-0 z-[200] bg-white/95 backdrop-blur-3xl flex flex-col items-center justify-center p-12">
-           <div className="w-16 h-16 border-[5px] border-theme border-t-transparent rounded-full animate-spin mb-8 shadow-2xl"></div>
-           <h2 className="serif text-2xl font-black italic text-theme text-center">{state.status}</h2>
-           <p className="text-[9px] font-bold text-gray-400 mt-4 uppercase tracking-[0.2em] animate-pulse">ИИ создает ваш идеальный образ</p>
+      {/* Глобальный индикатор загрузки (фото или видео) — компактный, не блокирует интерфейс. */}
+      {isGlobalLoading && (
+        <div className="fixed top-0 left-0 right-0 z-[200] flex justify-center pointer-events-none">
+          <div className="mt-20 inline-flex items-center gap-2 px-5 py-2 rounded-full bg-white/95 border border-gray-200 shadow-2xl pointer-events-auto">
+            <div className="w-4 h-4 border-[3px] border-theme border-t-transparent rounded-full animate-spin" />
+            <span className="text-[9px] font-black uppercase tracking-[0.25em] text-gray-700">
+              {globalStatus || 'Создаём образ...'}
+            </span>
+          </div>
         </div>
       )}
 
@@ -566,7 +591,7 @@ const App: React.FC = () => {
                 <>
                  <div
                    ref={resultVideoRef}
-                   className="rounded-[3rem] overflow-hidden border-[2px] border-white shadow-xl bg-black"
+                   className="rounded-[3rem] overflow-hidden border-[3px] border-white shadow-4xl bg-white ring-2 ring-[var(--theme-color)]/30"
                  >
                     <div className="aspect-[9/16] max-h-[70vh] w-full mx-auto">
                       <video src={resultVideoUrl} controls className="w-full h-full object-contain" playsInline />
@@ -1169,7 +1194,7 @@ const App: React.FC = () => {
               {archiveVideoUrl && (
                 <>
                   <div
-                    className="col-span-2 rounded-[3rem] overflow-hidden border-[2px] border-white shadow-xl mt-4 bg-black flex items-center justify-center"
+                    className="col-span-2 rounded-[3rem] overflow-hidden border-[3px] border-white shadow-4xl mt-4 bg-white ring-2 ring-[var(--theme-color)]/30 flex items-center justify-center"
                     style={{ maxHeight: 'min(72vh, 820px)' }}
                   >
                     <video src={archiveVideoUrl} className="w-full max-h-[min(70vh,800px)] object-contain" controls playsInline />
