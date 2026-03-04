@@ -5,6 +5,8 @@
  * Kling, Hailuo, Wan, Grok: POST /api/v1/jobs/createTask, опрос jobs/recordInfo. Всегда 9:16 где применимо.
  */
 
+import { put } from '@vercel/blob';
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Req = { method?: string; body?: Record<string, unknown> };
 type Res = { status: (n: number) => { json: (o: object) => void } };
@@ -12,6 +14,34 @@ type Res = { status: (n: number) => { json: (o: object) => void } };
 const DEFAULT_KIE_BASE = 'https://api.kie.ai/api/v1';
 const POLL_INTERVAL_MS = 3000;
 const POLL_MAX_ATTEMPTS = 80;
+
+/** Зеркалируем видео в Blob-хранилище, чтобы не зависеть от внешнего CDN KIE. */
+async function mirrorVideoToBlob(videoUrl: string, filename: string): Promise<string> {
+  if (!process.env.BLOB_READ_WRITE_TOKEN) return videoUrl;
+  if (!videoUrl.startsWith('http')) return videoUrl;
+  try {
+    const res = await fetch(videoUrl);
+    if (!res.ok) {
+      console.error('[generate-video] mirrorVideoToBlob fetch failed', {
+        status: res.status,
+        statusText: res.statusText,
+      });
+      return videoUrl;
+    }
+    const arrayBuf = await res.arrayBuffer();
+    const buf = Buffer.from(arrayBuf);
+    const blob = await put(`tryon/videos/${Date.now()}-${filename}`, buf, { access: 'public' });
+    if (blob.url.includes('private.blob.vercel-storage.com')) {
+      console.error(
+        '[generate-video] mirrored Blob URL is private — use a PUBLIC Blob store and BLOB_READ_WRITE_TOKEN.'
+      );
+    }
+    return blob.url;
+  } catch (e) {
+    console.error('[generate-video] mirrorVideoToBlob error', e);
+    return videoUrl;
+  }
+}
 
 function isVeoModel(model: string): boolean {
   return model.startsWith('veo');
@@ -241,7 +271,8 @@ export default async function handler(req: Req, res: Res) {
           if (videoUrl) {
             const totalMs = Date.now() - startTs;
             console.error('[generate-video] success', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 200 });
-            return res.status(200).json({ videoUrl });
+            const mirroredUrl = await mirrorVideoToBlob(videoUrl, 'veo.mp4');
+            return res.status(200).json({ videoUrl: mirroredUrl });
           }
           const totalMs = Date.now() - startTs;
           console.error('[generate-video] successFlag=1 but no videoUrl', { model, startTs, endTs: Date.now(), durationMs: totalMs });
@@ -327,7 +358,8 @@ export default async function handler(req: Req, res: Res) {
           if (typeof videoUrl === 'string') {
             const totalMs = Date.now() - startTs;
             console.error('[generate-video] success', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 200 });
-            return res.status(200).json({ videoUrl });
+            const mirroredUrl = await mirrorVideoToBlob(videoUrl, 'runway.mp4');
+            return res.status(200).json({ videoUrl: mirroredUrl });
           }
         }
         if (state === 'fail') {
@@ -418,7 +450,8 @@ export default async function handler(req: Req, res: Res) {
         if (videoUrl) {
           const totalMs = Date.now() - startTs;
           console.error('[generate-video] success', { model, startTs, endTs: Date.now(), durationMs: totalMs, httpStatus: 200 });
-          return res.status(200).json({ videoUrl });
+          const mirroredUrl = await mirrorVideoToBlob(videoUrl, 'video.mp4');
+          return res.status(200).json({ videoUrl: mirroredUrl });
         }
         const totalMs = Date.now() - startTs;
         console.error('[generate-video] success but no videoUrl in resultJson', { model, startTs, endTs: Date.now(), durationMs: totalMs });

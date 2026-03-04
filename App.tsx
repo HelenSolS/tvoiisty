@@ -88,7 +88,7 @@ const App: React.FC = () => {
     error: null,
   });
 
-  /** URL готового видео (после «Создать видео»). Один клик = один вызов API. */
+  /** URL готового видео (после «Создать видео» для текущего результата). */
   const [resultVideoUrl, setResultVideoUrl] = useState<string | null>(null);
   const [isVideoProcessing, setIsVideoProcessing] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
@@ -267,8 +267,17 @@ const App: React.FC = () => {
         }
       }
       if (!imageUrl.startsWith('data:')) {
-        incrementMetric('totalTryOns').then(() => incrementMetric('totalArchiveSaves')).then(() => getMetrics().then(setMetrics));
-        const newItem: HistoryItem = { id: `h_${Date.now()}`, resultUrl: imageUrl, outfitUrl, shopUrl, timestamp: Date.now() };
+        incrementMetric('totalTryOns')
+          .then(() => incrementMetric('totalArchiveSaves'))
+          .then(() => getMetrics().then(setMetrics));
+        const now = Date.now();
+        const newItem: HistoryItem = {
+          id: `h_${now}`,
+          resultUrl: imageUrl,
+          outfitUrl,
+          shopUrl,
+          timestamp: now,
+        };
         const prevLen = history.length;
         const newHistory = [newItem, ...history].slice(0, ARCHIVE_MAX_ITEMS);
         const didOverflow = prevLen >= ARCHIVE_MAX_ITEMS;
@@ -338,6 +347,25 @@ const App: React.FC = () => {
       });
       setResultVideoUrl(videoUrl);
       incrementMetric('totalVideos').then(() => getMetrics().then(setMetrics));
+
+      // Привязываем видео к последней примерке в истории (если есть).
+      if (!videoUrl.startsWith('data:') && history.length > 0) {
+        const currentImage = state.resultImage;
+        const matchIndex = history.findIndex(
+          (h) =>
+            h.resultUrl === currentImage &&
+            (state.currentShopUrl ? h.shopUrl === state.currentShopUrl : true),
+        );
+        const idx = matchIndex >= 0 ? matchIndex : 0;
+        const target = history[idx];
+        if (target) {
+          const updated: HistoryItem = { ...target, videoUrl };
+          const nextHistory = [...history];
+          nextHistory[idx] = updated;
+          setHistory(nextHistory);
+          saveHistory(nextHistory, `${STORAGE_VER}_history`);
+        }
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
       setVideoError(msg);
@@ -451,8 +479,11 @@ const App: React.FC = () => {
       <div className="flex-1 overflow-y-auto no-scrollbar pb-20">
         {state.resultImage ? (
           <div className="px-4 py-5 space-y-6 animate-in slide-in-from-bottom-10 max-w-[420px] mx-auto">
-             {/* Результат примерки: целиком в кадре (голова не обрезается), скролл при необходимости */}
-             <div className="relative rounded-[3.5rem] overflow-hidden shadow-4xl border-[10px] border-white ring-1 ring-gray-100 bg-gray-50 flex items-center justify-center" style={{ maxHeight: 'min(75vh, 900px)' }}>
+             {/* Результат примерки: тонкая рамка в тон темы, без тяжёлых бордеров */}
+             <div
+               className="relative rounded-[3rem] overflow-hidden shadow-4xl border-[3px] border-white ring-2 ring-[var(--theme-color)]/40 bg-white flex items-center justify-center"
+               style={{ maxHeight: 'min(75vh, 900px)' }}
+             >
                 <img src={state.resultImage} className="w-full max-h-[min(75vh,900px)] object-contain" alt="Результат примерки" />
              </div>
 
@@ -497,7 +528,7 @@ const App: React.FC = () => {
                )}
                {resultVideoUrl && (
                  <>
-                   <div className="rounded-[3rem] overflow-hidden border-4 border-white shadow-xl bg-black">
+                  <div className="rounded-[3rem] overflow-hidden border-[2px] border-white shadow-xl bg-black">
                      <div className="aspect-[9/16] max-h-[70vh] w-full mx-auto">
                        <video src={resultVideoUrl} controls className="w-full h-full object-contain" playsInline />
                      </div>
@@ -533,7 +564,13 @@ const App: React.FC = () => {
                       }} icon={<svg className="w-8 h-8 text-theme" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"/></svg>} />
                     </div>
                     {personGallery.map(item => (
-                      <button key={item.id} onClick={() => setState(s=>({...s, personImage:item.imageUrl}))} className={`flex-shrink-0 w-24 h-32 rounded-[2rem] overflow-hidden border-4 transition-all ${state.personImage === item.imageUrl ? 'border-theme shadow-3xl scale-105' : 'border-white opacity-80'}`}>
+                      <button
+                        key={item.id}
+                        onClick={() => setState(s=>({...s, personImage:item.imageUrl}))}
+                        className={`flex-shrink-0 w-24 h-32 rounded-[2rem] overflow-hidden border-[2px] transition-all ${
+                          state.personImage === item.imageUrl ? 'border-theme shadow-3xl scale-105' : 'border-white opacity-80'
+                        }`}
+                      >
                         <img src={item.imageUrl} className="w-full h-full object-cover" />
                       </button>
                     ))}
@@ -597,7 +634,10 @@ const App: React.FC = () => {
                     {filteredOutfits
                       .slice(0, outfitPage * OUTFITS_PAGE_SIZE)
                       .map(outfit => (
-                        <div key={outfit.id} className="relative aspect-[3/4] rounded-[2.5rem] overflow-hidden border-[5px] border-white shadow-xl group transition-all hover:scale-[1.02] animate-in fade-in duration-500">
+                        <div
+                          key={outfit.id}
+                          className="relative aspect-[3/4] rounded-[2.5rem] overflow-hidden border-[2px] border-white shadow-xl group transition-all hover:scale-[1.02] animate-in fade-in duration-500"
+                        >
                           <img src={outfit.imageUrl} className="w-full h-full object-cover" onLoad={() => loadThenCompressAndStore(outfit.imageUrl)} alt="" />
                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all flex flex-col justify-end p-4 gap-2 backdrop-blur-[2px]">
                             <button onClick={() => handleQuickTryOn(outfit.imageUrl, outfit.shopUrl)} className="w-full py-2.5 btn-theme rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg">Примерить</button>
@@ -647,8 +687,21 @@ const App: React.FC = () => {
                 ) : (
                   <div className="grid grid-cols-2 gap-4">
                     {history.map(item => (
-                      <div key={item.id} className="aspect-[3/4] rounded-[2.5rem] overflow-hidden border-4 border-white shadow-xl active:scale-95" onClick={() => setSelectedHistoryItem(item)}>
+                      <div
+                        key={item.id}
+                        className="aspect-[3/4] rounded-[2.5rem] overflow-hidden border-[2px] border-white shadow-xl active:scale-95 relative"
+                        onClick={() => setSelectedHistoryItem(item)}
+                      >
                         <img src={item.resultUrl} className="w-full h-full object-cover" />
+                        {item.videoUrl && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                            <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+                              <svg className="w-4 h-4 text-gray-800" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M6.5 5.5v9l7-4.5-7-4.5z" />
+                              </svg>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1002,10 +1055,13 @@ const App: React.FC = () => {
 
       {/* Selected History Item Modal */}
       {selectedHistoryItem && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-white/98 backdrop-blur-3xl p-6 pt-12 animate-in zoom-in-95 overflow-y-auto">
-           <div className="w-full max-w-[420px] min-h-full flex flex-col pt-4 pb-24">
-              <button onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }} className="absolute top-10 right-8 text-gray-400 z-10"><svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
-              <div className="relative rounded-[3.5rem] overflow-hidden shadow-4xl border-[10px] border-white ring-1 ring-gray-100 mt-6 shrink-0 bg-gray-50 flex items-center justify-center" style={{ maxHeight: 'min(70vh, 800px)' }}>
+        <div className="fixed inset-0 z-[120] flex items-start justify-center bg-white/98 backdrop-blur-3xl p-6 pt-16 pb-24 animate-in zoom-in-95 overflow-y-auto">
+           <div className="w-full max-w-[420px] flex flex-col relative">
+              <button onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }} className="absolute top-6 right-6 text-gray-400 z-10"><svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+              <div
+                className="relative rounded-[3rem] overflow-hidden shadow-4xl border-[3px] border-white ring-2 ring-[var(--theme-color)]/40 mt-4 shrink-0 bg-white flex items-center justify-center"
+                style={{ maxHeight: 'min(72vh, 820px)' }}
+              >
                 <img src={selectedHistoryItem.resultUrl} className="w-full max-h-[min(70vh,800px)] object-contain" alt="" />
               </div>
               <div className="mt-10 grid grid-cols-2 gap-4">
@@ -1172,6 +1228,17 @@ function handleDownload(imgUrl: string) {
 }
 
 async function downloadUrlAsFile(url: string, filename: string) {
+  // В Telegram Mini App нет классического скачивания файлов, открываем ссылку во внешнем браузере.
+  try {
+    const anyWindow = window as unknown as { Telegram?: { WebApp?: { openLink?: (link: string) => void } } };
+    if (anyWindow.Telegram?.WebApp?.openLink) {
+      anyWindow.Telegram.WebApp.openLink(url);
+      return;
+    }
+  } catch {
+    // ignore, падаем в обычный сценарий
+  }
+
   try {
     const res = await fetch(url, { mode: 'cors' });
     const blob = await res.blob();

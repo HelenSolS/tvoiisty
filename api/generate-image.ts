@@ -52,6 +52,34 @@ async function ensureHttpsUrl(value: string, filename: string): Promise<string> 
   return blob.url;
 }
 
+/** Итоговую картинку тоже зеркалим в Blob, чтобы URL был стабильным и доступным из любых регионов. */
+async function mirrorResultToBlob(imageUrl: string, filename: string): Promise<string> {
+  if (!process.env.BLOB_READ_WRITE_TOKEN) return imageUrl;
+  if (!imageUrl.startsWith('http')) return imageUrl;
+  try {
+    const res = await fetch(imageUrl);
+    if (!res.ok) {
+      console.error('[generate-image] mirrorResultToBlob fetch failed', {
+        status: res.status,
+        statusText: res.statusText,
+      });
+      return imageUrl;
+    }
+    const arrayBuf = await res.arrayBuffer();
+    const buf = Buffer.from(arrayBuf);
+    const blob = await put(`tryon/results/${Date.now()}-${filename}`, buf, { access: 'public' });
+    if (blob.url.includes('private.blob.vercel-storage.com')) {
+      console.error(
+        '[generate-image] mirrored Blob URL is private — use a PUBLIC Blob store and BLOB_READ_WRITE_TOKEN.'
+      );
+    }
+    return blob.url;
+  } catch (e) {
+    console.error('[generate-image] mirrorResultToBlob error', e);
+    return imageUrl;
+  }
+}
+
 export default async function handler(
   req: { method?: string; body?: Record<string, unknown> },
   res: { status: (n: number) => { json: (o: object) => void } },
@@ -125,8 +153,10 @@ export default async function handler(
         console.error('[generate-image] invalid success: no imageUrl', { model: result.model });
         return res.status(502).json({ error: 'Не удалось сгенерировать изображение. Попробуйте позже.' });
       }
+      const trimmed = imageUrl.trim();
+      const mirroredUrl = await mirrorResultToBlob(trimmed, 'result.png');
       return res.status(200).json({
-        imageUrl: imageUrl.trim(),
+        imageUrl: mirroredUrl,
         model: result.model,
         duration_ms: result.duration_ms,
         status: result.status,
