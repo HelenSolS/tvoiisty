@@ -113,6 +113,8 @@ const App: React.FC = () => {
   const [joinConsent, setJoinConsent] = useState(false);
   /** URL карточек, по которым уже запущена загрузка+сжатие (чтобы не дублировать). */
   const loadingUrls = useRef<Set<string>>(new Set());
+  /** Блок с видео на экране результата — для автопрокрутки, когда видео готово. */
+  const resultVideoRef = useRef<HTMLDivElement | null>(null);
 
   const initUser = () => {
     const guest: User = { 
@@ -148,6 +150,17 @@ const App: React.FC = () => {
       initUser();
     }
   }, []);
+
+  // Когда видео для текущего результата готово — автоматически прокручиваем к нему.
+  useEffect(() => {
+    if (resultVideoUrl && resultVideoRef.current) {
+      try {
+        resultVideoRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch {
+        // ignore
+      }
+    }
+  }, [resultVideoUrl]);
 
   // При возвращении из background (visibilitychange) восстанавливаем последний результат примерки из архива,
   // если он уже есть в истории, но потерялся в состоянии (например, после выгрузки вкладки на мобилке).
@@ -519,7 +532,13 @@ const App: React.FC = () => {
                  title={resultVideoUrl ? 'Пересоздать видео для этого образа' : 'Создать видео по этому образу'}
                >
                  {isVideoProcessing ? (
-                   <>Создаём видео...</>
+                   <>
+                     <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24">
+                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 100 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z" />
+                     </svg>
+                     Создаём видео...
+                   </>
                  ) : (
                    <>
                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/><path d="M4 5h2v14H4z"/></svg>
@@ -527,6 +546,11 @@ const App: React.FC = () => {
                    </>
                  )}
                </button>
+               {isVideoProcessing && !resultVideoUrl && (
+                 <p className="text-[9px] text-gray-400 text-center uppercase tracking-[0.18em]">
+                   Создаём видео, это может занять до 40 секунд
+                 </p>
+               )}
                {videoError && (
                  <p className="text-red-500 text-[10px] font-bold text-center">
                    {videoError}
@@ -535,7 +559,10 @@ const App: React.FC = () => {
                )}
                {resultVideoUrl && (
                 <>
-                 <div className="rounded-[3rem] overflow-hidden border-[2px] border-white shadow-xl bg-black">
+                 <div
+                   ref={resultVideoRef}
+                   className="rounded-[3rem] overflow-hidden border-[2px] border-white shadow-xl bg-black"
+                 >
                     <div className="aspect-[9/16] max-h-[70vh] w-full mx-auto">
                       <video src={resultVideoUrl} controls className="w-full h-full object-contain" playsInline />
                     </div>
