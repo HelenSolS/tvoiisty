@@ -14,7 +14,6 @@ import {
   getEffectiveImagePrompt,
   getEffectiveVideoPrompt,
   getImageFallbackEnabled,
-  getDemoBoutiqueBaseUrl,
 } from './services/adminSettings';
 import { TryOnState, User, CuratedOutfit, PersonGalleryItem, HistoryItem, AppTheme, CategoryType } from './types';
 import { getHistory, saveHistory, ARCHIVE_MAX_ITEMS } from './services/historyStorage';
@@ -33,19 +32,37 @@ import {
 import { SCENES, type SceneType } from './lib/ai/scenes.config';
 import { buildPrompt as buildScenePrompt } from './lib/ai/prompt-builder';
 
-const DEMO_BOUTIQUE_BASE = getDemoBoutiqueBaseUrl().replace(/\/+$/, '');
-
+// Стартовая витрина для демо — красивые образы с Unsplash (как было раньше).
 const INITIAL_BOUTIQUE: CuratedOutfit[] = [
-  { id: 'n112', name: 'Образ 112', imageUrl: `${DEMO_BOUTIQUE_BASE}/112.jpg`, shopUrl: '#', category: 'dresses' },
-  { id: 'n113', name: 'Образ 113', imageUrl: `${DEMO_BOUTIQUE_BASE}/113.jpg`, shopUrl: '#', category: 'dresses' },
-  { id: 'n114', name: 'Образ 114', imageUrl: `${DEMO_BOUTIQUE_BASE}/114.jpg`, shopUrl: '#', category: 'casual' },
-  { id: 'n333', name: 'Образ 333', imageUrl: `${DEMO_BOUTIQUE_BASE}/333.webp`, shopUrl: '#', category: 'outerwear' },
-  { id: 'n444', name: 'Образ 444', imageUrl: `${DEMO_BOUTIQUE_BASE}/444.jpg`, shopUrl: '#', category: 'suits' },
-  { id: 'n111', name: 'Образ 111', imageUrl: `${DEMO_BOUTIQUE_BASE}/111.jpg`, shopUrl: '#', category: 'casual' },
+  {
+    id: 'w1',
+    name: 'Шелковое платье Emerald',
+    imageUrl: 'https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?q=80&w=800',
+    shopUrl: 'https://zara.com',
+    category: 'dresses',
+  },
+  {
+    id: 'w2',
+    name: 'Летний сарафан Linen',
+    imageUrl: 'https://images.unsplash.com/photo-1525507119028-ed4c629a60a3?q=80&w=800',
+    shopUrl: 'https://mango.com',
+    category: 'casual',
+  },
+  {
+    id: 'm1',
+    name: 'Пиджак Royal Blue',
+    imageUrl: 'https://images.unsplash.com/photo-1617137968427-85924c800a22?q=80&w=800',
+    shopUrl: 'https://asos.com',
+    category: 'suits',
+  },
+  {
+    id: 'm2',
+    name: 'Свитер Cashmere',
+    imageUrl: 'https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?q=80&w=800',
+    shopUrl: 'https://nike.com',
+    category: 'outerwear',
+  },
 ];
-
-const isDemoOutfitUrl = (url: string): boolean =>
-  !!DEMO_BOUTIQUE_BASE && url.startsWith(DEMO_BOUTIQUE_BASE);
 
 const CATEGORIES: { id: CategoryType; label: string }[] = [
   { id: 'all', label: 'Все' },
@@ -249,13 +266,15 @@ const App: React.FC = () => {
       let outfitBase64: string;
       if (outfitUrl.startsWith('data:')) {
         outfitBase64 = outfitUrl;
-      } else if (isDemoOutfitUrl(outfitUrl)) {
-        // Наши демо-образы с нейрониколь: не жмём, не блокируем — просто берём как есть.
-        outfitBase64 = await urlToBase64(outfitUrl);
       } else {
         const stored = await getCompressedByUrl(outfitUrl);
         if (!stored) {
-          setState((prev) => ({ ...prev, isProcessing: false, error: 'Дождитесь загрузки изображения', status: '' }));
+          setState((prev) => ({
+            ...prev,
+            isProcessing: false,
+            error: 'Дождитесь загрузки изображения',
+            status: '',
+          }));
           setTimeout(() => setState((p) => ({ ...p, error: null })), 3000);
           return;
         }
@@ -326,11 +345,9 @@ const App: React.FC = () => {
     }
   };
 
-  /** Загрузили картинку по URL → сразу сжали → сохранили в IndexedDB. Handler примерки только читает оттуда (кроме наших демо-образов). */
+  /** Загрузили картинку по URL → сразу сжали → сохранили в IndexedDB. Handler примерки только читает оттуда. */
   const loadThenCompressAndStore = (url: string) => {
     if (!url.startsWith('http') || loadingUrls.current.has(url)) return;
-    // Демо-образы витрины (нейрониколь) не жмём — они и так подготовлены.
-    if (isDemoOutfitUrl(url)) return;
     loadingUrls.current.add(url);
     urlToBase64(url)
       .then(resizeDataUrlForStorage)
