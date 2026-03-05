@@ -68,9 +68,10 @@ export async function findTryonById(id: string): Promise<TryonSession | null> {
 }
 
 export async function findExistingTryonByClientRequest(
-  userId: string,
+  userId: string | null,
   clientRequestId: string,
 ): Promise<TryonSession | null> {
+  if (!userId) return null;
   const res = await pool.query<TryonSession>(
     'SELECT * FROM tryon_sessions WHERE user_id = $1 AND client_request_id = $2 LIMIT 1',
     [userId, clientRequestId],
@@ -93,7 +94,7 @@ export async function listUserTryons(userId: string, limit = 50): Promise<TryonS
 }
 
 export async function createPendingTryon(params: {
-  userId: string;
+  userId?: string | null;
   personAssetId: string;
   lookId: string;
   sceneType?: string;
@@ -122,7 +123,7 @@ export async function createPendingTryon(params: {
     RETURNING *
     `,
     [
-      params.userId,
+      params.userId ?? null,
       params.personAssetId,
       params.lookId,
       params.sceneType ?? null,

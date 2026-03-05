@@ -25,6 +25,7 @@ import { ensureMediaTables } from './backend/media.js';
 import { ensureLooksTables } from './backend/looks.js';
 import { ensureTryonTables } from './backend/tryonSessions.js';
 import { ensureTokenTables } from './backend/tokens.js';
+import { ensureUserPreferencesColumn } from './backend/userSettings.js';
 import { generateImageHandler } from './backend/routes/generateImage.js';
 import { generateVideoHandler } from './backend/routes/generateVideo.js';
 import {
@@ -44,6 +45,10 @@ import {
   likeLookHandler,
   unlikeLookHandler,
 } from './backend/routes/looks.js';
+import {
+  getUserSettingsHandler,
+  updateUserSettingsHandler,
+} from './backend/routes/userSettings.js';
 
 async function main() {
   ensureKieConfig();
@@ -54,6 +59,7 @@ async function main() {
   await ensureLooksTables();
   await ensureTryonTables();
   await ensureTokenTables();
+  await ensureUserPreferencesColumn();
 
   const app = express();
   app.use(express.json({ limit: '20mb' }));
@@ -73,6 +79,10 @@ async function main() {
   app.post('/auth/signup', signupHandler);
   app.post('/auth/login', loginHandler);
   app.get('/auth/me', requireAuth, meHandler);
+
+  // User preferences (Issue 37) — настройки конкретного пользователя.
+  app.get('/api/user/settings', requireAuth, getUserSettingsHandler);
+  app.put('/api/user/settings', requireAuth, updateUserSettingsHandler);
 
   // Admin: global platform settings
   app.get(
@@ -94,16 +104,13 @@ async function main() {
   app.delete('/api/looks/:id/like', requireAuth, unlikeLookHandler);
 
   // Unified upload API + LLM pipeline for photos (Issue 39).
-  app.post(
-    '/api/media/upload',
-    requireAuth,
-    upload.single('file'),
-    uploadMediaHandler,
-  );
+  // Для демо разрешаем загрузку без авторизации (user_photos/лимиты будут позже).
+  app.post('/api/media/upload', upload.single('file'), uploadMediaHandler);
 
   // Try-On Session Engine (Issue 40).
-  app.post('/api/tryon', requireAuth, createTryonHandler);
-  app.get('/api/tryon/:id', requireAuth, getTryonStatusHandler);
+  // Для демо не требуем реальную серверную авторизацию — сессии могут быть анонимными.
+  app.post('/api/tryon', createTryonHandler);
+  app.get('/api/tryon/:id', getTryonStatusHandler);
   app.get('/api/my/tryons', requireAuth, listMyTryonsHandler);
 
   // Core API

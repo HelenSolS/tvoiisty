@@ -1,9 +1,9 @@
 import crypto from 'crypto';
 import type { Request, Response } from 'express';
-import { put } from '@vercel/blob';
 import type { MediaType } from '../media.js';
 import { findOrCreateAssetByHash } from '../media.js';
 import { enqueuePhotoAnalysis } from '../aiPhotoPipeline.js';
+import { uploadBuffer } from '../storage.js';
 
 const ALLOWED_TYPES: MediaType[] = ['person', 'clothing', 'location'];
 
@@ -23,31 +23,20 @@ export async function uploadMediaHandler(req: Request, res: Response): Promise<v
 
   const type = typeRaw as MediaType;
 
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    console.error('[uploadMedia] BLOB_READ_WRITE_TOKEN not set');
-    res
-      .status(503)
-      .json({ error: 'Хранилище временно недоступно. Попробуйте позже.' });
-    return;
-  }
-
   const hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
 
   try {
-    const blob = await put(
-      `media/${type}/${Date.now()}-${file.originalname}`,
-      file.buffer,
-      { access: 'public' },
-    );
-
-    const url = blob.url;
-    const storageKey = new URL(blob.url).pathname.replace(/^\//, '');
+    const stored = await uploadBuffer({
+      type,
+      buffer: file.buffer,
+      filename: file.originalname,
+    });
 
     const asset = await findOrCreateAssetByHash({
       type,
       hash,
-      originalUrl: url,
-      storageKey,
+      originalUrl: stored.url,
+      storageKey: stored.storageKey,
       mimeType: file.mimetype,
     });
 

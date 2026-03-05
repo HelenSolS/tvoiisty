@@ -33,6 +33,7 @@ import { SCENES, type SceneType } from './lib/ai/scenes.config';
 import { buildPrompt as buildScenePrompt } from './lib/ai/prompt-builder';
 import { uploadPersonPhoto } from './services/mediaService';
 import { createTryon, getTryonStatus } from './services/tryonService';
+import { fetchUserPreferences, updateUserPreferences } from './services/userSettings';
 
 // Стартовая витрина для демо — красивые образы с Unsplash (как было раньше).
 const INITIAL_BOUTIQUE: CuratedOutfit[] = [
@@ -179,6 +180,23 @@ const App: React.FC = () => {
       } else {
         initUser();
       }
+      // Пытаемся подтянуть серверные пользовательские настройки, если есть токен.
+      fetchUserPreferences()
+        .then((prefs) => {
+          if (!prefs) return;
+          setUser((prev) => {
+            if (!prev) return prev;
+            const nextTheme = prefs.theme ?? prev.theme;
+            const next = { ...prev, theme: nextTheme };
+            document.body.className = `theme-${next.theme}`;
+            saveToStorage('user', next);
+            return next;
+          });
+          if (prefs.preferredScene && SCENES.some((s) => s.id === prefs.preferredScene)) {
+            setSceneType(prefs.preferredScene as SceneType);
+          }
+        })
+        .catch(() => {});
     } catch (e) { 
       console.error(e);
       initUser();
@@ -989,9 +1007,48 @@ const App: React.FC = () => {
                 <h3 className="serif text-2xl font-black italic text-center">Настройки</h3>
 
                 <div className="flex justify-center gap-6">
-                    <button onClick={() => { const u = { ...user!, theme: 'turquoise' as AppTheme }; setUser(u); saveToStorage('user', u); document.body.className = 'theme-turquoise'; }} className={`w-14 h-14 rounded-full bg-[#0d9488] border-4 ${user?.theme === 'turquoise' ? 'border-white scale-125 shadow-2xl' : 'border-transparent opacity-30'} transition-all`}></button>
-                    <button onClick={() => { const u = { ...user!, theme: 'lavender' as AppTheme }; setUser(u); saveToStorage('user', u); document.body.className = 'theme-lavender'; }} className={`w-14 h-14 rounded-full bg-[#8b5cf6] border-4 ${user?.theme === 'lavender' ? 'border-white scale-125 shadow-2xl' : 'border-transparent opacity-30'} transition-all`}></button>
-                    <button onClick={() => { const u = { ...user!, theme: 'peach' as AppTheme }; setUser(u); saveToStorage('user', u); document.body.className = 'theme-peach'; }} className={`w-14 h-14 rounded-full bg-[#f97316] border-4 ${user?.theme === 'peach' ? 'border-white scale-125 shadow-2xl' : 'border-transparent opacity-30'} transition-all`}></button>
+                    <button
+                      onClick={() => {
+                        const u = { ...user!, theme: 'turquoise' as AppTheme };
+                        setUser(u);
+                        saveToStorage('user', u);
+                        document.body.className = 'theme-turquoise';
+                        void updateUserPreferences({ theme: 'turquoise' });
+                      }}
+                      className={`w-14 h-14 rounded-full bg-[#0d9488] border-4 ${
+                        user?.theme === 'turquoise'
+                          ? 'border-white scale-125 shadow-2xl'
+                          : 'border-transparent opacity-30'
+                      } transition-all`}
+                    ></button>
+                    <button
+                      onClick={() => {
+                        const u = { ...user!, theme: 'lavender' as AppTheme };
+                        setUser(u);
+                        saveToStorage('user', u);
+                        document.body.className = 'theme-lavender';
+                        void updateUserPreferences({ theme: 'lavender' });
+                      }}
+                      className={`w-14 h-14 rounded-full bg-[#8b5cf6] border-4 ${
+                        user?.theme === 'lavender'
+                          ? 'border-white scale-125 shadow-2xl'
+                          : 'border-transparent opacity-30'
+                      } transition-all`}
+                    ></button>
+                    <button
+                      onClick={() => {
+                        const u = { ...user!, theme: 'peach' as AppTheme };
+                        setUser(u);
+                        saveToStorage('user', u);
+                        document.body.className = 'theme-peach';
+                        void updateUserPreferences({ theme: 'peach' });
+                      }}
+                      className={`w-14 h-14 rounded-full bg-[#f97316] border-4 ${
+                        user?.theme === 'peach'
+                          ? 'border-white scale-125 shadow-2xl'
+                          : 'border-transparent opacity-30'
+                      } transition-all`}
+                    ></button>
                 </div>
 
                 <div className="pt-5 space-y-3 text-center">
