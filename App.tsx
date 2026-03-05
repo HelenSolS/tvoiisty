@@ -1206,47 +1206,50 @@ const App: React.FC = () => {
                   >
                     Скачать видео
                   </button>
-                  <div className="col-span-2 grid grid-cols-3 gap-2">
-                    <button
-                      onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(archiveVideoUrl); }}
-                      className="py-3 bg-white border border-gray-100 rounded-3xl font-black text-[8px] uppercase tracking-widest"
-                    >
-                      Поделиться видео
-                    </button>
-                    <button
-                      onClick={async () => {
-                        setArchiveVideoError(null);
-                        setIsArchiveVideoProcessing(true);
-                        try {
-                          const videoModel = showVideoModelDropdown() ? selectedVideoModel : getDefaultVideoModel();
-                          const videoPrompt = getEffectiveVideoPrompt();
-                          const url = await generateVideo(selectedHistoryItem!.resultUrl, { model: videoModel, prompt: videoPrompt });
-                          incrementMetric('totalVideos').then(() => getMetrics().then(setMetrics));
-                          setArchiveVideoUrl(url);
-                          const idx = history.findIndex((h) => h.id === selectedHistoryItem.id);
-                          if (idx >= 0) {
-                            const updated: HistoryItem = { ...history[idx], videoUrl: url };
-                            const next = [...history];
-                            next[idx] = updated;
-                            setHistory(next);
-                            saveHistory(next, `${STORAGE_VER}_history`);
-                            setSelectedHistoryItem(updated);
-                          }
-                        } catch (err: unknown) {
-                          const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
-                          setArchiveVideoError(msg);
-                        } finally {
-                          setIsArchiveVideoProcessing(false);
-                        }
-                      }}
-                      disabled={isArchiveVideoProcessing}
-                      className="py-3 bg-white border border-theme text-theme rounded-3xl font-black text-[8px] uppercase tracking-widest shadow-md disabled:opacity-50 col-span-2"
-                    >
-                      {isArchiveVideoProcessing ? 'Создаём видео...' : 'Переделать видео'}
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(archiveVideoUrl); }}
+                    className="col-span-2 py-3 bg-white border border-gray-100 rounded-3xl font-black text-[8px] uppercase tracking-widest"
+                  >
+                    Поделиться видео
+                  </button>
                 </>
               )}
+
+              <button
+                onClick={async () => {
+                  setArchiveVideoError(null);
+                  setIsArchiveVideoProcessing(true);
+                  try {
+                    const videoModel = showVideoModelDropdown() ? selectedVideoModel : getDefaultVideoModel();
+                    const videoPrompt = getEffectiveVideoPrompt();
+                    const url = await generateVideo(selectedHistoryItem!.resultUrl, { model: videoModel, prompt: videoPrompt });
+                    incrementMetric('totalVideos').then(() => getMetrics().then(setMetrics));
+                    setArchiveVideoUrl(url);
+                    const idx = history.findIndex((h) => h.id === selectedHistoryItem.id);
+                    if (idx >= 0) {
+                      const updated: HistoryItem = { ...history[idx], videoUrl: url };
+                      const next = [...history];
+                      next[idx] = updated;
+                      setHistory(next);
+                      saveHistory(next, `${STORAGE_VER}_history`);
+                      setSelectedHistoryItem(updated);
+                    }
+                  } catch (err: unknown) {
+                    const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
+                    setArchiveVideoError(msg);
+                  } finally {
+                    setIsArchiveVideoProcessing(false);
+                  }
+                }}
+                disabled={isArchiveVideoProcessing}
+                className="col-span-2 py-3 bg-white border border-theme text-theme rounded-3xl font-black text-[8px] uppercase tracking-widest shadow-md disabled:opacity-50"
+              >
+                {isArchiveVideoProcessing
+                  ? 'Создаём видео...'
+                  : archiveVideoUrl
+                  ? 'Переделать видео'
+                  : 'Создать видео'}
+              </button>
 
               <button
                 onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }}
