@@ -18,13 +18,27 @@ if (process.env.NODE_ENV !== 'production') {
 import express from 'express';
 import { ensureKieConfig } from './backend/config.js';
 import { initDb } from './backend/db.js';
+import { ensureAppSettings } from './backend/settings.js';
+import { ensureAiLogsTable } from './backend/aiLogs.js';
 import { generateImageHandler } from './backend/routes/generateImage.js';
 import { generateVideoHandler } from './backend/routes/generateVideo.js';
-import { signupHandler, loginHandler, meHandler, requireAuth } from './backend/auth.js';
+import {
+  signupHandler,
+  loginHandler,
+  meHandler,
+  requireAuth,
+  requireRole,
+} from './backend/auth.js';
+import {
+  getGlobalSettingsHandler,
+  updateGlobalSettingHandler,
+} from './backend/routes/adminSettings.js';
 
 async function main() {
   ensureKieConfig();
   await initDb();
+  await ensureAppSettings();
+  await ensureAiLogsTable();
 
   const app = express();
   app.use(express.json({ limit: '20mb' }));
@@ -33,6 +47,20 @@ async function main() {
   app.post('/auth/signup', signupHandler);
   app.post('/auth/login', loginHandler);
   app.get('/auth/me', requireAuth, meHandler);
+
+  // Admin: global platform settings
+  app.get(
+    '/api/admin/settings/global',
+    requireAuth,
+    requireRole('admin'),
+    getGlobalSettingsHandler,
+  );
+  app.put(
+    '/api/admin/settings/global/:key',
+    requireAuth,
+    requireRole('admin'),
+    updateGlobalSettingHandler,
+  );
 
   // Core API
   app.post('/api/generate-image', generateImageHandler);
