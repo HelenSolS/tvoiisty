@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { generateImageTryOn } from '../kieClient.js';
 import { createMediaAsset } from '../media.js';
+import { mirrorFromUrl } from '../storage.js';
 import { incrementTryonCount } from '../looks.js';
 import {
   createPendingTryon,
@@ -103,18 +104,24 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
         fetchAsBase64(clothingUrl),
       ]);
 
-      const imageUrl = await generateImageTryOn(personBase64, clothingBase64, undefined, modelName);
+      const imageUrl = await generateImageTryOn(
+        personBase64,
+        clothingBase64,
+        undefined,
+        modelName,
+      );
 
-      const imageBuf = await (await fetch(imageUrl)).arrayBuffer();
-      const hash = Buffer.from(imageBuf).toString('hex').slice(0, 64);
+      const stored = await mirrorFromUrl(imageUrl, {
+        type: 'tryon_result_image',
+        filename: 'tryon-result.png',
+      });
 
-      const urlObj = new URL(imageUrl);
-      const storageKey = urlObj.pathname.replace(/^\//, '');
+      const hash = Buffer.from(stored.storageKey).toString('hex').slice(0, 64);
 
       const resultAsset = await createMediaAsset({
         type: 'tryon_result_image',
-        originalUrl: imageUrl,
-        storageKey,
+        originalUrl: stored.url,
+        storageKey: stored.storageKey,
         hash,
       });
 
