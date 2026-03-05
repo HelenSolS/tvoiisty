@@ -94,16 +94,13 @@ async function main() {
   app.delete('/api/looks/:id/like', requireAuth, unlikeLookHandler);
 
   // Unified upload API + LLM pipeline for photos (Issue 39).
-  app.post(
-    '/api/media/upload',
-    requireAuth,
-    upload.single('file'),
-    uploadMediaHandler,
-  );
+  // Для демо разрешаем загрузку без авторизации (user_photos/лимиты будут позже).
+  app.post('/api/media/upload', upload.single('file'), uploadMediaHandler);
 
   // Try-On Session Engine (Issue 40).
-  app.post('/api/tryon', requireAuth, createTryonHandler);
-  app.get('/api/tryon/:id', requireAuth, getTryonStatusHandler);
+  // Для демо не требуем реальную серверную авторизацию — сессии могут быть анонимными.
+  app.post('/api/tryon', createTryonHandler);
+  app.get('/api/tryon/:id', getTryonStatusHandler);
   app.get('/api/my/tryons', requireAuth, listMyTryonsHandler);
 
   // Core API

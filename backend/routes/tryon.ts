@@ -24,10 +24,7 @@ async function fetchAsBase64(url: string): Promise<string> {
 
 export async function createTryonHandler(req: Request, res: Response): Promise<void> {
   const user = (req as Request & { user?: { id: string } }).user;
-  if (!user) {
-    res.status(401).json({ error: 'Требуется авторизация.' });
-    return;
-  }
+  const userId: string | null = user?.id ?? null;
 
   const {
     person_asset_id: personAssetId,
@@ -50,8 +47,8 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
     return;
   }
 
-  if (clientRequestId) {
-    const existing = await findExistingTryonByClientRequest(user.id, clientRequestId);
+  if (clientRequestId && userId) {
+    const existing = await findExistingTryonByClientRequest(userId, clientRequestId);
     if (existing) {
       res.status(200).json({ tryon_id: existing.id, status: existing.status });
       return;
@@ -59,7 +56,7 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
   }
 
   const session = await createPendingTryon({
-    userId: user.id,
+    userId,
     personAssetId,
     lookId,
     sceneType,
@@ -129,11 +126,13 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
       });
 
       await incrementTryonCount(lookId);
-      await logTryonTokenCharge({
-        userId: user.id,
-        tryonSessionId: session.id,
-        amount: 1,
-      });
+      if (userId) {
+        await logTryonTokenCharge({
+          userId,
+          tryonSessionId: session.id,
+          amount: 1,
+        });
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       await markTryonFailed(session.id, message);
@@ -144,12 +143,6 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
 }
 
 export async function getTryonStatusHandler(req: Request, res: Response): Promise<void> {
-  const user = (req as Request & { user?: { id: string } }).user;
-  if (!user) {
-    res.status(401).json({ error: 'Требуется авторизация.' });
-    return;
-  }
-
   const id = req.params.id;
   if (!id) {
     res.status(400).json({ error: 'Не указан tryon_id.' });
@@ -157,7 +150,7 @@ export async function getTryonStatusHandler(req: Request, res: Response): Promis
   }
 
   const session = await findTryonById(id);
-  if (!session || session.user_id !== user.id) {
+  if (!session) {
     res.status(404).json({ error: 'Сессия примерки не найдена.' });
     return;
   }
