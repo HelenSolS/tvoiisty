@@ -1,6 +1,13 @@
 import { pool } from './db.js';
 
-export type MediaType = 'person' | 'clothing' | 'location';
+export type MediaType =
+  | 'person'
+  | 'clothing'
+  | 'location'
+  // Результаты примерок и анимаций тоже попадают в media_assets,
+  // но не проходят LLM-пайплайн анализа.
+  | 'tryon_result_image'
+  | 'tryon_result_video';
 
 export interface MediaAsset {
   id: string;
