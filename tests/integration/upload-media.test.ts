@@ -146,5 +146,27 @@ describe('Issue 39 – Unified Upload API + LLM Photo Pipeline', () => {
       }),
     );
   });
+
+  it('returns same assetId when uploading the same file twice (hash cache)', async () => {
+    const fileBuffer = Buffer.from('same-file-binary');
+
+    const first = await request(app)
+      .post('/api/media/upload')
+      .set('Authorization', authHeader)
+      .attach('file', fileBuffer, 'photo.png')
+      .field('type', 'person')
+      .expect(201);
+
+    const second = await request(app)
+      .post('/api/media/upload')
+      .set('Authorization', authHeader)
+      .attach('file', fileBuffer, 'photo.png')
+      .field('type', 'person')
+      .expect(201);
+
+    expect(first.body.assetId).toBe('asset-1');
+    expect(second.body.assetId).toBe('asset-1');
+    expect(findOrCreateAssetByHashMock).toHaveBeenCalledTimes(2);
+  });
 });
 
