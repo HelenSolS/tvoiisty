@@ -138,6 +138,10 @@ const App: React.FC = () => {
   const [joinConsent, setJoinConsent] = useState(false);
   /** Модалка подтверждения полного сброса данных. */
   const [resetModalOpen, setResetModalOpen] = useState(false);
+  /** Загрузка превью в модалке архива (до появления картинки показываем спиннер). */
+  const [archiveImageLoaded, setArchiveImageLoaded] = useState(false);
+  /** Загрузка превью в сетке архива (по id записи). */
+  const [archiveThumbLoaded, setArchiveThumbLoaded] = useState<Record<string, boolean>>({});
   /** URL карточек, по которым уже запущена загрузка+сжатие (чтобы не дублировать). Клиентские загрузки жмём, свои демо-образы — нет. */
   const loadingUrls = useRef<Set<string>>(new Set());
   /** Блок с видео на экране результата — для автопрокрутки, когда видео готово. */
@@ -767,29 +771,53 @@ const App: React.FC = () => {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-4">
-                    {history.map(item => (
-                      <div
-                        key={item.id}
-                        className="aspect-[3/4] rounded-[2.5rem] overflow-hidden border-[2px] border-white shadow-xl active:scale-95 relative"
-                        onClick={() => {
-                          setSelectedHistoryItem(item);
-                          // Если к этой примерке уже есть видео, сразу подхватываем его в модалку.
-                          setArchiveVideoUrl(item.videoUrl ?? null);
-                          setArchiveVideoError(null);
-                        }}
-                      >
-                        <img src={item.resultUrl} className="w-full h-full object-cover" />
-                        {item.videoUrl && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                            <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-                              <svg className="w-4 h-4 text-gray-800" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M6.5 5.5v9l7-4.5-7-4.5z" />
-                              </svg>
+                    {history.map(item => {
+                      const thumbLoaded = archiveThumbLoaded[item.id] === true;
+                      return (
+                        <div
+                          key={item.id}
+                          className="aspect-[3/4] rounded-[2.5rem] overflow-hidden border-[2px] border-white shadow-xl active:scale-95 relative bg-gray-50"
+                          onClick={() => {
+                            setSelectedHistoryItem(item);
+                            setArchiveImageLoaded(false);
+                            // Если к этой примерке уже есть видео, сразу подхватываем его в модалку.
+                            setArchiveVideoUrl(item.videoUrl ?? null);
+                            setArchiveVideoError(null);
+                          }}
+                        >
+                          {!thumbLoaded && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <div className="w-8 h-8 border-[3px] border-theme border-t-transparent rounded-full animate-spin shadow-md" />
                             </div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                          )}
+                          <img
+                            src={item.resultUrl}
+                            className="w-full h-full object-cover"
+                            onLoad={() =>
+                              setArchiveThumbLoaded((prev) => ({
+                                ...prev,
+                                [item.id]: true,
+                              }))
+                            }
+                            onError={() =>
+                              setArchiveThumbLoaded((prev) => ({
+                                ...prev,
+                                [item.id]: true,
+                              }))
+                            }
+                          />
+                          {item.videoUrl && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                              <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+                                <svg className="w-4 h-4 text-gray-800" fill="currentColor" viewBox="0 0 20 20">
+                                  <path d="M6.5 5.5v9l7-4.5-7-4.5z" />
+                                </svg>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1144,7 +1172,7 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[120] flex items-start justify-center bg-white/98 backdrop-blur-3xl p-6 pt-16 pb-24 animate-in zoom-in-95 overflow-y-auto">
           <div className="w-full max-w-[420px] flex flex-col relative">
             <button
-              onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }}
+              onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); setArchiveImageLoaded(false); }}
               className="absolute top-4 right-4 text-gray-500 z-10 flex items-center gap-2 px-2 py-1 rounded-full bg-white/80 shadow-lg"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1157,7 +1185,18 @@ const App: React.FC = () => {
               className="relative rounded-[3rem] overflow-hidden shadow-4xl border-[3px] border-white ring-2 ring-[var(--theme-color)]/40 mt-4 shrink-0 bg-white flex items-center justify-center"
               style={{ maxHeight: 'min(72vh, 820px)' }}
             >
-              <img src={selectedHistoryItem.resultUrl} className="w-full max-h-[min(70vh,800px)] object-contain" alt="" />
+              {!archiveImageLoaded && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white">
+                  <div className="w-10 h-10 border-[4px] border-theme border-t-transparent rounded-full animate-spin shadow-lg" />
+                </div>
+              )}
+              <img
+                src={selectedHistoryItem.resultUrl}
+                className="w-full max-h-[min(70vh,800px)] object-contain"
+                alt=""
+                onLoad={() => setArchiveImageLoaded(true)}
+                onError={() => setArchiveImageLoaded(true)}
+              />
             </div>
 
             <div className="mt-8 grid grid-cols-2 gap-3">
