@@ -16,10 +16,15 @@ if (process.env.NODE_ENV !== 'production') {
  */
 
 import express from 'express';
+import multer from 'multer';
 import { ensureKieConfig } from './backend/config.js';
-import { initDb } from './backend/db.js';
+import { initDb, pool } from './backend/db.js';
 import { ensureAppSettings } from './backend/settings.js';
 import { ensureAiLogsTable } from './backend/aiLogs.js';
+import { ensureMediaTables } from './backend/media.js';
+import { ensureLooksTables } from './backend/looks.js';
+import { ensureTryonTables } from './backend/tryonSessions.js';
+import { ensureTokenTables } from './backend/tokens.js';
 import { generateImageHandler } from './backend/routes/generateImage.js';
 import { generateVideoHandler } from './backend/routes/generateVideo.js';
 import {
@@ -33,15 +38,36 @@ import {
   getGlobalSettingsHandler,
   updateGlobalSettingHandler,
 } from './backend/routes/adminSettings.js';
+import { uploadMediaHandler } from './backend/routes/uploadMedia.js';
+import {
+  getLooksHandler,
+  likeLookHandler,
+  unlikeLookHandler,
+} from './backend/routes/looks.js';
 
 async function main() {
   ensureKieConfig();
   await initDb();
   await ensureAppSettings();
   await ensureAiLogsTable();
+  await ensureMediaTables();
+  await ensureLooksTables();
+  await ensureTryonTables();
+  await ensureTokenTables();
 
   const app = express();
   app.use(express.json({ limit: '20mb' }));
+
+   // Делаем pool доступным в handlers через app.get('db')
+  app.set('db', pool);
+
+  // Multer для upload API (in-memory, ограничение по размеру).
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 10MB
+    },
+  });
 
   // Auth endpoints
   app.post('/auth/signup', signupHandler);
@@ -61,6 +87,24 @@ async function main() {
     requireRole('admin'),
     updateGlobalSettingHandler,
   );
+
+  // Store looks API (Issue 51) — список образов и лайки.
+  app.get('/api/looks', requireAuth, getLooksHandler);
+  app.post('/api/looks/:id/like', requireAuth, likeLookHandler);
+  app.delete('/api/looks/:id/like', requireAuth, unlikeLookHandler);
+
+  // Unified upload API + LLM pipeline for photos (Issue 39).
+  app.post(
+    '/api/media/upload',
+    requireAuth,
+    upload.single('file'),
+    uploadMediaHandler,
+  );
+
+  // Try-On Session Engine (Issue 40).
+  app.post('/api/tryon', requireAuth, createTryonHandler);
+  app.get('/api/tryon/:id', requireAuth, getTryonStatusHandler);
+  app.get('/api/my/tryons', requireAuth, listMyTryonsHandler);
 
   // Core API
   app.post('/api/generate-image', generateImageHandler);
