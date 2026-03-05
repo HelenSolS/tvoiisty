@@ -268,17 +268,13 @@ const App: React.FC = () => {
         outfitBase64 = outfitUrl;
       } else {
         const stored = await getCompressedByUrl(outfitUrl);
-        if (!stored) {
-          setState((prev) => ({
-            ...prev,
-            isProcessing: false,
-            error: 'Дождитесь загрузки изображения',
-            status: '',
-          }));
-          setTimeout(() => setState((p) => ({ ...p, error: null })), 3000);
-          return;
+        if (stored) {
+          outfitBase64 = stored;
+        } else {
+          // В редком случае, когда фоновӓя загрузка ещё не успела сжать картинку,
+          // не блокируем пользователя — дотягиваем изображение напрямую.
+          outfitBase64 = await urlToBase64(outfitUrl);
         }
-        outfitBase64 = stored;
       }
       setState(prev => ({ ...prev, status: 'Подготовка промпта...' }));
       const prompt =
@@ -541,79 +537,17 @@ const App: React.FC = () => {
                 <img src={state.resultImage} className="w-full max-h-[min(75vh,900px)] object-contain" alt="Результат примерки" />
              </div>
 
-             {/* Главные действия сразу под картинкой — всегда видны */}
-             <button 
-               onClick={() => openInStore(state.currentShopUrl!)} 
-               className="w-full py-4 rounded-3xl font-black text-[11px] uppercase tracking-widest shadow-2xl active:scale-95 flex items-center justify-center gap-2 bg-[var(--theme-color)] text-white border-2 border-[var(--theme-color)] ring-2 ring-black/10"
-             >
-               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
-               Купить в магазине
-             </button>
+            {/* Главные действия сразу под картинкой — всегда видны */}
+            <button 
+              onClick={() => openInStore(state.currentShopUrl!)} 
+              className="w-full py-4 rounded-3xl font-black text-[11px] uppercase tracking-widest shadow-2xl active:scale-95 flex items-center justify-center gap-2 bg-[var(--theme-color)] text-white border-2 border-[var(--theme-color)] ring-2 ring-black/10"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+              Купить в магазине
+            </button>
 
-             {/* Выбор модели для видео: на главном только если локально включено. */}
-             <div className="space-y-3">
-               {showVideoModelDropdown() && showModelChoiceOnHome() && (
-                 <div>
-                  <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Модель для видео</label>
-                  <select value={selectedVideoModel} onChange={e => setSelectedVideoModel(e.target.value)} className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme">
-                     {getVideoModelsForDropdown().map(m => <option key={m} value={m}>{m}</option>)}
-                   </select>
-                 </div>
-               )}
-               <button
-                 onClick={handleCreateVideo}
-                 disabled={isVideoProcessing}
-                 className="w-full py-4 bg-white border-2 border-theme text-theme rounded-3xl font-black text-[11px] uppercase tracking-widest shadow-xl active:scale-95 flex items-center justify-center gap-2 disabled:opacity-60"
-                 title={resultVideoUrl ? 'Пересоздать видео для этого образа' : 'Создать видео по этому образу'}
-               >
-                 {isVideoProcessing ? (
-                   <>
-                     <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24">
-                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 100 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z" />
-                     </svg>
-                     Создаём видео...
-                   </>
-                 ) : (
-                   <>
-                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/><path d="M4 5h2v14H4z"/></svg>
-                     {resultVideoUrl ? 'Переделать видео' : 'Создать видео'}
-                   </>
-                 )}
-               </button>
-               {isVideoProcessing && !resultVideoUrl && (
-                 <p className="text-[9px] text-gray-400 text-center uppercase tracking-[0.18em]">
-                   Создаём видео, это может занять до 40 секунд
-                 </p>
-               )}
-               {videoError && (
-                 <p className="text-red-500 text-[10px] font-bold text-center">
-                   {videoError}
-                   <button type="button" onClick={handleCreateVideo} className="block mx-auto mt-2 underline">Повторить</button>
-                 </p>
-               )}
-               {resultVideoUrl && (
-                <>
-                 <div
-                   ref={resultVideoRef}
-                   className="rounded-[3rem] overflow-hidden border-[3px] border-white shadow-4xl bg-white ring-2 ring-[var(--theme-color)]/30"
-                 >
-                    <div className="aspect-[9/16] max-h-[70vh] w-full mx-auto">
-                      <video src={resultVideoUrl} controls className="w-full h-full object-contain" playsInline />
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleDownloadVideo}
-                    title="Скачать текущее видео на устройство"
-                    className="w-full py-3 bg-white border border-gray-100 rounded-2xl font-black text-[9px] uppercase tracking-widest shadow-lg active:scale-95"
-                  >
-                    Скачать видео
-                  </button>
-                </>
-               )}
-             </div>
-
-             <div className="grid grid-cols-2 gap-3">
+            {/* Скачивание/шаринг фото — сразу под кнопкой магазина. */}
+            <div className="grid grid-cols-2 gap-3">
                <button
                  onClick={() => handleDownload(state.resultImage!)}
                  title="Скачать итоговое фото примерки"
@@ -635,6 +569,64 @@ const App: React.FC = () => {
                  Примерить другое
                </button>
              </div>
+
+            {/* Блок видео: выбор модели (если включено), запуск и просмотр. */}
+            <div className="space-y-3">
+              {showVideoModelDropdown() && showModelChoiceOnHome() && (
+                <div>
+                 <label className="block text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Модель для видео</label>
+                 <select value={selectedVideoModel} onChange={e => setSelectedVideoModel(e.target.value)} className="w-full py-3 px-4 rounded-2xl bg-white border-2 border-gray-100 text-[10px] font-bold uppercase tracking-wide outline-none focus:border-theme">
+                    {getVideoModelsForDropdown().map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+              )}
+              <button
+                onClick={handleCreateVideo}
+                disabled={isVideoProcessing}
+                className="w-full py-4 bg-white border-2 border-theme text-theme rounded-3xl font-black text-[11px] uppercase tracking-widest shadow-xl active:scale-95 flex items-center justify-center gap-2 disabled:opacity-60"
+                title={resultVideoUrl ? 'Пересоздать видео для этого образа' : 'Создать видео по этому образу'}
+              >
+                {isVideoProcessing ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 100 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z" />
+                    </svg>
+                    Создаём видео...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/><path d="M4 5h2v14H4z"/></svg>
+                    {resultVideoUrl ? 'Переделать видео' : 'Создать видео'}
+                  </>
+                )}
+              </button>
+              {videoError && (
+                <p className="text-red-500 text-[10px] font-bold text-center">
+                  {videoError}
+                  <button type="button" onClick={handleCreateVideo} className="block mx-auto mt-2 underline">Повторить</button>
+                </p>
+              )}
+              {resultVideoUrl && (
+               <>
+                <div
+                  ref={resultVideoRef}
+                  className="rounded-[3rem] overflow-hidden border-[3px] border-white shadow-4xl bg-white ring-2 ring-[var(--theme-color)]/30"
+                >
+                   <div className="aspect-[9/16] max-h-[70vh] w-full mx-auto">
+                     <video src={resultVideoUrl} controls className="w-full h-full object-contain" playsInline />
+                   </div>
+                 </div>
+                 <button
+                   onClick={handleDownloadVideo}
+                   title="Скачать текущее видео на устройство"
+                   className="w-full py-3 bg-white border border-gray-100 rounded-2xl font-black text-[9px] uppercase tracking-widest shadow-lg active:scale-95"
+                 >
+                   Скачать видео
+                 </button>
+               </>
+              )}
+            </div>
           </div>
         ) : (
           <div className="space-y-4">
