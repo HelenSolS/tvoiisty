@@ -16,6 +16,7 @@ if (process.env.NODE_ENV !== 'production') {
  */
 
 import express from 'express';
+import cors from 'cors';
 import multer from 'multer';
 import { ensureKieConfig } from './backend/config.js';
 import { initDb, pool } from './backend/db.js';
@@ -49,6 +50,11 @@ import {
   getUserSettingsHandler,
   updateUserSettingsHandler,
 } from './backend/routes/userSettings.js';
+import {
+  createTryonHandler,
+  getTryonStatusHandler,
+  listMyTryonsHandler,
+} from './backend/routes/tryon.js';
 
 async function main() {
   ensureKieConfig();
@@ -62,7 +68,27 @@ async function main() {
   await ensureUserPreferencesColumn();
 
   const app = express();
+
+  // CORS: фронт на Vercel (production + preview) обращается к api.tvoiistyle.top
+  const corsOptions = {
+    origin: (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
+      if (!origin) return cb(null, true);
+      if (origin === 'https://tvoiisty.vercel.app') return cb(null, true);
+      if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin)) return cb(null, true);
+      return cb(null, false);
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  };
+  app.use(cors(corsOptions));
+  app.options('*', cors(corsOptions));
+
   app.use(express.json({ limit: '20mb' }));
+
+  // Health-check для nginx/Docker
+  app.get('/health', (_req, res) => {
+    res.status(200).send('OK');
+  });
 
    // Делаем pool доступным в handlers через app.get('db')
   app.set('db', pool);

@@ -61,5 +61,57 @@
 - Не менять контракты API (пути, поля запросов/ответов) для загрузки фото и примерки.
 - Не отключать и не менять `VITE_API_BASE_URL` на деплое ветки dev.
 
+## 🚀 Деплой backend на VPS через GitHub
+
+Если на сервере в `/opt/tvoiisty` нет Git (только ручные файлы), разверни проект из репозитория так.
+
+### 1. На Mac — запушить ветку dev
+```bash
+cd /Users/lena/tvoisty
+git push origin dev
+```
+
+### 2. На сервере — остановить контейнеры, удалить старую папку, клонировать
+```bash
+cd /opt/tvoiisty
+docker compose down
+
+cd /opt
+rm -rf tvoiisty
+
+git clone -b dev https://github.com/HelenSolS/tvoiisty.git tvoiisty
+cd tvoiisty
+```
+
+### 3. На сервере — создать .env
+```bash
+nano .env
+```
+Вставить (подставь свои значения пароля и ключей):
+```
+PGHOST=postgres
+PGPORT=5432
+PGUSER=tvoiisty
+PGPASSWORD=strongpassword
+PGDATABASE=tvoiisty_db
+JWT_SECRET=твой_длинный_секрет
+BLOB_READ_WRITE_TOKEN=...
+KIE_API_KEY=...
+FAL_KEY=...
+```
+Сохранить: Ctrl+O, Enter, Ctrl+X.
+
+### 4. Запустить контейнеры
+```bash
+docker compose up -d --build
+```
+
+### 5. Проверка
+```bash
+curl http://localhost:3000/health
+curl -X POST http://localhost:3000/api/media/upload -F "file=@/dev/null" -F "type=person"
+```
+Первый — должен вернуть `OK`. Второй — 400 с «Файл не передан» или 502 (если хранилище не настроено), но не 404.
+
 ---
 *Эта версия является финальной для презентации инвестору. Дальнейшие изменения вносить только модульно.*

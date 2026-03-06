@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: tvoiisty_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: tvoiisty
+      POSTGRES_PASSWORD: ${PGPASSWORD:-strongpassword}
+      POSTGRES_DB: tvoiisty_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # Не пробрасывать порт наружу (доступ только из backend)
+    expose:
+      - "5432"
+
+  redis:
+    image: redis:7
+    container_name: tvoiisty_redis
+    restart: always
+    expose:
+      - "6379"
+
+  backend:
+    build: .
+    container_name: tvoiisty_backend
+    restart: always
+    depends_on:
+      - postgres
+      - redis
+    env_file:
+      - .env
+    environment:
+      PORT: 3000
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: tvoiisty
+      PGDATABASE: tvoiisty_db
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
