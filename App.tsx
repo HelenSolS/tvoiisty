@@ -349,7 +349,7 @@ const App: React.FC = () => {
         const newItem: HistoryItem = {
           id: `h_${now}`,
           resultUrl: imageUrl,
-          outfitUrl,
+          outfitUrl: outfit.imageUrl,
           shopUrl,
           timestamp: now,
         };
