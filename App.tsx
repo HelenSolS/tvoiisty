@@ -267,6 +267,11 @@ const App: React.FC = () => {
   }, [activeCategory, searchQuery, merchantProducts]);
 
   const handleQuickTryOn = async (outfit: CuratedOutfit, shopUrl: string = '#') => {
+    if (state.isProcessing) {
+      setSuccessMsg('Дождитесь завершения текущей примерки');
+      setTimeout(() => setSuccessMsg(null), 2000);
+      return;
+    }
     if (!state.personAssetId) {
       setState(prev => ({ ...prev, error: 'Сначала загрузите фото (Шаг 01)' }));
       setTimeout(() => setState(p => ({ ...p, error: null })), 3000);
@@ -820,7 +825,8 @@ const App: React.FC = () => {
                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all flex flex-col justify-end p-4 gap-2 backdrop-blur-[2px]">
                             <button
                               onClick={() => handleQuickTryOn(outfit, outfit.shopUrl)}
-                              className="w-full py-2.5 btn-theme rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg"
+                              disabled={state.isProcessing}
+                              className="w-full py-2.5 btn-theme rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                               Примерить
                             </button>
