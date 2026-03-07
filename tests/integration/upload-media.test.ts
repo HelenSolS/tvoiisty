@@ -7,22 +7,21 @@ import { describe, it, beforeAll, expect, vi, afterEach } from 'vitest';
 import { uploadMediaHandler } from '../../backend/routes/uploadMedia.js';
 import { requireAuth } from '../../backend/auth.js';
 
-// Mocks for storage and media registry – no real blob or AI calls.
-const putMock = vi.fn().mockResolvedValue({
-  url: 'https://blob.example.com/media/person/test.png',
-});
-
-const findOrCreateAssetByHashMock = vi.fn().mockResolvedValue({
-  id: 'asset-1',
-  type: 'person',
-  original_url: 'https://blob.example.com/media/person/test.png',
-  storage_key: 'media/person/test.png',
-  hash: 'dummyhash',
-  mime_type: 'image/png',
-  created_at: new Date(),
-});
-
-const enqueuePhotoAnalysisMock = vi.fn();
+const { putMock, findOrCreateAssetByHashMock, enqueuePhotoAnalysisMock } = vi.hoisted(() => ({
+  putMock: vi.fn().mockResolvedValue({
+    url: 'https://blob.example.com/media/person/test.png',
+  }),
+  findOrCreateAssetByHashMock: vi.fn().mockResolvedValue({
+    id: 'asset-1',
+    type: 'person',
+    original_url: 'https://blob.example.com/media/person/test.png',
+    storage_key: 'media/person/test.png',
+    hash: 'dummyhash',
+    mime_type: 'image/png',
+    created_at: new Date(),
+  }),
+  enqueuePhotoAnalysisMock: vi.fn(),
+}));
 
 vi.mock('@vercel/blob', () => ({
   put: putMock,
@@ -44,9 +43,8 @@ vi.mock('../../backend/aiPhotoPipeline.js', async (orig) => {
   };
 });
 
-const JWT_SECRET = 'test-secret-upload-media';
-process.env.JWT_SECRET = JWT_SECRET;
 process.env.BLOB_READ_WRITE_TOKEN = 'test-blob-token';
+const JWT_SECRET = process.env.JWT_SECRET || 'test-secret-integration';
 
 function createToken() {
   return jwt.sign(

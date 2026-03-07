@@ -6,8 +6,7 @@ import { ensureAppSettings, getSetting } from '../../backend/settings.js';
 import { getGlobalSettingsHandler, updateGlobalSettingHandler } from '../../backend/routes/adminSettings.js';
 import { requireAuth, requireRole } from '../../backend/auth.js';
 
-const JWT_SECRET = 'test-secret-admin-settings';
-process.env.JWT_SECRET = JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || 'test-secret-integration';
 
 function createToken(role: 'admin' | 'client') {
   return jwt.sign(
@@ -45,7 +44,6 @@ describe('Issue 36 + 61 – Global Platform Settings API', () => {
   const clientToken = `Bearer ${createToken('client')}`;
 
   beforeAll(async () => {
-    // Ensure app_settings table and initial data exist.
     await ensureAppSettings();
   });
 

@@ -6,7 +6,7 @@ import {
   getExistingSuccessfulAnalysis,
 } from '../../backend/aiPhotoPipeline.js';
 
-const callChatMock = vi.fn();
+const { callChatMock } = vi.hoisted(() => ({ callChatMock: vi.fn() }));
 
 vi.mock('../../backend/openrouter.js', async (orig) => {
   const actual = await orig<typeof import('../../backend/openrouter.js')>();

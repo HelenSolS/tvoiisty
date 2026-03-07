@@ -68,6 +68,7 @@ describe('Issue 51 — Store Looks API & Metrics', () => {
   });
 
   beforeEach(async () => {
+    await pool.query('DELETE FROM tryon_sessions');
     await pool.query('DELETE FROM user_liked_looks');
     await pool.query('DELETE FROM looks');
     await pool.query('DELETE FROM media_assets');
