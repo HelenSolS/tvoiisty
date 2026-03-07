@@ -44,13 +44,13 @@ export async function createImageTask(params: {
   });
   const data = (await res.json()) as KieTaskCreateResponse & { taskId?: string; task_id?: string };
   if (!res.ok) {
-    console.error('[KIE] createTask non-OK', res.status, JSON.stringify(data));
-    throw new Error((data as { message?: string }).message || 'Ошибка KIE при создании задачи');
+    console.error('[KIE] createTask non-OK', res.status, 'full response:', JSON.stringify(data));
+    throw new Error('Сервис примерки временно недоступен.');
   }
   const taskId = data?.data?.taskId ?? data?.taskId ?? data?.task_id;
   if (!taskId) {
-    console.error('[KIE] createTask OK but no taskId. Response keys:', Object.keys(data || {}), 'data:', data?.data ? Object.keys(data.data) : 'none');
-    throw new Error('KIE не вернул taskId. Проверьте KIE_API_KEY и квоты. В логах backend см. полный ответ KIE.');
+    console.error('[KIE] createTask OK but no taskId. Full response:', JSON.stringify(data));
+    throw new Error('Сервис примерки временно недоступен.');
   }
   return taskId;
 }

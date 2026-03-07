@@ -36,7 +36,19 @@ export type ProviderExecutionResult =
 /** Итог движка: успех с URL или ошибка с типом и сообщением. */
 export type TryOnResult =
   | { success: true; imageUrl: string; providerUsed?: ProviderId }
-  | { success: false; errorType: ProviderErrorType; errorMessage: string };
+  | {
+      success: false;
+      errorType: ProviderErrorType;
+      errorMessage: string;
+      /** Какой провайдер вернул ошибку (для логов: primary Fal vs fallback KIE). */
+      failedProvider?: ProviderId;
+      /** true = ошибка после fallback (сначала Fal отказал, потом KIE). */
+      wasFallback?: boolean;
+    };
+
+/** Сообщение для клиента при любой технической ошибке примерки (не показываем KIE/Fal, taskId, ключи). */
+export const TRYON_USER_FACING_ERROR =
+  'Не удалось выполнить примерку. Попробуйте позже.';
 
 /** Политика роутера: на каких типах ошибок разрешён fallback. */
 export const FALLBACK_ALLOWED_ERROR_TYPES: ProviderErrorType[] = [

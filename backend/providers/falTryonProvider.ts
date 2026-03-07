@@ -19,7 +19,7 @@ function normalizeFalError(err: unknown): { errorType: ProviderErrorType; messag
   if (msg.includes('FAL_KEY') || msg.includes('не задан') || msg.includes('ключ')) {
     return { errorType: 'auth', message: msg };
   }
-  if (msg.includes('429') || msg.includes('quota') || msg.includes('rate')) {
+  if (msg.includes('429') || msg.includes('402') || msg.includes('quota') || msg.includes('rate') || msg.includes('token') || msg.includes('credit') || msg.includes('insufficient')) {
     return { errorType: 'rate_limit', message: msg };
   }
   if (msg.includes('генерация не удалась') || msg.includes('FAILED')) {
@@ -28,9 +28,12 @@ function normalizeFalError(err: unknown): { errorType: ProviderErrorType; messag
   return { errorType: 'provider_error', message: msg };
 }
 
+const FAL_TRYON_MODEL_DEFAULT = 'fal-ai/nano-banana-pro/edit';
+
 export async function executeFalTryOn(request: TryOnRequest): Promise<ProviderExecutionResult> {
   try {
-    const imageUrl = await tryOnWithFal(request.personUrl, request.clothingUrl);
+    const model = request.modelName?.trim() || FAL_TRYON_MODEL_DEFAULT;
+    const imageUrl = await tryOnWithFal(request.personUrl, request.clothingUrl, model);
     return { success: true, imageUrl, provider: 'fal' };
   } catch (err) {
     const { errorType, message, isTimeout } = normalizeFalError(err);

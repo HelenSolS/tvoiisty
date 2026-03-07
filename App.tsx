@@ -96,6 +96,7 @@ const App: React.FC = () => {
   const [authModal, setAuthModal] = useState(false);
   const [verificationModal, setVerificationModal] = useState(false);
   const [addProductModal, setAddProductModal] = useState(false);
+  const [publishingProduct, setPublishingProduct] = useState(false);
   const [socialModal, setSocialModal] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
@@ -150,6 +151,8 @@ const App: React.FC = () => {
   const loadingUrls = useRef<Set<string>>(new Set());
   /** Блок с видео на экране результата — для автопрокрутки, когда видео готово. */
   const resultVideoRef = useRef<HTMLDivElement | null>(null);
+  /** Синхронная блокировка примерки: не даёт отправить второй запрос до ре-рендера (state.isProcessing обновляется асинхронно). */
+  const tryOnInProgressRef = useRef(false);
 
   const initUser = () => {
     const guest: User = { 
@@ -267,17 +270,24 @@ const App: React.FC = () => {
   }, [activeCategory, searchQuery, merchantProducts]);
 
   const handleQuickTryOn = async (outfit: CuratedOutfit, shopUrl: string = '#') => {
+    if (tryOnInProgressRef.current) {
+      setSuccessMsg('Дождитесь завершения текущей примерки');
+      setTimeout(() => setSuccessMsg(null), 2000);
+      return;
+    }
     if (state.isProcessing) {
       setSuccessMsg('Дождитесь завершения текущей примерки');
       setTimeout(() => setSuccessMsg(null), 2000);
       return;
     }
+    tryOnInProgressRef.current = true;
     if (!state.personAssetId) {
       setState(prev => ({ ...prev, error: 'Сначала загрузите фото (Шаг 01)' }));
       setTimeout(() => setState(p => ({ ...p, error: null })), 3000);
+      tryOnInProgressRef.current = false;
       return;
     }
-    if (!user?.isRegistered) { setAuthModal(true); return; }
+    if (!user?.isRegistered) { setAuthModal(true); tryOnInProgressRef.current = false; return; }
 
     setState(prev => ({
       ...prev,
@@ -343,6 +353,7 @@ const App: React.FC = () => {
       } else {
         setState(prev => ({ ...prev, isProcessing: false, error: 'Выберите образ из витрины и попробуйте снова.' }));
         setTimeout(() => setState(p => ({ ...p, error: null })), 5000);
+        tryOnInProgressRef.current = false;
         return;
       }
 
@@ -427,6 +438,8 @@ const App: React.FC = () => {
           : (raw || 'ИИ перегружен, попробуйте снова');
       setState(prev => ({ ...prev, isProcessing: false, error: msg }));
       setTimeout(() => setState(p => ({ ...p, error: null })), 5000);
+    } finally {
+      tryOnInProgressRef.current = false;
     }
   };
 
@@ -1188,15 +1201,34 @@ const App: React.FC = () => {
                 {CATEGORIES.filter(c=>c.id!=='all').map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
               </select>
             </div>
-            <button onClick={() => {
-              if (!newProduct.name || !newProduct.image) return;
-              const product: CuratedOutfit = { id: `m_${Date.now()}`, name: newProduct.name, imageUrl: newProduct.image, category: newProduct.category, shopUrl: newProduct.shopUrl || '#', merchantId: 'me' };
-              const updated = [product, ...merchantProducts];
-              setMerchantProducts(updated);
-              saveMerchantProducts(updated, `${STORAGE_VER}_merchant_products`);
-              setAddProductModal(false);
-              setNewProduct({ name: '', image: '', category: 'casual', shopUrl: '' });
-            }} className="w-full py-5 btn-theme rounded-3xl font-black text-[10px] uppercase tracking-widest shadow-xl">Опубликовать</button>
+            <button
+              disabled={!!publishingProduct}
+              onClick={async () => {
+                if (!newProduct.name || !newProduct.image) return;
+                setPublishingProduct(true);
+                try {
+                  let imageUrl = newProduct.image;
+                  if (imageUrl.startsWith('data:')) {
+                    const { url } = await uploadClothingImage(imageUrl);
+                    imageUrl = url;
+                  }
+                  const product: CuratedOutfit = { id: `m_${Date.now()}`, name: newProduct.name, imageUrl, category: newProduct.category, shopUrl: newProduct.shopUrl || '#', merchantId: 'me' };
+                  const updated = [product, ...merchantProducts];
+                  setMerchantProducts(updated);
+                  saveMerchantProducts(updated, `${STORAGE_VER}_merchant_products`);
+                  setAddProductModal(false);
+                  setNewProduct({ name: '', image: '', category: 'casual', shopUrl: '' });
+                } catch (e) {
+                  setState((p) => ({ ...p, error: e instanceof Error ? e.message : 'Не удалось загрузить фото. Попробуйте снова.' }));
+                  setTimeout(() => setState((s) => ({ ...s, error: null })), 5000);
+                } finally {
+                  setPublishingProduct(false);
+                }
+              }}
+              className="w-full py-5 btn-theme rounded-3xl font-black text-[10px] uppercase tracking-widest shadow-xl disabled:opacity-60"
+            >
+              {publishingProduct ? 'Загрузка…' : 'Опубликовать'}
+            </button>
           </div>
         </div>
       )}
@@ -1321,33 +1353,50 @@ const App: React.FC = () => {
               {CATEGORIES.filter(c => c.id !== 'all').map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
             </select>
             <button
-              onClick={() => {
+              disabled={collectionImages.length === 0 || !!publishingProduct}
+              onClick={async () => {
                 if (collectionImages.length === 0) return;
-                const name = collectionForm.name.trim() || 'Коллекция';
-                const shopUrl = collectionForm.shopUrl.trim() || '#';
-                const category = collectionForm.category;
-                const newItems: CuratedOutfit[] = collectionImages.map((imageUrl, i) => ({
-                  id: `m_${Date.now()}_${i}`,
-                  name,
-                  imageUrl,
-                  shopUrl,
-                  category,
-                  merchantId: 'me',
-                }));
-                incrementMetric('totalCollectionsCreated').then(() => incrementMetric('totalOutfitsUploaded', newItems.length)).then(() => getMetrics().then(setMetrics));
-                const updated = [...newItems, ...merchantProducts];
-                setMerchantProducts(updated);
-                saveMerchantProducts(updated, `${STORAGE_VER}_merchant_products`);
-                setCollectionUploadOpen(false);
-                setCollectionImages([]);
-                setCollectionForm({ name: '', shopUrl: '', category: 'casual' });
-                setSuccessMsg(`Добавлено образов: ${newItems.length}`);
-                setTimeout(() => setSuccessMsg(null), 2500);
+                setPublishingProduct(true);
+                try {
+                  const name = collectionForm.name.trim() || 'Коллекция';
+                  const shopUrl = collectionForm.shopUrl.trim() || '#';
+                  const category = collectionForm.category;
+                  const urls: string[] = [];
+                  for (let i = 0; i < collectionImages.length; i++) {
+                    const img = collectionImages[i];
+                    if (img.startsWith('http')) urls.push(img);
+                    else {
+                      const { url } = await uploadClothingImage(img);
+                      urls.push(url);
+                    }
+                  }
+                  const newItems: CuratedOutfit[] = urls.map((imageUrl, i) => ({
+                    id: `m_${Date.now()}_${i}`,
+                    name,
+                    imageUrl,
+                    shopUrl,
+                    category,
+                    merchantId: 'me',
+                  }));
+                  incrementMetric('totalCollectionsCreated').then(() => incrementMetric('totalOutfitsUploaded', newItems.length)).then(() => getMetrics().then(setMetrics));
+                  const updated = [...newItems, ...merchantProducts];
+                  setMerchantProducts(updated);
+                  saveMerchantProducts(updated, `${STORAGE_VER}_merchant_products`);
+                  setCollectionUploadOpen(false);
+                  setCollectionImages([]);
+                  setCollectionForm({ name: '', shopUrl: '', category: 'casual' });
+                  setSuccessMsg(`Добавлено образов: ${newItems.length}`);
+                  setTimeout(() => setSuccessMsg(null), 2500);
+                } catch (e) {
+                  setState((p) => ({ ...p, error: e instanceof Error ? e.message : 'Не удалось загрузить образы. Попробуйте снова.' }));
+                  setTimeout(() => setState((s) => ({ ...s, error: null })), 5000);
+                } finally {
+                  setPublishingProduct(false);
+                }
               }}
-              disabled={collectionImages.length === 0}
               className="w-full py-5 btn-theme rounded-3xl font-black text-[10px] uppercase tracking-widest shadow-xl disabled:opacity-50"
             >
-              Опубликовать коллекцию
+              {publishingProduct ? 'Загрузка…' : 'Опубликовать коллекцию'}
             </button>
           </div>
         </div>

@@ -5,7 +5,9 @@
  */
 
 import type { Request, Response } from 'express';
+import { getSetting } from '../settings.js';
 import { execute } from '../services/tryonEngine.js';
+import { TRYON_USER_FACING_ERROR } from '../services/tryonTypes.js';
 import { createMediaAsset } from '../media.js';
 import { mirrorFromUrl } from '../storage.js';
 import { incrementTryonCount } from '../looks.js';
@@ -102,11 +104,27 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
         throw new Error('Не указан образ одежды. Выберите вещь из витрины.');
       }
 
-      const tryonRequest = { personUrl, clothingUrl, modelName };
+      // Модель примерки: из тела запроса или из настроек (DEFAULT_IMAGE_MODEL). Канон: Fal nano-banana.
+      const rawModel =
+        modelName && typeof modelName === 'string'
+          ? modelName
+          : (await getSetting<string>('DEFAULT_IMAGE_MODEL')) ?? 'fal-ai/nano-banana-pro/edit';
+      let effectiveModel =
+        rawModel.includes('/') ? rawModel : 'fal-ai/nano-banana-pro/edit';
+      if (typeof effectiveModel === 'string' && effectiveModel.includes('virtual-try-on')) {
+        effectiveModel = 'fal-ai/nano-banana-pro/edit';
+      }
+      const tryonRequest = { personUrl, clothingUrl, modelName: effectiveModel };
       const result = await execute(tryonRequest);
 
       if (!result.success) {
-        await markTryonFailed(session.id, result.errorMessage);
+        const role = result.wasFallback ? 'fallback KIE' : `primary ${result.failedProvider ?? 'unknown'}`;
+        console.error('[tryon] ALERT failed', {
+          sessionId: session.id,
+          provider: role,
+          internalError: result.errorMessage,
+        });
+        await markTryonFailed(session.id, TRYON_USER_FACING_ERROR);
         return;
       }
 
@@ -141,7 +159,8 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      await markTryonFailed(session.id, message);
+      console.error('[tryon] ALERT exception', { sessionId: session.id, internalError: message });
+      await markTryonFailed(session.id, TRYON_USER_FACING_ERROR);
     }
   })();
 

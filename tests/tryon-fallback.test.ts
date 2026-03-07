@@ -35,12 +35,12 @@ vi.mock('../backend/providers/kieTryonProvider.js', () => ({
   } as ProviderExecutionResult),
 }));
 
-describe('TryOn fallback: Fal → KIE', () => {
+describe('TryOn fallback: Fal → KIE (canon)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('when primary is fal and Fal fails (non-timeout), fallback to KIE and result has providerUsed === "kie"', async () => {
+  it('when primary is fal and Fal fails (provider_error), fallback to KIE and result has providerUsed === "kie"', async () => {
     const result = await execute(mockRequest);
 
     expect(result.success).toBe(true);
@@ -48,5 +48,41 @@ describe('TryOn fallback: Fal → KIE', () => {
       expect(result.imageUrl).toBe('https://example.com/result.png');
       expect(result.providerUsed).toBe('kie');
     }
+  });
+
+  it('when primary is fal and Fal fails with rate_limit (quota/tokens), fallback to KIE and return KIE image', async () => {
+    const { executeFalTryOn } = await import('../backend/providers/falTryonProvider.js');
+    vi.mocked(executeFalTryOn).mockResolvedValueOnce({
+      success: false,
+      provider: 'fal',
+      errorType: 'rate_limit',
+      errorMessage: 'Fal 402 (quota/rate): Insufficient credits',
+    } as ProviderExecutionResult);
+
+    const result = await execute(mockRequest);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.providerUsed).toBe('kie');
+      expect(result.imageUrl).toBe('https://example.com/result.png');
+    }
+  });
+
+  it('when primary is fal and Fal fails with timeout, no fallback — return Fal error', async () => {
+    const { executeFalTryOn } = await import('../backend/providers/falTryonProvider.js');
+    vi.mocked(executeFalTryOn).mockResolvedValueOnce({
+      success: false,
+      provider: 'fal',
+      errorType: 'timeout',
+      errorMessage: 'Превышено время ожидания Fal.',
+      isTimeout: true,
+    } as ProviderExecutionResult);
+
+    const result = await execute(mockRequest);
+
+    expect(result.success).toBe(false);
+    expect(result.errorMessage).toContain('время ожидания');
+    const { executeKieTryOn } = await import('../backend/providers/kieTryonProvider.js');
+    expect(executeKieTryOn).not.toHaveBeenCalled();
   });
 });

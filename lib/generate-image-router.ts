@@ -8,7 +8,8 @@ import { getImageProvider } from './provider-abstraction';
 import { runFalTryOn } from './providers/fal-image';
 import { runKieTryOn } from './providers/kie-image';
 
-const FAL_FALLBACK_MODEL = 'fal-ai/image-apps-v2/virtual-try-on';
+/** Канон: nano-banana. virtual-try-on не используем (артефакты). */
+const FAL_FALLBACK_MODEL = 'fal-ai/nano-banana-pro/edit';
 const KIE_FALLBACK_MODEL = 'flux-2/flex-image-to-image';
 
 export type GenerateImageOptions = {

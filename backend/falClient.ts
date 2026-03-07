@@ -1,11 +1,11 @@
 /**
  * Минимальный клиент Fal для примерки на бэкенде.
  * Принимает URL фото человека и одежды, возвращает URL результата.
- * Используется как fallback, когда KIE не вернул taskId или вернул ошибку.
+ * Канон: по умолчанию fal-ai/nano-banana-pro/edit (как в настройках). virtual-try-on — только fallback при ошибке модели.
  */
 
-const FAL_MODEL = 'fal-ai/image-apps-v2/virtual-try-on';
-const FAL_POLL_TIMEOUT_MS = 55_000;
+const FAL_MODEL_DEFAULT = 'fal-ai/nano-banana-pro/edit';
+const FAL_POLL_TIMEOUT_MS = 70_000;
 const FAL_POLL_INTERVAL_MS = 1500;
 
 type FalPayload = {
@@ -20,13 +20,21 @@ function firstImageUrl(d: FalPayload): string | undefined {
   return d?.images?.[0]?.url ?? d?.data?.images?.[0]?.url;
 }
 
-export async function tryOnWithFal(personImageUrl: string, clothingImageUrl: string): Promise<string> {
+export async function tryOnWithFal(
+  personImageUrl: string,
+  clothingImageUrl: string,
+  model: string = FAL_MODEL_DEFAULT,
+): Promise<string> {
+  const effectiveModel =
+    typeof model === 'string' && model.includes('virtual-try-on')
+      ? FAL_MODEL_DEFAULT
+      : (model || FAL_MODEL_DEFAULT);
   const key = process.env.FAL_KEY?.trim();
   if (!key) {
     throw new Error('FAL_KEY не задан. Задайте в .env для fallback-примерки.');
   }
 
-  const res = await fetch(`https://queue.fal.run/${FAL_MODEL}`, {
+  const res = await fetch(`https://queue.fal.run/${effectiveModel}`, {
     method: 'POST',
     headers: {
       Authorization: `Key ${key}`,
@@ -40,9 +48,9 @@ export async function tryOnWithFal(personImageUrl: string, clothingImageUrl: str
   });
 
   const raw = await res.text();
-  let data: FalPayload;
+  let data: FalPayload & { detail?: string; message?: string };
   try {
-    data = JSON.parse(raw) as FalPayload;
+    data = JSON.parse(raw) as FalPayload & { detail?: string; message?: string };
   } catch {
     console.error('[Fal] invalid JSON', raw.slice(0, 200));
     throw new Error('Fal вернул неверный ответ.');
@@ -50,6 +58,13 @@ export async function tryOnWithFal(personImageUrl: string, clothingImageUrl: str
 
   if (res.ok && firstImageUrl(data)) {
     return firstImageUrl(data)!;
+  }
+
+  // 402/429 — квота/токены: явно пробрасываем для fallback на KIE (rate_limit).
+  if (res.status === 402 || res.status === 429) {
+    const detail = data?.detail ?? data?.message ?? raw?.slice?.(0, 200) ?? '';
+    const msg = detail ? `Fal ${res.status} (quota/rate): ${detail}` : `Fal ${res.status} quota or rate limit.`;
+    throw new Error(msg);
   }
 
   const needPoll =

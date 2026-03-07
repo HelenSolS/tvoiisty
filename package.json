@@ -14,6 +14,7 @@
     "test:integration": "vitest run tests/integration",
     "test:e2e": "vitest run tests/e2e",
     "test:smoke": "vitest run tests/smoke",
+    "test:canon": "vitest run tests/tryon-fallback.test.ts",
     "test:docker": "docker compose exec -w /app backend npx vitest run",
     "coverage": "vitest run --coverage",
     "health:tryon": "tsx scripts/tryon-health-check.ts"

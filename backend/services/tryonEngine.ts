@@ -21,6 +21,8 @@ export async function execute(request: TryOnRequest): Promise<TryOnResult> {
       success: false,
       errorType: 'validation',
       errorMessage: 'Нужен хотя бы один ключ: KIE_API_KEY или FAL_KEY.',
+      failedProvider: undefined,
+      wasFallback: false,
     };
   }
 
@@ -37,6 +39,8 @@ export async function execute(request: TryOnRequest): Promise<TryOnResult> {
       success: false,
       errorType: primaryResult.errorType,
       errorMessage: primaryResult.errorMessage,
+      failedProvider: primary,
+      wasFallback: false,
     };
   }
 
@@ -50,5 +54,7 @@ export async function execute(request: TryOnRequest): Promise<TryOnResult> {
     success: false,
     errorType: fallbackResult.errorType,
     errorMessage: fallbackResult.errorMessage,
+    failedProvider: fallback,
+    wasFallback: true,
   };
 }
