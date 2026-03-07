@@ -23,6 +23,7 @@ import { initDb, pool } from './backend/db.js';
 import { ensureAppSettings } from './backend/settings.js';
 import { ensureAiLogsTable } from './backend/aiLogs.js';
 import { ensureMediaTables } from './backend/media.js';
+import { ensureUsersTable } from './backend/users.js';
 import { ensureLooksTables } from './backend/looks.js';
 import { ensureTryonTables } from './backend/tryonSessions.js';
 import { ensureTokenTables } from './backend/tokens.js';
@@ -62,6 +63,7 @@ async function main() {
   await ensureAppSettings();
   await ensureAiLogsTable();
   await ensureMediaTables();
+  await ensureUsersTable();
   await ensureLooksTables();
   await ensureTryonTables();
   await ensureTokenTables();
