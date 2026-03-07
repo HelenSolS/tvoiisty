@@ -114,6 +114,9 @@ curl -X POST http://localhost:3000/api/media/upload -F "file=@/dev/null" -F "typ
 ```
 Первый — должен вернуть `OK`. Второй — `{"storage":"ok"}` или 503 с подсказкой про BLOB/Supabase. Третий — 400 с «Файл не передан» или 503 (хранилище не настроено), но не 502.
 
+### Примерка (try-on): та же схема, что в router (Fal / KIE + резерв)
+Порядок провайдеров берётся из настроек БД: `app_settings.ENABLED_IMAGE_PROVIDER` (по умолчанию `fal`). Сначала вызывается выбранный провайдер; при ошибке — резервный (Fal ↔ KIE). **При таймауте Fal резерв (KIE) не вызывается** — как в `lib/generate-image-router`. В `.env` на сервере задай оба ключа: `KIE_API_KEY` и `FAL_KEY`.
+
 ### Если загрузка фото даёт 502 Bad Gateway
 1. **Логи бэкенда** при попытке загрузки: `docker compose logs backend --tail 50`. Ищи строки `[uploadMedia] failed` или `[express] unhandled error`.
 2. **Хранилище:** в `.env` на сервере должен быть `BLOB_READ_WRITE_TOKEN` (Vercel Blob) или Supabase. Проверка: `curl -s https://api.tvoiistyle.top/api/media/upload/check`.

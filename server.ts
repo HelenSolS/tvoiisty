@@ -56,6 +56,7 @@ import {
   getTryonStatusHandler,
   listMyTryonsHandler,
 } from './backend/routes/tryon.js';
+import { healthHandler } from './backend/routes/health.js';
 
 async function main() {
   ensureKieConfig();
@@ -87,9 +88,35 @@ async function main() {
 
   app.use(express.json({ limit: '20mb' }));
 
-  // Health-check для nginx/Docker
-  app.get('/health', (_req, res) => {
-    res.status(200).send('OK');
+  // Health-check для nginx/Docker и автотестов (JSON)
+  app.get('/health', healthHandler);
+
+  // Health tryon pipeline: DB, storage, providers (для автотестера и мониторинга)
+  app.get('/health/tryon', async (_req, res) => {
+    const out: { status: string; db?: string; storage?: string; providers?: string[] } = {
+      status: 'ok',
+    };
+    try {
+      await pool.query('SELECT 1');
+      out.db = 'ok';
+    } catch (e) {
+      out.db = 'error';
+      out.status = 'degraded';
+    }
+    const hasBlob = !!process.env.BLOB_READ_WRITE_TOKEN?.trim();
+    const hasSupabase =
+      !!process.env.SUPABASE_URL?.trim() && !!process.env.SUPABASE_SERVICE_KEY?.trim();
+    out.storage = hasBlob || hasSupabase ? 'ok' : 'missing';
+    if (out.storage !== 'ok') out.status = 'degraded';
+
+    const providers: string[] = [];
+    if (process.env.KIE_API_KEY?.trim()) providers.push('kie');
+    if (process.env.FAL_KEY?.trim()) providers.push('fal');
+    out.providers = providers;
+    if (providers.length === 0) out.status = 'degraded';
+
+    const code = out.status === 'ok' ? 200 : 503;
+    res.status(code).json(out);
   });
 
    // Делаем pool доступным в handlers через app.get('db')

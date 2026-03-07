@@ -1,5 +1,11 @@
+/**
+ * Try-On API (Issue #72).
+ * Тонкий controller: валидация, сбор TryOnRequest, вызов TryOnEngine.execute(), ответ.
+ * Никаких прямых вызовов KIE/Fal — только движок и сессии/хранилище.
+ */
+
 import type { Request, Response } from 'express';
-import { generateImageTryOn } from '../kieClient.js';
+import { execute } from '../services/tryonEngine.js';
 import { createMediaAsset } from '../media.js';
 import { mirrorFromUrl } from '../storage.js';
 import { incrementTryonCount } from '../looks.js';
@@ -13,15 +19,6 @@ import {
   markTryonProcessing,
 } from '../tryonSessions.js';
 import { logTryonTokenCharge } from '../tokens.js';
-
-async function fetchAsBase64(url: string): Promise<string> {
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`Не удалось скачать изображение для примерки: ${res.status} ${res.statusText}`);
-  }
-  const buf = Buffer.from(await res.arrayBuffer());
-  return `data:image/png;base64,${buf.toString('base64')}`;
-}
 
 export async function createTryonHandler(req: Request, res: Response): Promise<void> {
   const user = (req as Request & { user?: { id: string } }).user;
@@ -74,12 +71,10 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
     requestMeta: {},
   });
 
-  // Синхронно запускаем генерацию, но фронтенд всё равно может опрашивать статус.
   void (async () => {
     try {
       await markTryonProcessing(session.id);
 
-      // Получаем URL фото человека.
       const personRes = await req.app
         .get('db')
         .query<{ original_url: string }>('SELECT original_url FROM media_assets WHERE id = $1', [personAssetId]);
@@ -88,7 +83,6 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
         throw new Error('Не удалось найти загруженное фото человека.');
       }
 
-      // URL одежды: из тела запроса (статичная витрина) или из БД по look_id.
       let clothingUrl: string;
       if (clothingImageUrl && clothingImageUrl.startsWith('http')) {
         clothingUrl = clothingImageUrl;
@@ -108,25 +102,19 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
         throw new Error('Нужен look_id или clothing_image_url.');
       }
 
-      const [personBase64, clothingBase64] = await Promise.all([
-        fetchAsBase64(personUrl),
-        fetchAsBase64(clothingUrl),
-      ]);
+      const tryonRequest = { personUrl, clothingUrl, modelName };
+      const result = await execute(tryonRequest);
 
-      const imageUrl = await generateImageTryOn(
-        personBase64,
-        clothingBase64,
-        undefined,
-        modelName,
-      );
+      if (!result.success) {
+        await markTryonFailed(session.id, result.errorMessage);
+        return;
+      }
 
-      const stored = await mirrorFromUrl(imageUrl, {
+      const stored = await mirrorFromUrl(result.imageUrl, {
         type: 'tryon_result_image',
         filename: 'tryon-result.png',
       });
-
       const hash = Buffer.from(stored.storageKey).toString('hex').slice(0, 64);
-
       const resultAsset = await createMediaAsset({
         type: 'tryon_result_image',
         originalUrl: stored.url,
@@ -199,12 +187,10 @@ export async function listMyTryonsHandler(req: Request, res: Response): Promise<
   }
 
   const sessions = await listUserTryons(user.id);
-
   const ids = sessions
     .map((s) => [s.result_image_asset_id, s.person_asset_id, s.look_id] as const)
     .flat()
     .filter((v): v is string => !!v);
-
   const uniqueIds = Array.from(new Set(ids));
 
   const assetsRes = await req.app
@@ -236,4 +222,3 @@ export async function listMyTryonsHandler(req: Request, res: Response): Promise<
     })),
   });
 }
-
