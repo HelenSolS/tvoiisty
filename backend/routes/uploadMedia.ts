@@ -54,10 +54,19 @@ export async function uploadMediaHandler(req: Request, res: Response): Promise<v
       hash: asset.hash,
     });
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     console.error('[uploadMedia] failed', err);
-    res
-      .status(502)
-      .json({ error: 'Не удалось сохранить изображение. Попробуйте позже.' });
+    if (msg.includes('BLOB_READ_WRITE_TOKEN') || msg.includes('Хранилище временно недоступно')) {
+      res.status(503).json({
+        error: 'Хранилище не настроено. На сервере в .env должен быть BLOB_READ_WRITE_TOKEN (Vercel Blob) или SUPABASE_URL + SUPABASE_SERVICE_KEY.',
+      });
+      return;
+    }
+    if (msg.includes('Не удалось сохранить файл') || msg.includes('supabase')) {
+      res.status(503).json({ error: 'Ошибка хранилища (Supabase). Проверьте SUPABASE_* в .env на сервере.' });
+      return;
+    }
+    res.status(502).json({ error: msg || 'Не удалось сохранить изображение. Попробуйте позже.' });
   }
 }
 

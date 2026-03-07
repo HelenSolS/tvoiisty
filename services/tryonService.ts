@@ -2,7 +2,10 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
 export interface CreateTryonRequest {
   personAssetId: string;
-  lookId: string;
+  /** ID образа из БД (looks). Если нет — передайте clothingImageUrl. */
+  lookId?: string;
+  /** URL картинки одежды (для статичной витрины без look_id). */
+  clothingImageUrl?: string;
   sceneType?: string;
   clientRequestId?: string;
 }
@@ -25,7 +28,8 @@ export async function createTryon(req: CreateTryonRequest): Promise<CreateTryonR
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       person_asset_id: req.personAssetId,
-      look_id: req.lookId,
+      ...(req.lookId != null && { look_id: req.lookId }),
+      ...(req.clothingImageUrl != null && { clothing_image_url: req.clothingImageUrl }),
       scene_type: req.sceneType,
       client_request_id: req.clientRequestId,
     }),

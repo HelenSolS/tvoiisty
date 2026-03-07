@@ -109,9 +109,17 @@ docker compose up -d --build
 ### 5. Проверка
 ```bash
 curl http://localhost:3000/health
+curl -s https://api.tvoiistyle.top/api/media/upload/check
 curl -X POST http://localhost:3000/api/media/upload -F "file=@/dev/null" -F "type=person"
 ```
-Первый — должен вернуть `OK`. Второй — 400 с «Файл не передан» или 502 (если хранилище не настроено), но не 404.
+Первый — должен вернуть `OK`. Второй — `{"storage":"ok"}` или 503 с подсказкой про BLOB/Supabase. Третий — 400 с «Файл не передан» или 503 (хранилище не настроено), но не 502.
+
+### Если загрузка фото даёт 502 Bad Gateway
+1. **Логи бэкенда** при попытке загрузки: `docker compose logs backend --tail 50`. Ищи строки `[uploadMedia] failed` или `[express] unhandled error`.
+2. **Хранилище:** в `.env` на сервере должен быть `BLOB_READ_WRITE_TOKEN` (Vercel Blob) или Supabase. Проверка: `curl -s https://api.tvoiistyle.top/api/media/upload/check`.
+3. **Таймауты Nginx:** если бэкенд отвечает, но долго (Blob/Supabase), Nginx может обрывать запрос. В конфиге Nginx для `location /api/` или для прокси к backend добавь:
+   `proxy_read_timeout 60s; proxy_send_timeout 60s; proxy_connect_timeout 10s;`
+   Затем `nginx -t` и `systemctl reload nginx`.
 
 ---
 *Эта версия является финальной для презентации инвестору. Дальнейшие изменения вносить только модульно.*

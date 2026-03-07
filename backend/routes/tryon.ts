@@ -30,6 +30,7 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
   const {
     person_asset_id: personAssetId,
     look_id: lookId,
+    clothing_image_url: clothingImageUrl,
     scene_type: sceneType,
     provider,
     model_name: modelName,
@@ -37,14 +38,19 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
   } = req.body as {
     person_asset_id?: string;
     look_id?: string;
+    clothing_image_url?: string;
     scene_type?: string;
     provider?: string;
     model_name?: string;
     client_request_id?: string;
   };
 
-  if (!personAssetId || !lookId) {
-    res.status(400).json({ error: 'Нужны person_asset_id и look_id.' });
+  if (!personAssetId) {
+    res.status(400).json({ error: 'Нужен person_asset_id.' });
+    return;
+  }
+  if (!lookId && !clothingImageUrl) {
+    res.status(400).json({ error: 'Нужен look_id или clothing_image_url (URL картинки одежды).' });
     return;
   }
 
@@ -59,7 +65,7 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
   const session = await createPendingTryon({
     userId,
     personAssetId,
-    lookId,
+    lookId: lookId || null,
     sceneType,
     provider,
     modelName,
@@ -73,30 +79,33 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
     try {
       await markTryonProcessing(session.id);
 
-      // Получаем URL фото человека и образа.
+      // Получаем URL фото человека.
       const personRes = await req.app
         .get('db')
-        .query<{
-          original_url: string;
-        }>('SELECT original_url FROM media_assets WHERE id = $1', [personAssetId]);
-      const lookRes = await req.app
-        .get('db')
-        .query<{
-          main_asset_url: string;
-        }>(
-          `
-          SELECT ma.original_url AS main_asset_url
-          FROM looks l
-          JOIN media_assets ma ON ma.id = l.main_asset_id
-          WHERE l.id = $1
-          `,
+        .query<{ original_url: string }>('SELECT original_url FROM media_assets WHERE id = $1', [personAssetId]);
+      const personUrl = personRes.rows[0]?.original_url;
+      if (!personUrl) {
+        throw new Error('Не удалось найти загруженное фото человека.');
+      }
+
+      // URL одежды: из тела запроса (статичная витрина) или из БД по look_id.
+      let clothingUrl: string;
+      if (clothingImageUrl && clothingImageUrl.startsWith('http')) {
+        clothingUrl = clothingImageUrl;
+      } else if (lookId) {
+        const lookRes = await req.app.get('db').query<{ main_asset_url: string }>(
+          `SELECT ma.original_url AS main_asset_url
+           FROM looks l
+           JOIN media_assets ma ON ma.id = l.main_asset_id
+           WHERE l.id = $1`,
           [lookId],
         );
-
-      const personUrl = personRes.rows[0]?.original_url;
-      const clothingUrl = lookRes.rows[0]?.main_asset_url;
-      if (!personUrl || !clothingUrl) {
-        throw new Error('Не удалось найти изображения для примерки.');
+        clothingUrl = lookRes.rows[0]?.main_asset_url ?? '';
+        if (!clothingUrl) {
+          throw new Error('Не удалось найти образ одежды по look_id.');
+        }
+      } else {
+        throw new Error('Нужен look_id или clothing_image_url.');
       }
 
       const [personBase64, clothingBase64] = await Promise.all([
@@ -132,7 +141,9 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
         resultMeta: {},
       });
 
-      await incrementTryonCount(lookId);
+      if (lookId) {
+        await incrementTryonCount(lookId);
+      }
       if (userId) {
         await logTryonTokenCharge({
           userId,

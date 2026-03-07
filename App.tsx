@@ -291,12 +291,10 @@ const App: React.FC = () => {
     setResultVideoUrl(null);
     setVideoError(null);
     try {
-      const lookId = outfit.lookId ?? outfit.id;
       const scene = sceneType === 'minimal' ? undefined : sceneType;
-
       const { tryon_id } = await createTryon({
         personAssetId: state.personAssetId,
-        lookId,
+        ...(outfit.lookId ? { lookId: outfit.lookId } : { clothingImageUrl: outfit.imageUrl }),
         sceneType: scene,
         clientRequestId: `web_${Date.now()}`,
       });

@@ -133,6 +133,18 @@ async function main() {
 
   // Unified upload API + LLM pipeline for photos (Issue 39).
   // Для демо разрешаем загрузку без авторизации (user_photos/лимиты будут позже).
+  app.get('/api/media/upload/check', (_req, res) => {
+    const hasBlob = !!process.env.BLOB_READ_WRITE_TOKEN?.trim();
+    const hasSupabase = !!process.env.SUPABASE_URL?.trim() && !!process.env.SUPABASE_SERVICE_KEY?.trim();
+    if (hasBlob || hasSupabase) {
+      res.json({ storage: 'ok', backend: 'blob_or_supabase' });
+    } else {
+      res.status(503).json({
+        storage: 'missing',
+        message: 'На сервере в .env задайте BLOB_READ_WRITE_TOKEN (Vercel Blob) или SUPABASE_URL + SUPABASE_SERVICE_KEY.',
+      });
+    }
+  });
   app.post('/api/media/upload', upload.single('file'), uploadMediaHandler);
 
   // Try-On Session Engine (Issue 40).
@@ -144,6 +156,15 @@ async function main() {
   // Core API
   app.post('/api/generate-image', generateImageHandler);
   app.post('/api/generate-video', generateVideoHandler);
+
+  // Обработчик ошибок (multer, неожиданные throw) — чтобы всегда отдавать JSON и не ронять соединение (иначе Nginx даёт 502).
+  app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[express] unhandled error', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: msg || 'Внутренняя ошибка сервера.' });
+    }
+  });
 
   const PORT = Number(process.env.PORT) || 4000;
   app.listen(PORT, () => {
