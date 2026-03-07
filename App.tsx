@@ -31,7 +31,7 @@ import {
 } from './services/socials';
 import { SCENES, type SceneType } from './lib/ai/scenes.config';
 import { buildPrompt as buildScenePrompt } from './lib/ai/prompt-builder';
-import { uploadPersonPhoto } from './services/mediaService';
+import { uploadPersonPhoto, uploadClothingImage } from './services/mediaService';
 import { createTryon, getTryonStatus } from './services/tryonService';
 import { fetchUserPreferences, updateUserPreferences } from './services/userSettings';
 
@@ -292,9 +292,63 @@ const App: React.FC = () => {
     setVideoError(null);
     try {
       const scene = sceneType === 'minimal' ? undefined : sceneType;
+      // URL картинки одежды: либо уже https (демо/каталог), либо загружаем с клиента (коллекция магазина — data:).
+      let clothingImageUrl: string;
+      if (outfit.imageUrl && (outfit.imageUrl.startsWith('http://') || outfit.imageUrl.startsWith('https://'))) {
+        clothingImageUrl = outfit.imageUrl;
+      } else if (outfit.lookId) {
+        const { tryon_id } = await createTryon({
+          personAssetId: state.personAssetId,
+          lookId: outfit.lookId,
+          sceneType: scene,
+          clientRequestId: `web_${Date.now()}`,
+        });
+        setState(prev => ({ ...prev, status: 'Примерка запущена...' }));
+        let finalImageUrl: string | null = null;
+        for (;;) {
+          await new Promise((r) => setTimeout(r, 2000));
+          const status = await getTryonStatus(tryon_id);
+          if (status.status === 'completed') {
+            finalImageUrl = status.image_url;
+            break;
+          }
+          if (status.status === 'failed' || status.status === 'cancelled') {
+            throw new Error(status.error || 'Примерка не удалась. Попробуйте снова.');
+          }
+        }
+        if (!finalImageUrl) throw new Error('Не удалось получить результат примерки.');
+        setState(prev => ({ ...prev, resultImage: finalImageUrl, isProcessing: false, status: '' }));
+        setResultVideoUrl(null);
+        setVideoError(null);
+        if (shopUrl && shopUrl !== '#') {
+          const updatedProducts = merchantProducts.map(p =>
+            p.imageUrl === outfit.imageUrl && p.shopUrl === shopUrl ? { ...p, stats: { tryOns: (p.stats?.tryOns ?? 0) + 1, clicks: p.stats?.clicks ?? 0 } } : p,
+          );
+          if (updatedProducts !== merchantProducts) {
+            setMerchantProducts(updatedProducts);
+            saveToStorage('merchant_products', updatedProducts);
+          }
+        }
+        if (!finalImageUrl.startsWith('data:')) {
+          incrementMetric('totalTryOns').then(() => incrementMetric('totalArchiveSaves')).then(() => getMetrics().then(setMetrics));
+          const newItem: HistoryItem = { id: `h_${Date.now()}`, resultUrl: finalImageUrl, outfitUrl: outfit.imageUrl, shopUrl, timestamp: Date.now() };
+          const newHistory = [newItem, ...history].slice(0, ARCHIVE_MAX_ITEMS);
+          setHistory(newHistory);
+          saveHistory(newHistory, `${STORAGE_VER}_history`);
+        }
+        return;
+      } else if (outfit.imageUrl && outfit.imageUrl.startsWith('data:')) {
+        const { url } = await uploadClothingImage(outfit.imageUrl);
+        clothingImageUrl = url;
+      } else {
+        setState(prev => ({ ...prev, isProcessing: false, error: 'Выберите образ из витрины и попробуйте снова.' }));
+        setTimeout(() => setState(p => ({ ...p, error: null })), 5000);
+        return;
+      }
+
       const { tryon_id } = await createTryon({
         personAssetId: state.personAssetId,
-        ...(outfit.lookId ? { lookId: outfit.lookId } : { clothingImageUrl: outfit.imageUrl }),
+        clothingImageUrl,
         sceneType: scene,
         clientRequestId: `web_${Date.now()}`,
       });
@@ -365,9 +419,12 @@ const App: React.FC = () => {
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : '';
       const isNetwork = /failed to fetch|network error|load failed/i.test(raw) || raw === '';
+      const isTechnicalApi = /look_id|clothing_image_url|person_asset_id|Нужен|Не указан/i.test(raw);
       const msg = isNetwork
         ? 'Нет связи с сервером. Проверьте интернет и попробуйте снова.'
-        : (raw || 'ИИ перегружен, попробуйте снова');
+        : isTechnicalApi
+          ? 'Не удалось запустить примерку. Выберите образ из витрины и попробуйте снова.'
+          : (raw || 'ИИ перегружен, попробуйте снова');
       setState(prev => ({ ...prev, isProcessing: false, error: msg }));
       setTimeout(() => setState(p => ({ ...p, error: null })), 5000);
     }

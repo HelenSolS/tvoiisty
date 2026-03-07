@@ -43,11 +43,11 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
   };
 
   if (!personAssetId) {
-    res.status(400).json({ error: 'Нужен person_asset_id.' });
+    res.status(400).json({ error: 'Не указано фото для примерки. Загрузите своё фото.' });
     return;
   }
   if (!lookId && !clothingImageUrl) {
-    res.status(400).json({ error: 'Нужен look_id или clothing_image_url (URL картинки одежды).' });
+    res.status(400).json({ error: 'Не указан образ одежды. Выберите вещь из витрины.' });
     return;
   }
 
@@ -96,10 +96,10 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
         );
         clothingUrl = lookRes.rows[0]?.main_asset_url ?? '';
         if (!clothingUrl) {
-          throw new Error('Не удалось найти образ одежды по look_id.');
+          throw new Error('Образ одежды не найден. Выберите другой образ из витрины.');
         }
       } else {
-        throw new Error('Нужен look_id или clothing_image_url.');
+        throw new Error('Не указан образ одежды. Выберите вещь из витрины.');
       }
 
       const tryonRequest = { personUrl, clothingUrl, modelName };
