@@ -42,10 +42,16 @@ export async function createImageTask(params: {
       input: inputPayload,
     }),
   });
-  const data = (await res.json()) as KieTaskCreateResponse;
-  if (!res.ok) throw new Error((data as { message?: string }).message || 'Ошибка KIE при создании задачи');
-  const taskId = data?.data?.taskId;
-  if (!taskId) throw new Error('KIE не вернул taskId');
+  const data = (await res.json()) as KieTaskCreateResponse & { taskId?: string; task_id?: string };
+  if (!res.ok) {
+    console.error('[KIE] createTask non-OK', res.status, JSON.stringify(data));
+    throw new Error((data as { message?: string }).message || 'Ошибка KIE при создании задачи');
+  }
+  const taskId = data?.data?.taskId ?? data?.taskId ?? data?.task_id;
+  if (!taskId) {
+    console.error('[KIE] createTask OK but no taskId. Response keys:', Object.keys(data || {}), 'data:', data?.data ? Object.keys(data.data) : 'none');
+    throw new Error('KIE не вернул taskId. Проверьте KIE_API_KEY и квоты. В логах backend см. полный ответ KIE.');
+  }
   return taskId;
 }
 
