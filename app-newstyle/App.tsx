@@ -19,6 +19,7 @@ import { LookScroller } from './components/LookScroller';
 import { AuthModal } from './components/AuthModal';
 import { AdminPanel } from './components/AdminPanel';
 import { AdminDebugPanel } from './components/AdminDebugPanel';
+import { startTryOn, uploadImage, getTryonStatus, startTryonVideo, getTryonVideoStatus } from './services/tryonService';
 
 // Единая база для всего фронта: используем тот же URL, что и демо simple-tryon.
 const API_BASE = API_URL;
@@ -333,12 +334,7 @@ const App: React.FC = () => {
       const headers: Record<string, string> = {};
       if (backendUserId) headers['X-User-Id'] = backendUserId;
 
-      const res = await fetch(`${API_BASE}/api/media/upload`, {
-        method: 'POST',
-        headers,
-        body: formData,
-      });
-      if (!res.ok) throw new Error(`upload failed ${res.status}`);
+      const res = await uploadImage({ apiBase: API_BASE, headers, formData });
       updateBackendUserIdFromHeaders(res);
       const data = await res.json();
       // Наш бэкенд возвращает assetId и url
@@ -380,8 +376,7 @@ const App: React.FC = () => {
       formData.append('type', 'clothing');
       const headers: Record<string, string> = {};
       if (backendUserId) headers['X-User-Id'] = backendUserId;
-      const res = await fetch(`${API_BASE}/api/media/upload`, { method: 'POST', headers, body: formData });
-      if (!res.ok) throw new Error(`upload failed ${res.status}`);
+      const res = await uploadImage({ apiBase: API_BASE, headers, formData });
       const data = await res.json();
       const id = (data?.assetId ?? data?.id) ? String(data.assetId ?? data.id) : null;
       const url = data?.url ? String(data.url) : '';
@@ -481,16 +476,7 @@ const App: React.FC = () => {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (backendUserId) headers['X-User-Id'] = backendUserId;
 
-      const res = await fetch(`${API_BASE}/api/tryon`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error || `tryon-start-failed-${res.status}`);
-      }
-      const data = await res.json();
+      const data = await startTryOn({ apiBase: API_BASE, headers, body });
       const sessionId = String(data.tryon_id ?? data.sessionId);
       setCurrentSessionId(sessionId);
       activeTryonSessionRef.current = sessionId;
@@ -503,15 +489,12 @@ const App: React.FC = () => {
         }
         const headers: Record<string, string> = {};
         if (backendUserId) headers['X-User-Id'] = backendUserId;
-        const statusRes = await fetch(`${API_BASE}/api/tryon/${sessionId}`, {
-          signal: tryonController.signal,
+        const statusData = await getTryonStatus({
+          apiBase: API_BASE,
+          sessionId,
           headers,
+          signal: tryonController.signal,
         });
-        if (!statusRes.ok) {
-          const body = await statusRes.json().catch(() => ({}));
-          throw new Error(body?.error || `tryon-status-failed-${statusRes.status}`);
-        }
-        const statusData = await statusRes.json();
         const imageUrl = statusData.image_url ?? statusData.imageUrl;
         if (statusData.status === 'completed' && imageUrl) {
           const newId = sessionId;
@@ -601,30 +584,24 @@ const App: React.FC = () => {
       videoAbortRef.current = videoController;
       activeVideoSessionRef.current = currentSessionId;
 
-      const startRes = await fetch(`${API_BASE}/api/tryon/${currentSessionId}/video`, {
-        method: 'POST',
-        signal: videoController.signal,
+      await startTryonVideo({
+        apiBase: API_BASE,
+        sessionId: currentSessionId,
         headers: { 'X-User-Id': backendUserId },
+        signal: videoController.signal,
       });
-      if (!startRes.ok) {
-        const body = await startRes.json().catch(() => ({}));
-        throw new Error(body?.error || `video-start-failed-${startRes.status}`);
-      }
 
       const maxAttempts = 60;
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         if (activeVideoSessionRef.current !== currentSessionId) {
           return;
         }
-        const statusRes = await fetch(`${API_BASE}/api/tryon/${currentSessionId}/video-status`, {
-          signal: videoController.signal,
+        const statusData = await getTryonVideoStatus({
+          apiBase: API_BASE,
+          sessionId: currentSessionId,
           headers: { 'X-User-Id': backendUserId },
+          signal: videoController.signal,
         });
-        if (!statusRes.ok) {
-          const body = await statusRes.json().catch(() => ({}));
-          throw new Error(body?.error || `video-status-failed-${statusRes.status}`);
-        }
-        const statusData = await statusRes.json();
         if (statusData.status === 'completed' && statusData.videoUrl) {
           handleVideoCreated(statusData.videoUrl);
           return;
