@@ -116,7 +116,9 @@ const App: React.FC = () => {
   });
 
   const [language] = useState<Language>(Language.RU);
-  const [currentStep, setCurrentStep] = useState<number>(0); // 0: Hero/full splash, 1: User Photo, 2: Clothing, 3: Result, 4: Video, 5: Scroller
+  // Стартовый экран — лендинг с двумя кнопками (step 0).
+  // После первого перехода по меню "Главная" пользователь попадает на "Мои фото" (step 1).
+  const [currentStep, setCurrentStep] = useState<number>(0); // 0: Hero, 1: User Photo, 2: Clothing, 3: Result, 4: Video, 5: Scroller
   const [view, setView] = useState<'home' | 'settings' | 'adminTest'>('home');
   const [isQuickLite, setIsQuickLite] = useState<boolean>(false);
   const [hasNewHistoryFromQuick, setHasNewHistoryFromQuick] = useState<boolean>(false);

@@ -62,7 +62,13 @@ async function uploadToVercelBlob(params: UploadParams): Promise<StoredObject> {
   const blob = await vercelPut(
     `media/${params.type}/${Date.now()}-${params.filename}`,
     params.buffer,
-    { access: 'public' },
+    {
+      // Store в Vercel сконфигурирован как private.
+      // Не просим public-доступ, иначе получаем ошибку
+      // "Cannot use public access on a private store".
+      access: 'private',
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    },
   );
 
   const storageKey = new URL(blob.url).pathname.replace(/^\//, '');

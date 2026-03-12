@@ -40,7 +40,8 @@ export const Header: React.FC<HeaderProps> = ({
           onClick={() => { 
             setIsQuickLite(false);
             setView('home'); 
-            setCurrentStep(0); 
+            // Главная страница — "Мои фото"
+            setCurrentStep(1); 
             setIsMenuOpen(false); 
           }}
         >
@@ -74,7 +75,8 @@ export const Header: React.FC<HeaderProps> = ({
                 onClick={() => { 
                   setIsQuickLite(false);
                   setView('home'); 
-                  setCurrentStep(0); 
+                  // "Главная" возвращает в "Мои фото"
+                  setCurrentStep(1); 
                   setIsMenuOpen(false); 
                 }}
                 className="text-2xl font-black tracking-tight text-left hover:text-[var(--primary)] transition-colors"
@@ -85,7 +87,8 @@ export const Header: React.FC<HeaderProps> = ({
                 onClick={() => { 
                   setIsQuickLite(true);
                   setView('home'); 
-                  setCurrentStep(0); 
+                  // Быстрая примерка — отдельный режим, step не важен
+                  setCurrentStep(1); 
                   setIsMenuOpen(false); 
                 }}
                 className="text-2xl font-black tracking-tight text-left hover:text-[var(--primary)] transition-colors"
