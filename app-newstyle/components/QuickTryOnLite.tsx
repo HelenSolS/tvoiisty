@@ -45,48 +45,8 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
   const personInputRef = useRef<HTMLInputElement | null>(null);
   const garmentInputRef = useRef<HTMLInputElement | null>(null);
 
-  const uploadOne = async (
-    file: File,
-    kind: 'person' | 'garment',
-  ): Promise<UploadedMedia | null> => {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const headers: Record<string, string> = {};
-    if (backendUserId) headers['X-User-Id'] = backendUserId;
-
-    const setUploadState =
-      kind === 'person' ? setPersonUpload : setGarmentUpload;
-
-    setUploadState('uploading');
-    try {
-      const res = await apiRaw('/api/media/upload', {
-        method: 'POST',
-        headers,
-        body: formData,
-      });
-      if (!res.ok) {
-        setUploadState('error');
-        return null;
-      }
-      const headerId = res.headers.get('x-user-id');
-      if (headerId && headerId !== backendUserId) {
-        setBackendUserId(headerId);
-      }
-      const data = await res.json();
-      const id = (data?.assetId ?? data?.id) ? String(data.assetId ?? data.id) : '';
-      const url = data?.url ? String(data.url) : '';
-      if (!id || !url) {
-        setUploadState('error');
-        return null;
-      }
-      setUploadState('uploaded');
-      return { id, url, userId: headerId || backendUserId || null };
-    } catch {
-      setUploadState('error');
-      return null;
-    }
-  };
+  // Для лайтовой страницы больше не создаём media-asset и сессии.
+  // Просто отправляем два файла напрямую на /api/tryon-lite.
 
   const handlePersonChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -121,13 +81,7 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
   };
 
   const handleTryOn = async () => {
-    if (
-      isBusy ||
-      !personFile ||
-      !garmentFile ||
-      personUpload === 'uploading' ||
-      garmentUpload === 'uploading'
-    ) {
+    if (isBusy || !personFile || !garmentFile) {
       return;
     }
     if (!API_URL) {
@@ -145,74 +99,31 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
     setVideoError(null);
 
     try {
-      let person = personMedia;
-      let garment = garmentMedia;
+      const form = new FormData();
+      form.append('person', personFile);
+      form.append('garment', garmentFile);
 
-      if (!person) {
-        person = await uploadOne(personFile, 'person');
-        if (!person) throw new Error('upload-person-failed');
-        setPersonMedia(person);
-      }
-
-      if (!garment) {
-        garment = await uploadOne(garmentFile, 'garment');
-        if (!garment) throw new Error('upload-garment-failed');
-        setGarmentMedia(garment);
-      }
-      const userId =
-        backendUserId || person.userId || garment.userId || null;
-      if (!userId) {
-        throw new Error('no-backend-user');
-      }
-
-      // Используем наш /api/tryon вместо /api/simple-tryon
-      const res = await fetch(`${API_URL}/api/tryon`, {
+      const res = await fetch(`${API_URL}/api/tryon-lite`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': userId,
-        },
-        body: JSON.stringify({
-          person_asset_id: person.id,
-          clothing_image_url: garment.url,
-        }),
+        body: form,
       });
 
       if (!res.ok) {
         const text = await res.text().catch(() => '');
-        throw new Error(text || `tryon-start-failed-${res.status}`);
+        throw new Error(text || `tryon-lite-start-failed-${res.status}`);
       }
 
       const data = await res.json();
-      const newSessionId = String(data.tryon_id ?? data.sessionId);
-      setSessionId(newSessionId);
-
-      const maxAttempts = 60;
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        const statusRes = await fetch(`${API_URL}/api/tryon/${newSessionId}`, {
-          headers: { 'X-User-Id': userId },
-        });
-        if (!statusRes.ok) {
-          const text = await statusRes.text().catch(() => '');
-          throw new Error(text || `tryon-status-failed-${statusRes.status}`);
-        }
-        const statusData = await statusRes.json();
-        const imageUrl =
-          statusData.image_url ?? statusData.imageUrl;
-        if (statusData.status === 'completed' && imageUrl) {
-          setResultImage(imageUrl);
-          setTryonState('done');
-          if (onResult) {
-            onResult(newSessionId, imageUrl);
-          }
-          return;
-        }
-        if (statusData.status === 'failed') {
-          throw new Error('tryon-failed');
-        }
-        await new Promise((r) => setTimeout(r, 2000));
+      const imageUrl = data.image_url ?? data.imageUrl ?? null;
+      if (!imageUrl) {
+        throw new Error('no-image-url');
       }
-      throw new Error('tryon-timeout');
+
+      setResultImage(imageUrl);
+      setTryonState('done');
+      if (onResult) {
+        onResult('tryon-lite', imageUrl);
+      }
     } catch (err: any) {
       console.error('Simple try-on error (adapted)', err);
       setTryonState('error');
