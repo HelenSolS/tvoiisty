@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Твой ИИ-стиль | Виртуальная Примерочная</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        transition: background-color 0.3s ease, color 0.3s ease;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .theme-lavender {
+        --bg-main: #f8f7ff;
+        --bg-gradient: linear-gradient(135deg, #6E6BD9 0%, #A8A7F2 100%);
+        --bg-card: #ffffff;
+        --primary: #7c4dff;
+        --primary-hover: #651fff;
+        --accent: #e0e0ff;
+      }
+      .theme-mint {
+        --bg-main: #f0fdfa;
+        --bg-gradient: linear-gradient(135deg, #79E0C6 0%, #B6F3E5 100%);
+        --bg-card: #ffffff;
+        --primary: #00897b;
+        --primary-hover: #00695c;
+        --accent: #b2dfdb;
+      }
+      .theme-peach {
+        --bg-main: #fff7ed;
+        --bg-gradient: linear-gradient(135deg, #FFC9A9 0%, #FFE4D3 100%);
+        --bg-card: #ffffff;
+        --primary: #f97316;
+        --primary-hover: #ea580c;
+        --accent: #ffedd5;
+      }
+      .glass {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+      }
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      @keyframes float {
+        0% { transform: translateY(0px); }
+        50% { transform: translateY(-10px); }
+        100% { transform: translateY(0px); }
+      }
+      .animate-float {
+        animation: float 6s ease-in-out infinite;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://esm.sh/@google/genai@^1.40.0",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="theme-lavender bg-[var(--bg-main)] text-slate-900">
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # Порт не публикуем — доступ только из docker network (api, worker)
+
+  redis:
+    image: redis:7
+    restart: always
+    # Порт не публикуем — избегаем зависания docker-proxy; доступ только из docker network
+
+  api:
+    build: ./backend
+    command: sh -c "npm run migrate && npm run start"
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      PORT: 4000
+      DATABASE_URL: postgres://app:app@postgres:5432/app
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "4000:4000"
+    restart: always
+
+  worker:
+    build: ./backend
+    command: npm run worker
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      DATABASE_URL: postgres://app:app@postgres:5432/app
+      REDIS_URL: redis://redis:6379
+    restart: always  # Workers must automatically restart if they crash.
+
+# Postgres must use a persistent docker volume. Data must not be stored inside the container.
+volumes:
+  postgres_data:
