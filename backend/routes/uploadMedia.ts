@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import type { Request, Response } from 'express';
 import type { MediaType } from '../media.js';
-import { findOrCreateAssetByHash } from '../media.js';
+import { findAssetByHash, findOrCreateAssetByHash } from '../media.js';
 import { enqueuePhotoAnalysis } from '../aiPhotoPipeline.js';
 import { uploadBuffer } from '../storage.js';
 
@@ -26,6 +26,18 @@ export async function uploadMediaHandler(req: Request, res: Response): Promise<v
   const hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
 
   try {
+    // Сначала проверяем по hash: тот же файл уже загружен — возвращаем существующий asset без дублирования в storage и без нарушения UNIQUE(hash, type).
+    const existing = await findAssetByHash(type, hash);
+    if (existing) {
+      res.status(201).json({
+        assetId: existing.id,
+        type: existing.type,
+        url: existing.original_url,
+        hash: existing.hash,
+      });
+      return;
+    }
+
     const stored = await uploadBuffer({
       type,
       buffer: file.buffer,

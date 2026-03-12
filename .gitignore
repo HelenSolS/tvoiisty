@@ -25,3 +25,6 @@ Thumbs.db
 
 # Vite
 *.local
+
+# Второй репо (фронт app.tvoiistyle.top) — не коммитить в tvoiisty
+tvoiistyle/

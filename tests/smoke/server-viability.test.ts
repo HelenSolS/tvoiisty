@@ -69,10 +69,11 @@ describe('Server viability (smoke)', () => {
     }
   });
 
-  it('GET /api/looks without auth returns 401', async () => {
+  it('GET /api/looks without auth returns 200 and looks array (optionalAuth for demo)', async () => {
     const { status, data } = await fetchJson('/api/looks');
-    expect(status).toBe(401);
-    expect(typeof data === 'object' && data !== null && 'error' in (data as object)).toBe(true);
+    expect(status).toBe(200);
+    expect(typeof data === 'object' && data !== null && 'looks' in (data as object)).toBe(true);
+    expect(Array.isArray((data as { looks: unknown }).looks)).toBe(true);
   });
 
   it('POST /api/tryon without body returns 400 with error message', async () => {

@@ -9,11 +9,15 @@ import type { TryOnRequest, ProviderExecutionResult, ProviderErrorType } from '.
 
 function normalizeFalError(err: unknown): { errorType: ProviderErrorType; message: string; isTimeout?: boolean } {
   const msg = err instanceof Error ? err.message : String(err);
+  const m = msg.toLowerCase();
   const isFalTimeout = (err as Error & { isFalTimeout?: boolean })?.isFalTimeout === true;
-  if (isFalTimeout || msg.includes('время ожидания') || msg.includes('Превышено время')) {
+  if (isFalTimeout || m.includes('время ожидания') || m.includes('превышено время')) {
     return { errorType: 'timeout', message: msg, isTimeout: true };
   }
-  if (msg.includes('неверный ответ') || msg.includes('не вернул') || msg.includes('invalid')) {
+  if (m.includes('fetch') || m.includes('network') || m.includes('econnreset') || m.includes('socket') || m.includes('enotfound') || m.includes('etimedout')) {
+    return { errorType: 'network', message: msg };
+  }
+  if (msg.includes('неверный ответ') || msg.includes('не вернул') || m.includes('invalid')) {
     return { errorType: 'invalid_response', message: msg };
   }
   if (msg.includes('FAL_KEY') || msg.includes('не задан') || msg.includes('ключ')) {
@@ -30,9 +34,16 @@ function normalizeFalError(err: unknown): { errorType: ProviderErrorType; messag
 
 const FAL_TRYON_MODEL_DEFAULT = 'fal-ai/nano-banana-pro/edit';
 
+/** Канон: для примерки только nano-banana. Любое упоминание virtual-try-on (любой регистр) — подменяем. */
+function effectiveTryonModel(name?: string | null): string {
+  const s = (name ?? '').trim().toLowerCase();
+  if (s.includes('virtual-try-on') || s.includes('image-apps-v2')) return FAL_TRYON_MODEL_DEFAULT;
+  return s ? name!.trim() : FAL_TRYON_MODEL_DEFAULT;
+}
+
 export async function executeFalTryOn(request: TryOnRequest): Promise<ProviderExecutionResult> {
   try {
-    const model = request.modelName?.trim() || FAL_TRYON_MODEL_DEFAULT;
+    const model = effectiveTryonModel(request.modelName);
     const imageUrl = await tryOnWithFal(request.personUrl, request.clothingUrl, model);
     return { success: true, imageUrl, provider: 'fal' };
   } catch (err) {

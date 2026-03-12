@@ -14,6 +14,8 @@ import {
   getEffectiveImagePrompt,
   getEffectiveVideoPrompt,
   getImageFallbackEnabled,
+  setAdminSettings,
+  DEFAULT_ADMIN_SETTINGS,
 } from './services/adminSettings';
 import { TryOnState, User, CuratedOutfit, PersonGalleryItem, HistoryItem, AppTheme, CategoryType } from './types';
 import { getHistory, saveHistory, ARCHIVE_MAX_ITEMS } from './services/historyStorage';
@@ -315,7 +317,12 @@ const App: React.FC = () => {
         });
         setState(prev => ({ ...prev, status: 'Примерка запущена...' }));
         let finalImageUrl: string | null = null;
+        const pollStart = Date.now();
+        const POLL_MAX_MS = 90_000;
         for (;;) {
+          if (Date.now() - pollStart > POLL_MAX_MS) {
+            throw new Error('Примерка занимает больше обычного. Попробуйте ещё раз.');
+          }
           await new Promise((r) => setTimeout(r, 2000));
           const status = await getTryonStatus(tryon_id);
           if (status.status === 'completed') {
@@ -367,7 +374,12 @@ const App: React.FC = () => {
       setState(prev => ({ ...prev, status: 'Примерка запущена...' }));
 
       let finalImageUrl: string | null = null;
+      const pollStart = Date.now();
+      const POLL_MAX_MS = 90_000;
       for (;;) {
+        if (Date.now() - pollStart > POLL_MAX_MS) {
+          throw new Error('Примерка занимает больше обычного. Попробуйте ещё раз.');
+        }
         await new Promise((r) => setTimeout(r, 2000));
         const status = await getTryonStatus(tryon_id);
         if (status.status === 'completed') {
@@ -1065,6 +1077,10 @@ const App: React.FC = () => {
               <AdminPanel
                 onBack={() => { setAdminUnlockedSession(false); goToTab('settings'); }}
                 unlocked={adminUnlockedSession}
+                onRestoreStability={() => {
+                  setSelectedImageModel(getDefaultImageModel());
+                  setSelectedVideoModel(getDefaultVideoModel());
+                }}
                 onUnlock={() => {
                   setAdminUnlockedSession(true);
                   setAdminSessionUnlocked(true);
@@ -1610,6 +1626,9 @@ const App: React.FC = () => {
               <button
                 onClick={() => {
                   localStorage.clear();
+                  setAdminSettings(DEFAULT_ADMIN_SETTINGS);
+                  setSelectedImageModel(getDefaultImageModel());
+                  setSelectedVideoModel(getDefaultVideoModel());
                   setPersonGallery([]);
                   setHistory([]);
                   setMerchantProducts([]);

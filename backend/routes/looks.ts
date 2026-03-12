@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { pool } from '../db.js';
 import { getLooks, likeLook, unlikeLook } from '../looks.js';
 
 export async function getLooksHandler(req: Request, res: Response): Promise<void> {
@@ -16,7 +17,21 @@ export async function getLooksHandler(req: Request, res: Response): Promise<void
       likedOnly,
       sortBy,
     });
-    res.json({ looks });
+    if (looks.length === 0) {
+      res.json({ looks: [] });
+      return;
+    }
+    const assetIds = [...new Set(looks.map((l) => l.main_asset_id))];
+    const urlsRes = await pool.query<{ id: string; original_url: string }>(
+      'SELECT id, original_url FROM media_assets WHERE id = ANY($1::uuid[])',
+      [assetIds],
+    );
+    const urlByAssetId = new Map(urlsRes.rows.map((r) => [r.id, r.original_url]));
+    const looksWithUrl = looks.map((l) => ({
+      ...l,
+      imageUrl: urlByAssetId.get(l.main_asset_id) ?? '',
+    }));
+    res.json({ looks: looksWithUrl });
   } catch (err) {
     console.error('[looks] getLooksHandler error', err);
     res.status(500).json({ error: 'Не удалось загрузить образы магазина.' });

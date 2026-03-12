@@ -29,7 +29,13 @@ export async function execute(request: TryOnRequest): Promise<TryOnResult> {
   const primary = await getPrimaryProvider();
   const fallback = getFallbackProvider(primary);
 
-  const primaryResult = await runProvider(primary, request);
+  let primaryResult = await runProvider(primary, request);
+
+  if (primary === 'fal' && !primaryResult.success && primaryResult.errorType === 'network') {
+    console.warn('[tryonEngine] Fal network error, retry once');
+    primaryResult = await runProvider(primary, request);
+  }
+
   if (primaryResult.success) {
     return { success: true, imageUrl: primaryResult.imageUrl, providerUsed: primary };
   }

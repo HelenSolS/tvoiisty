@@ -22,12 +22,15 @@ export const AdminPanel: React.FC<{
   onUnlock: () => void;
   metrics?: AppMetrics | null;
   onResetMetrics?: () => Promise<void>;
+  /** После «Вернуть стабильность» — чтобы родитель обновил выбранные модели в дефолт. */
+  onRestoreStability?: () => void;
 }> = ({
   onBack,
   unlocked,
   onUnlock,
   metrics = null,
   onResetMetrics,
+  onRestoreStability,
 }) => {
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
@@ -56,7 +59,7 @@ export const AdminPanel: React.FC<{
     setTimeout(() => setSaved(false), 2000);
   };
 
-  /** Сброс в стабильное состояние для показа: Fal Banana (картинка), Kling (видео), без выбора на главном. Сразу сохраняем. */
+  /** Сброс в дефолт: Fal Banana (картинка), Kling (видео), без выбора на главном. Сразу сохраняем. */
   const handleRestoreStability = () => {
     const stable: AdminSettings = {
       ...DEFAULT_ADMIN_SETTINGS,
@@ -65,6 +68,7 @@ export const AdminPanel: React.FC<{
     };
     setSettings(stable);
     setAdminSettings(stable);
+    onRestoreStability?.();
     setRestored(true);
     setTimeout(() => setRestored(false), 2500);
   };

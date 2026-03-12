@@ -17,6 +17,7 @@ import {
   findTryonById,
   listUserTryons,
   markTryonCompleted,
+  markTryonCompletedWithImageUrl,
   markTryonFailed,
   markTryonProcessing,
 } from '../tryonSessions.js';
@@ -104,16 +105,18 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
         throw new Error('Не указан образ одежды. Выберите вещь из витрины.');
       }
 
-      // Модель примерки: из тела запроса или из настроек (DEFAULT_IMAGE_MODEL). Канон: Fal nano-banana.
+      // Модель примерки: из тела запроса или из настроек (DEFAULT_IMAGE_MODEL). Канон: при virtual-try-on подменяем на nano-banana.
       const rawModel =
         modelName && typeof modelName === 'string'
           ? modelName
           : (await getSetting<string>('DEFAULT_IMAGE_MODEL')) ?? 'fal-ai/nano-banana-pro/edit';
-      let effectiveModel =
-        rawModel.includes('/') ? rawModel : 'fal-ai/nano-banana-pro/edit';
-      if (typeof effectiveModel === 'string' && effectiveModel.includes('virtual-try-on')) {
-        effectiveModel = 'fal-ai/nano-banana-pro/edit';
-      }
+      const raw = String(rawModel ?? '').trim().toLowerCase();
+      const effectiveModel =
+        raw.includes('virtual-try-on') || raw.includes('image-apps-v2')
+          ? 'fal-ai/nano-banana-pro/edit'
+          : rawModel && rawModel.includes('/')
+            ? String(rawModel).trim()
+            : 'fal-ai/nano-banana-pro/edit';
       const tryonRequest = { personUrl, clothingUrl, modelName: effectiveModel };
       const result = await execute(tryonRequest);
 
@@ -128,24 +131,34 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
         return;
       }
 
-      const stored = await mirrorFromUrl(result.imageUrl, {
-        type: 'tryon_result_image',
-        filename: 'tryon-result.png',
-      });
-      const hash = Buffer.from(stored.storageKey).toString('hex').slice(0, 64);
-      const resultAsset = await createMediaAsset({
-        type: 'tryon_result_image',
-        originalUrl: stored.url,
-        storageKey: stored.storageKey,
-        hash,
-      });
+      const providerImageUrl = result.imageUrl;
+      try {
+        const stored = await mirrorFromUrl(providerImageUrl, {
+          type: 'tryon_result_image',
+          filename: 'tryon-result.png',
+        });
+        const hash = Buffer.from(stored.storageKey).toString('hex').slice(0, 64);
+        const resultAsset = await createMediaAsset({
+          type: 'tryon_result_image',
+          originalUrl: stored.url,
+          storageKey: stored.storageKey,
+          hash,
+        });
 
-      await markTryonCompleted({
-        id: session.id,
-        resultImageAsset: resultAsset,
-        tokensCharged: 1,
-        resultMeta: {},
-      });
+        await markTryonCompleted({
+          id: session.id,
+          resultImageAsset: resultAsset,
+          tokensCharged: 1,
+          resultMeta: {},
+        });
+      } catch (storageErr) {
+        console.warn('[tryon] mirror/storage failed, delivering provider URL', storageErr);
+        await markTryonCompletedWithImageUrl({
+          id: session.id,
+          imageUrl: providerImageUrl,
+          tokensCharged: 1,
+        });
+      }
 
       if (lookId) {
         await incrementTryonCount(lookId);
@@ -188,6 +201,10 @@ export async function getTryonStatusHandler(req: Request, res: Response): Promis
         session.result_image_asset_id,
       ]);
     imageUrl = resAsset.rows[0]?.original_url ?? null;
+  }
+  if (!imageUrl && session.result_meta && typeof session.result_meta === 'object' && 'image_url' in session.result_meta) {
+    const url = (session.result_meta as { image_url?: string }).image_url;
+    if (typeof url === 'string' && url.trim()) imageUrl = url.trim();
   }
 
   res.json({
@@ -240,4 +257,50 @@ export async function listMyTryonsHandler(req: Request, res: Response): Promise<
       look_title: s.look_id ? looksById.get(s.look_id)?.title ?? null : null,
     })),
   });
+}
+
+/** GET /api/history — формат для newstyle UI: sessionId, imageUrl, videoUrl, createdAt, lookId, hasVideo. Только completed, текущий пользователь. */
+export async function getHistoryHandler(req: Request, res: Response): Promise<void> {
+  const user = (req as Request & { user?: { id: string } }).user;
+  if (!user) {
+    res.status(401).json({ error: 'Требуется авторизация.' });
+    return;
+  }
+
+  const sessions = await listUserTryons(user.id, 50);
+  const completed = sessions.filter((s) => s.status === 'completed');
+  const ids = completed
+    .map((s) => [s.result_image_asset_id, s.result_video_asset_id] as const)
+    .flat()
+    .filter((v): v is string => !!v);
+  const uniqueIds = Array.from(new Set(ids));
+
+  const assetsRes = await req.app
+    .get('db')
+    .query<{ id: string; original_url: string }>(
+      'SELECT id, original_url FROM media_assets WHERE id = ANY($1::uuid[])',
+      [uniqueIds],
+    );
+  const assetsById = new Map(assetsRes.rows.map((a) => [a.id, a.original_url]));
+
+  const rows = completed.map((s) => {
+    let imageUrl: string | null = s.result_image_asset_id
+      ? assetsById.get(s.result_image_asset_id ?? '') ?? null
+      : null;
+    if (!imageUrl && s.result_meta && typeof s.result_meta === 'object' && 'image_url' in s.result_meta) {
+      const u = (s.result_meta as { image_url?: string }).image_url;
+      if (typeof u === 'string' && u.trim()) imageUrl = u.trim();
+    }
+    const videoUrl = s.result_video_asset_id ? assetsById.get(s.result_video_asset_id) ?? null : null;
+    return {
+      sessionId: s.id,
+      imageUrl: imageUrl ?? undefined,
+      videoUrl: videoUrl ?? undefined,
+      createdAt: s.completed_at ?? s.created_at,
+      lookId: s.look_id ?? undefined,
+      hasVideo: !!s.result_video_asset_id,
+    };
+  });
+
+  res.json(rows);
 }

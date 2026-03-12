@@ -25,10 +25,9 @@ export async function tryOnWithFal(
   clothingImageUrl: string,
   model: string = FAL_MODEL_DEFAULT,
 ): Promise<string> {
+  const m = (typeof model === 'string' ? model : '').toLowerCase();
   const effectiveModel =
-    typeof model === 'string' && model.includes('virtual-try-on')
-      ? FAL_MODEL_DEFAULT
-      : (model || FAL_MODEL_DEFAULT);
+    m.includes('virtual-try-on') || m.includes('image-apps-v2') ? FAL_MODEL_DEFAULT : (model || FAL_MODEL_DEFAULT);
   const key = process.env.FAL_KEY?.trim();
   if (!key) {
     throw new Error('FAL_KEY не задан. Задайте в .env для fallback-примерки.');

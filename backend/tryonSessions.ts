@@ -96,7 +96,7 @@ export async function listUserTryons(userId: string, limit = 50): Promise<TryonS
 export async function createPendingTryon(params: {
   userId?: string | null;
   personAssetId: string;
-  lookId: string;
+  lookId: string | null;
   sceneType?: string;
   provider?: string;
   modelName?: string;
@@ -173,6 +173,26 @@ export async function markTryonCompleted(params: {
       params.tokensCharged,
       params.resultMeta ? JSON.stringify(params.resultMeta) : null,
     ],
+  );
+}
+
+/** Завершить примерку с URL картинки от провайдера (Fal/KIE), когда mirror в наше хранилище не удался — пользователь всё равно получает картинку. URL провайдера может иметь ограниченный TTL; основной источник — mirror в storage. */
+export async function markTryonCompletedWithImageUrl(params: {
+  id: string;
+  imageUrl: string;
+  tokensCharged?: number;
+}): Promise<void> {
+  await pool.query(
+    `
+    UPDATE tryon_sessions
+    SET status = 'completed',
+        result_meta = $2::jsonb,
+        tokens_charged = COALESCE($3, 0),
+        completed_at = NOW(),
+        updated_at = NOW()
+    WHERE id = $1
+    `,
+    [params.id, JSON.stringify({ image_url: params.imageUrl }), params.tokensCharged ?? 0],
   );
 }
 

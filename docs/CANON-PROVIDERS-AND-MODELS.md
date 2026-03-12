@@ -6,6 +6,16 @@
 
 ---
 
+## Канон генерации (примерка) — не менять
+
+- **PRIMARY_MODEL** = `fal-ai/nano-banana-pro/edit` (Fal nano-banana).
+- **FALLBACK_MODEL** = KIE nano-banana.
+- **Endpoint:** только `POST /api/tryon` (подмена virtual-try-on → nano-banana только в этом пайплайне; видео и другие эндпоинты не трогаем).
+- **Pipeline:** frontend → backend → Fal → при ошибке (не таймаут): retry Fal 1 раз при network error, затем fallback KIE → доставка картинки (mirror в storage, при сбое storage — URL провайдера в result_meta).
+- **Таймауты:** Fal poll 70s, фронт polling max 90s (чтобы не закрыть ожидание раньше бэкенда).
+- **Provider URL в result_meta** — только fallback при сбое mirror; основной источник — asset в нашем хранилище (URL провайдера может иметь ограниченный TTL).
+---
+
 ## Примерка (картинка)
 
 | Роль | Провайдер | Модель по умолчанию |
@@ -53,3 +63,17 @@
 - При таймауте Fal — fallback не вызывается (не дублируем запрос).
 
 Запуск: `npm run test:canon`.
+
+---
+
+## Чеклист проверки пайплайна (4 сценария)
+
+Перед релизом убедиться:
+
+| Сценарий | Вход | Ожидание |
+|----------|------|----------|
+| Демо-образ | person_asset_id + образ с https (витрина) | completed, image_url |
+| Образ из каталога (look) | person_asset_id + look_id | completed, image_url |
+| Одежда магазина | person_asset_id + clothing_image_url (https после загрузки) | completed, image_url |
+| Новое фото пользователя | person_asset_id (только что загружен) + любой образ | completed, image_url |
+| Storage выключен/ошибка | любой успешный tryon | completed, image_url из result_meta (URL провайдера) |

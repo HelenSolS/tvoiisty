@@ -34,6 +34,7 @@ import {
   signupHandler,
   loginHandler,
   meHandler,
+  optionalAuth,
   requireAuth,
   requireRole,
 } from './backend/auth.js';
@@ -54,6 +55,7 @@ import {
 import {
   createTryonHandler,
   getTryonStatusHandler,
+  getHistoryHandler,
   listMyTryonsHandler,
 } from './backend/routes/tryon.js';
 import { healthHandler } from './backend/routes/health.js';
@@ -72,12 +74,14 @@ async function main() {
 
   const app = express();
 
-  // CORS: фронт на Vercel (production + preview) обращается к api.tvoiistyle.top
+  // CORS: фронт на Vercel и app.tvoiistyle.top (второй интерфейс) обращаются к api.tvoiistyle.top
   const corsOptions = {
     origin: (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
       if (!origin) return cb(null, true);
       if (origin === 'https://tvoiisty.vercel.app') return cb(null, true);
+      if (origin === 'https://app.tvoiistyle.top') return cb(null, true);
       if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin)) return cb(null, true);
+      if (process.env.NODE_ENV !== 'production' && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return cb(null, true);
       return cb(null, false);
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -153,10 +157,13 @@ async function main() {
     updateGlobalSettingHandler,
   );
 
-  // Store looks API (Issue 51) — список образов и лайки.
-  app.get('/api/looks', requireAuth, getLooksHandler);
+  // Store looks API (Issue 51) — список образов и лайки. GET /api/looks без авторизации для демо (optionalAuth).
+  app.get('/api/looks', optionalAuth, getLooksHandler);
   app.post('/api/looks/:id/like', requireAuth, likeLookHandler);
   app.delete('/api/looks/:id/like', requireAuth, unlikeLookHandler);
+
+  // История примерок в формате для newstyle UI (sessionId, imageUrl, ...).
+  app.get('/api/history', requireAuth, getHistoryHandler);
 
   // Unified upload API + LLM pipeline for photos (Issue 39).
   // Для демо разрешаем загрузку без авторизации (user_photos/лимиты будут позже).

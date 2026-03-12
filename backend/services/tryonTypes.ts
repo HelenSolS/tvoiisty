@@ -15,6 +15,7 @@ export interface TryOnRequest {
 /** Нормализованные типы ошибок провайдера (для политики fallback). */
 export type ProviderErrorType =
   | 'timeout'
+  | 'network'
   | 'invalid_response'
   | 'auth'
   | 'rate_limit'
@@ -52,6 +53,7 @@ export const TRYON_USER_FACING_ERROR =
 
 /** Политика роутера: на каких типах ошибок разрешён fallback. */
 export const FALLBACK_ALLOWED_ERROR_TYPES: ProviderErrorType[] = [
+  'network',
   'invalid_response',
   'auth',
   'rate_limit',
