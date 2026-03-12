@@ -1,3 +1,5 @@
+import { Router } from 'express';
+
 /**
  * Try-On API (Issue #72).
  * Тонкий controller: валидация, сбор TryOnRequest, вызов TryOnEngine.execute(), ответ.
@@ -304,3 +306,33 @@ export async function getHistoryHandler(req: Request, res: Response): Promise<vo
 
   res.json(rows);
 }
+
+/**
+ * Skeleton Router для моковых try-on endpoints, без Fal/KIE и БД.
+ * Используется только в backend skeleton, не заменяя рабочие handlers выше.
+ */
+export const tryonRouter = Router();
+
+// POST /api/tryon — моковый старт примерки
+tryonRouter.post('/', (_req: Request, res: Response) => {
+  res.json({
+    tryon_id: 'mock-tryon-1',
+    status: 'processing',
+  });
+});
+
+// GET /api/tryon/:id — моковый статус с готовой картинкой
+tryonRouter.get('/:id', (_req: Request, res: Response) => {
+  res.json({
+    status: 'completed',
+    image_url: 'https://example.com/mock-result.jpg',
+  });
+});
+
+// GET /api/tryon/:id/video-status — моковый статус видео
+tryonRouter.get('/:id/video-status', (_req: Request, res: Response) => {
+  res.json({
+    status: 'pending',
+  });
+});
+

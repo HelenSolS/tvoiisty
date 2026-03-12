@@ -11,9 +11,9 @@ import { translations } from './translations';
 
 // Components
 import { Header } from './components/Header';
-import { Step1UploadUser } from './components/Step1UploadUser';
-import { Step2UploadClothing } from './components/Step2UploadClothing';
-import { Step3Result } from './components/Step3Result';
+import UploadBox from './components/UploadBox';
+import ResultView from './components/ResultView';
+import QuickTryOnLite from './components/QuickTryOnLite';
 import { Step4Video } from './components/Step4Video';
 import { LookScroller } from './components/LookScroller';
 import { AuthModal } from './components/AuthModal';
@@ -116,8 +116,9 @@ const App: React.FC = () => {
   });
 
   const [language] = useState<Language>(Language.RU);
-  const [currentStep, setCurrentStep] = useState<number>(0); // 0: Hero, 1: User Photo, 2: Clothing, 3: Result, 4: Video, 5: Scroller
+  const [currentStep, setCurrentStep] = useState<number>(0); // 0: Hero/full splash, 1: User Photo, 2: Clothing, 3: Result, 4: Video, 5: Scroller
   const [view, setView] = useState<'home' | 'settings' | 'adminTest'>('home');
+  const [isQuickLite, setIsQuickLite] = useState<boolean>(false);
 
   const [hasApiKey, setHasApiKey] = useState<boolean>(true); // Default to true, check in effect
 
@@ -669,7 +670,7 @@ const App: React.FC = () => {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <button 
-                onClick={() => setCurrentStep(1)}
+                onClick={() => { setIsQuickLite(true); }}
                 className="px-10 py-5 bg-white text-slate-900 rounded-full font-semibold text-xs uppercase tracking-[0.2em] shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all active:scale-95 border border-slate-100"
               >
                 {t.quickTryon}
@@ -688,7 +689,7 @@ const App: React.FC = () => {
         );
       case 1:
         return (
-          <Step1UploadUser
+          <UploadBox
             onUploadNew={handleUserPhotoUpload}
             onSelectPhoto={(url) => {
               setUserPhoto(url);
@@ -704,15 +705,17 @@ const App: React.FC = () => {
           />
         );
       case 2:
-        return <Step2UploadClothing 
-          onUpload={handleTryOn} 
-          t={t} 
-          state={state}
-          setState={setState}
-          backendLooks={backendLooks}
-        />;
+        return (
+          <UploadBox 
+            onUpload={handleTryOn} 
+            t={t} 
+            state={state}
+            setState={setState}
+            backendLooks={backendLooks}
+          />
+        );
       case 3:
-        return <Step3Result 
+        return <ResultView 
           image={resultImage} 
           isProcessing={isProcessing} 
           onCreateVideo={() => {
@@ -745,6 +748,9 @@ const App: React.FC = () => {
   };
 
   const renderView = () => {
+    if (isQuickLite && view === 'home') {
+      return <QuickTryOnLite t={t} />;
+    }
     switch (view) {
       case 'settings':
         return (

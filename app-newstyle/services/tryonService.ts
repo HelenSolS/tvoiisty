@@ -1,10 +1,17 @@
+import type { TryOnRequest } from '../types/TryOnRequest';
+import type {
+  TryOnStartResponse,
+  TryOnStatusResponse,
+  TryOnVideoStatusResponse,
+} from '../types/TryOnResponse';
+
 type TryonStartParams = {
   apiBase: string;
   headers: Record<string, string>;
-  body: Record<string, unknown>;
+  body: TryOnRequest;
 };
 
-export async function startTryOn({ apiBase, headers, body }: TryonStartParams): Promise<any> {
+export async function startTryOn({ apiBase, headers, body }: TryonStartParams): Promise<TryOnStartResponse> {
   const res = await fetch(`${apiBase}/api/tryon`, {
     method: 'POST',
     headers,
@@ -14,7 +21,7 @@ export async function startTryOn({ apiBase, headers, body }: TryonStartParams): 
     const errBody = await res.json().catch(() => ({}));
     throw new Error((errBody as any)?.error || `tryon-start-failed-${res.status}`);
   }
-  return res.json();
+  return res.json() as Promise<TryOnStartResponse>;
 }
 
 type UploadImageParams = {
@@ -42,7 +49,7 @@ type TryonStatusParams = {
   signal: AbortSignal;
 };
 
-export async function getTryonStatus({ apiBase, sessionId, headers, signal }: TryonStatusParams): Promise<any> {
+export async function getTryonStatus({ apiBase, sessionId, headers, signal }: TryonStatusParams): Promise<TryOnStatusResponse> {
   const res = await fetch(`${apiBase}/api/tryon/${sessionId}`, {
     signal,
     headers,
@@ -51,7 +58,7 @@ export async function getTryonStatus({ apiBase, sessionId, headers, signal }: Tr
     const body = await res.json().catch(() => ({}));
     throw new Error((body as any)?.error || `tryon-status-failed-${res.status}`);
   }
-  return res.json();
+  return res.json() as Promise<TryOnStatusResponse>;
 }
 
 type StartVideoParams = {
@@ -80,7 +87,7 @@ type VideoStatusParams = {
   signal: AbortSignal;
 };
 
-export async function getTryonVideoStatus({ apiBase, sessionId, headers, signal }: VideoStatusParams): Promise<any> {
+export async function getTryonVideoStatus({ apiBase, sessionId, headers, signal }: VideoStatusParams): Promise<TryOnVideoStatusResponse> {
   const res = await fetch(`${apiBase}/api/tryon/${sessionId}/video-status`, {
     signal,
     headers,
@@ -89,7 +96,7 @@ export async function getTryonVideoStatus({ apiBase, sessionId, headers, signal 
     const body = await res.json().catch(() => ({}));
     throw new Error((body as any)?.error || `video-status-failed-${res.status}`);
   }
-  return res.json();
+  return res.json() as Promise<TryOnVideoStatusResponse>;
 }
 
 
