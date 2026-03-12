@@ -206,6 +206,5 @@ export async function getTryonStatus(db: Pool, id: string) {
   };
 }
 
-export { listUserTryons, getHistoryHandler } from '../tryonSessions.js';
-
+export { listUserTryons } from '../tryonSessions.js';
 
