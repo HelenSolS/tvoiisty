@@ -51,7 +51,7 @@ export const Header: React.FC<HeaderProps> = ({ state, setState, language, setCu
           <div className="flex-1 space-y-8 mt-16">
             <nav className="flex flex-col gap-6">
               <button 
-                onClick={() => { setView('home'); setCurrentStep(1); setIsMenuOpen(false); }}
+                onClick={() => { setView('home'); setCurrentStep(0); setIsMenuOpen(false); }}
                 className="text-2xl font-black tracking-tight text-left hover:text-[var(--primary)] transition-colors"
               >
                 {t.home}

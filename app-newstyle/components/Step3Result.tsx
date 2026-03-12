@@ -24,6 +24,33 @@ export const Step3Result: React.FC<Step3ResultProps> = ({
 }) => {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
+  const handleDownload = () => {
+    if (!image) return;
+    try {
+      const link = document.createElement('a');
+      link.href = image;
+      link.download = 'tryon-result.jpg';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch {
+      // silent fallback
+    }
+  };
+
+  const handleShareTelegram = () => {
+    if (!image) return;
+    if (typeof window === 'undefined') return;
+    const url = encodeURIComponent(image);
+    const shareUrl = `https://t.me/share/url?url=${url}`;
+    window.open(shareUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleAnimationStub = () => {
+    if (typeof window === 'undefined') return;
+    window.alert('Анимация скоро будет доступна в этом интерфейсе. Сейчас её можно сделать в основном режиме.');
+  };
+
   return (
     <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
       <div className="w-full max-w-md bg-white rounded-[3rem] p-8 shadow-2xl border border-slate-100 overflow-hidden">
@@ -93,9 +120,24 @@ export const Step3Result: React.FC<Step3ResultProps> = ({
                 {t.createVideo}
               </button>
               <button
+                onClick={handleDownload}
                 className="py-5 bg-white text-slate-900 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-slate-50 transition-all active:scale-95 border border-slate-100"
               >
                 {t.download}
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                onClick={handleShareTelegram}
+                className="py-5 bg-white text-slate-900 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-slate-50 transition-all active:scale-95 border border-slate-100"
+              >
+                {t.share}
+              </button>
+              <button
+                onClick={handleAnimationStub}
+                className="py-5 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-slate-800 transition-all active:scale-95"
+              >
+                Анимация
               </button>
             </div>
             <button
