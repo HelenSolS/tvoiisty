@@ -59,6 +59,7 @@ import {
   listMyTryonsHandler,
 } from './backend/routes/tryon.js';
 import { healthHandler } from './backend/routes/health.js';
+import tryonLiteRouter from './backend/routes/tryonLite.js';
 
 async function main() {
   ensureKieConfig();
@@ -184,6 +185,10 @@ async function main() {
     }
   });
   app.post('/api/media/upload', upload.single('file'), uploadMediaHandler);
+
+  // Лёгкая примерка без БД/сессий: два файла → Fal → image_url.
+  // Используется только лайтовым интерфейсом.
+  app.use(tryonLiteRouter);
 
   // Try-On Session Engine (Issue 40).
   // Для демо не требуем реальную серверную авторизацию — сессии могут быть анонимными.
