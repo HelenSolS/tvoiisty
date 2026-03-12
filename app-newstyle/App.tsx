@@ -119,6 +119,7 @@ const App: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<number>(0); // 0: Hero/full splash, 1: User Photo, 2: Clothing, 3: Result, 4: Video, 5: Scroller
   const [view, setView] = useState<'home' | 'settings' | 'adminTest'>('home');
   const [isQuickLite, setIsQuickLite] = useState<boolean>(false);
+  const [hasNewHistoryFromQuick, setHasNewHistoryFromQuick] = useState<boolean>(false);
 
   const [hasApiKey, setHasApiKey] = useState<boolean>(true); // Default to true, check in effect
 
@@ -749,7 +750,27 @@ const App: React.FC = () => {
 
   const renderView = () => {
     if (isQuickLite && view === 'home') {
-      return <QuickTryOnLite t={t} />;
+      return (
+        <QuickTryOnLite
+          t={t}
+          onResult={(sessionId: string, imageUrl: string) => {
+            setState(prev => {
+              const history = prev.auth?.lookHistory || [];
+              return {
+                ...prev,
+                auth: {
+                  ...prev.auth,
+                  lookHistory: [
+                    { id: sessionId, imageUrl, timestamp: Date.now() },
+                    ...history.slice(0, 49),
+                  ],
+                },
+              };
+            });
+            setHasNewHistoryFromQuick(true);
+          }}
+        />
+      );
     }
     switch (view) {
       case 'settings':
@@ -780,6 +801,10 @@ const App: React.FC = () => {
         setCurrentStep={setCurrentStep}
         setView={setView}
         t={t}
+        isQuickLite={isQuickLite}
+        setIsQuickLite={setIsQuickLite}
+        hasNewHistory={hasNewHistoryFromQuick}
+        onHistoryViewed={() => setHasNewHistoryFromQuick(false)}
       />
 
       <main className="flex-1 container mx-auto max-w-4xl pt-20 pb-12">

@@ -8,9 +8,24 @@ interface HeaderProps {
   setCurrentStep: (step: number) => void;
   setView: (view: 'home' | 'settings' | 'adminTest') => void;
   t: any;
+  isQuickLite: boolean;
+  setIsQuickLite: (value: boolean) => void;
+  hasNewHistory: boolean;
+  onHistoryViewed: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ state, setState, language, setCurrentStep, setView, t }) => {
+export const Header: React.FC<HeaderProps> = ({
+  state,
+  setState,
+  language,
+  setCurrentStep,
+  setView,
+  t,
+  isQuickLite,
+  setIsQuickLite,
+  hasNewHistory,
+  onHistoryViewed,
+}) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const toggleTheme = (theme: Theme) => {
@@ -22,7 +37,12 @@ export const Header: React.FC<HeaderProps> = ({ state, setState, language, setCu
       <header className="fixed top-0 left-0 right-0 z-[100] px-6 py-4 flex items-center justify-between glass">
         <div 
           className="flex items-center gap-2 cursor-pointer group" 
-          onClick={() => { setView('home'); setCurrentStep(1); setIsMenuOpen(false); }}
+          onClick={() => { 
+            setIsQuickLite(false);
+            setView('home'); 
+            setCurrentStep(0); 
+            setIsMenuOpen(false); 
+          }}
         >
           <div className="w-8 h-8 bg-[var(--bg-gradient)] rounded-lg flex items-center justify-center shadow-md transform group-hover:rotate-6 transition-transform border border-white/20">
              <span className="text-white font-black text-[10px] drop-shadow-sm">ИИ</span>
@@ -51,28 +71,52 @@ export const Header: React.FC<HeaderProps> = ({ state, setState, language, setCu
           <div className="flex-1 space-y-8 mt-16">
             <nav className="flex flex-col gap-6">
               <button 
-                onClick={() => { setView('home'); setCurrentStep(0); setIsMenuOpen(false); }}
+                onClick={() => { 
+                  setIsQuickLite(false);
+                  setView('home'); 
+                  setCurrentStep(0); 
+                  setIsMenuOpen(false); 
+                }}
                 className="text-2xl font-black tracking-tight text-left hover:text-[var(--primary)] transition-colors"
               >
                 {t.home}
               </button>
               <button 
-                onClick={() => { setView('home'); setCurrentStep(1); setIsMenuOpen(false); }}
+                onClick={() => { 
+                  setIsQuickLite(true);
+                  setView('home'); 
+                  setCurrentStep(0); 
+                  setIsMenuOpen(false); 
+                }}
                 className="text-2xl font-black tracking-tight text-left hover:text-[var(--primary)] transition-colors"
               >
                 {t.quickTryon}
               </button>
               <button 
-                onClick={() => { setView('home'); setCurrentStep(2); setIsMenuOpen(false); }}
+                onClick={() => { 
+                  setIsQuickLite(false);
+                  setView('home'); 
+                  setCurrentStep(2); 
+                  setIsMenuOpen(false); 
+                }}
                 className="text-2xl font-black tracking-tight text-left hover:text-[var(--primary)] transition-colors"
               >
                 {t.gallery}
               </button>
               <button 
-                onClick={() => { setView('home'); setCurrentStep(5); setIsMenuOpen(false); }}
-                className="text-2xl font-black tracking-tight text-left hover:text-[var(--primary)] transition-colors"
+                onClick={() => { 
+                  setIsQuickLite(false);
+                  setView('home'); 
+                  setCurrentStep(5); 
+                  setIsMenuOpen(false); 
+                  onHistoryViewed();
+                }}
+                className="relative text-2xl font-black tracking-tight text-left hover:text-[var(--primary)] transition-colors"
               >
-                {t.history}
+                <span>{t.history}</span>
+                {hasNewHistory && (
+                  <span className="absolute -top-1 -right-3 w-2 h-2 rounded-full bg-[var(--primary)]"></span>
+                )}
               </button>
               <button 
                 onClick={() => { setView('adminTest'); setIsMenuOpen(false); }}

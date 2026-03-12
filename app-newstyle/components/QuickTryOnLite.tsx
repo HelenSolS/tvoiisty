@@ -13,9 +13,10 @@ interface UploadedMedia {
 
 interface QuickTryOnLiteProps {
   t: any;
+  onResult?: (sessionId: string, imageUrl: string) => void;
 }
 
-export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = () => {
+export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) => {
   const [personFile, setPersonFile] = useState<File | null>(null);
   const [garmentFile, setGarmentFile] = useState<File | null>(null);
 
@@ -201,6 +202,9 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = () => {
         if (statusData.status === 'completed' && imageUrl) {
           setResultImage(imageUrl);
           setTryonState('done');
+          if (onResult) {
+            onResult(newSessionId, imageUrl);
+          }
           return;
         }
         if (statusData.status === 'failed') {
