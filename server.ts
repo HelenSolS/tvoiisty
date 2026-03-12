@@ -94,6 +94,10 @@ async function main() {
 
   // Health-check для nginx/Docker и автотестов (JSON)
   app.get('/health', healthHandler);
+  // production health endpoint под /api/health
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok' });
+  });
 
   // Health tryon pipeline: DB, storage, providers (для автотестера и мониторинга)
   app.get('/health/tryon', async (_req, res) => {
