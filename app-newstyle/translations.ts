@@ -5,6 +5,8 @@ export const translations = {
     heroTitle: 'Виртуальная примерочная',
     heroSubtitle: 'Загрузите своё фото и фото одежды, которую хотите примерить',
     scrollDown: 'Начать',
+    quickTryon: 'Быстрая примерка',
+    findStyle: 'Найти свой стиль',
     yourPhoto: 'Ваше фото',
     clothingPhoto: 'Фото одежды',
     clickToUpload: 'Нажмите для загрузки',

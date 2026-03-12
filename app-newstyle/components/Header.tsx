@@ -57,6 +57,12 @@ export const Header: React.FC<HeaderProps> = ({ state, setState, language, setCu
                 {t.home}
               </button>
               <button 
+                onClick={() => { setView('home'); setCurrentStep(1); setIsMenuOpen(false); }}
+                className="text-2xl font-black tracking-tight text-left hover:text-[var(--primary)] transition-colors"
+              >
+                {t.quickTryon}
+              </button>
+              <button 
                 onClick={() => { setView('home'); setCurrentStep(2); setIsMenuOpen(false); }}
                 className="text-2xl font-black tracking-tight text-left hover:text-[var(--primary)] transition-colors"
               >

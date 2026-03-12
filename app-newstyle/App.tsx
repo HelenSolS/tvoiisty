@@ -667,12 +667,20 @@ const App: React.FC = () => {
               Загрузите своё фото и фото одежды, <br />
               которую хотите примерить
             </p>
-            <button 
-              onClick={handleStart}
-              className="px-14 py-5 bg-white text-slate-900 rounded-full font-semibold text-xs uppercase tracking-[0.2em] shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all active:scale-95 border border-slate-100"
-            >
-              {t.scrollDown}
-            </button>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <button 
+                onClick={() => setCurrentStep(1)}
+                className="px-10 py-5 bg-white text-slate-900 rounded-full font-semibold text-xs uppercase tracking-[0.2em] shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all active:scale-95 border border-slate-100"
+              >
+                {t.quickTryon}
+              </button>
+              <button 
+                onClick={handleStart}
+                className="px-10 py-5 bg-transparent text-slate-500 rounded-full font-semibold text-xs uppercase tracking-[0.2em] hover:text-slate-900 transition-all active:scale-95"
+              >
+                {t.findStyle}
+              </button>
+            </div>
             <div className="mt-20 animate-bounce opacity-20">
               <span className="text-xl">↓</span>
             </div>
