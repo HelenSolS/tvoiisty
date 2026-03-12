@@ -396,24 +396,28 @@ const App: React.FC = () => {
   const handleUserPhotoUpload = (img: string) => {
     setUserPhoto(img);
 
-    // После успешной загрузки добавляем фото в "Мои фото" один раз,
-    // используя URL из backend, чтобы не было дублей между base64 и URL.
+    // Сразу показываем фото в "Мои фото" (моментальный отклик для пользователя).
+    setState(prev => {
+      const userPhotos = prev.auth?.userPhotos || [];
+      const next = [img, ...userPhotos];
+      const limited = next.slice(0, 10); // лимит 10 фото
+      return {
+        ...prev,
+        auth: { ...prev.auth, userPhotos: limited, selectedUserPhoto: img },
+      };
+    });
+
+    // Параллельно отправляем в backend и, если вернулся URL, заменяем base64 на стабильный URL.
     uploadUserPhotoToBackend(img).then((uploaded) => {
       if (!uploaded) return;
       const url = uploaded.url;
       setState(prev => {
         const userPhotos = prev.auth?.userPhotos || [];
-        if (userPhotos.includes(url)) {
-          return {
-            ...prev,
-            auth: { ...prev.auth, selectedUserPhoto: url },
-          };
-        }
-        const next = [url, ...userPhotos];
-        const limited = next.slice(0, 10); // лимит 10 фото
+        const replaced = userPhotos.map(p => (p === img ? url : p));
+        const unique = Array.from(new Set(replaced));
         return {
           ...prev,
-          auth: { ...prev.auth, userPhotos: limited, selectedUserPhoto: url }
+          auth: { ...prev.auth, userPhotos: unique.slice(0, 10), selectedUserPhoto: url },
         };
       });
     });
