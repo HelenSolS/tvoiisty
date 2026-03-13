@@ -383,7 +383,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({
                     onClick={() => setPreviewImage(item.imageUrl)}
                   />
                   <div className="absolute top-6 right-6 flex flex-col gap-3">
-                    {item.isBackendLook && onUpload && (
+                    {onUpload && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -430,7 +430,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({
                     onClick={() => setPreviewImage(item.imageUrl)}
                   />
                   <div className="absolute top-3 right-3 flex flex-col gap-2">
-                    {item.isBackendLook && onUpload && (
+                    {onUpload && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
