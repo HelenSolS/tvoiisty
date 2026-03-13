@@ -177,7 +177,7 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
           {displayItems.map((item, idx) => {
             const isLiked = !!item.liked;
             return (
-              <div key={item.id} className="group relative">
+              <div key={item.id} className="group relative max-w-md mx-auto w-full">
                 <div className="aspect-[3/4] rounded-[3.5rem] overflow-hidden shadow-2xl border-8 border-white relative bg-slate-50 flex items-center justify-center">
                   <img 
                     src={item.imageUrl} 
@@ -188,7 +188,9 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
                   <div className="absolute top-8 right-8 flex flex-col gap-4">
                     <button 
                       onClick={(e) => { e.stopPropagation(); toggleLike(item.id, item.imageUrl); }}
-                      className={`w-9 h-9 rounded-full flex items-center justify-center backdrop-blur-xl transition-all shadow-xl ${isLiked ? 'bg-red-500 text-white' : 'bg-white/20 text-white hover:bg-white/40'}`}
+                      className={`w-9 h-9 rounded-full flex items-center justify-center backdrop-blur-xl transition-all shadow-xl ${
+                        isLiked ? 'bg-red-500 text-white opacity-100' : 'bg-white/20 text-white opacity-0 group-hover:opacity-100 hover:bg-white/40'
+                      }`}
                     >
                       <span className="text-sm">{isLiked ? '❤️' : '🤍'}</span>
                     </button>
