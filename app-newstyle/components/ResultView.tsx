@@ -64,24 +64,25 @@ const ResultView: React.FC<ResultViewProps> = ({
               </p>
             </div>
           ) : image ? (
-            <img
-              src={image}
-              alt="Result"
-              className="max-w-full max-h-full object-contain rounded-[2.2rem] animate-in zoom-in duration-1000 cursor-pointer"
-              onClick={() => setIsPreviewOpen(true)}
-            />
-            
-            <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-              <button onClick={onCreateVideo} className="w-10 h-10 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title={t.createVideo}>
-                <span className="text-base">🎬</span>
-              </button>
-              <button onClick={handleDownload} className="w-10 h-10 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title={t.download}>
-                <span className="text-base">📥</span>
-              </button>
-              <button onClick={handleShareTelegram} className="w-10 h-10 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title={t.share}>
-                <span className="text-base">↗</span>
-              </button>
-            </div>
+            <>
+              <img
+                src={image}
+                alt="Result"
+                className="max-w-full max-h-full object-contain rounded-[2.2rem] animate-in zoom-in duration-1000 cursor-pointer"
+                onClick={() => setIsPreviewOpen(true)}
+              />
+              <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                <button onClick={onCreateVideo} className="w-10 h-10 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title={t.createVideo}>
+                  <span className="text-base">🎬</span>
+                </button>
+                <button onClick={handleDownload} className="w-10 h-10 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title={t.download}>
+                  <span className="text-base">📥</span>
+                </button>
+                <button onClick={handleShareTelegram} className="w-10 h-10 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title={t.share}>
+                  <span className="text-base">↗</span>
+                </button>
+              </div>
+            </>
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-slate-300">
               <span className="text-5xl mb-4">✨</span>
