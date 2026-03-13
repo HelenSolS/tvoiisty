@@ -149,11 +149,11 @@ const UploadBox: React.FC<UploadBoxProps> = ({
               <div className="flex gap-4 overflow-x-auto no-scrollbar pb-6 -mx-6 px-6 snap-x">
                 {userPhotos.map((img, idx) => (
                   <div key={idx} className="flex-shrink-0 w-40 snap-start group relative">
-                    <div className="aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-xl bg-slate-50 border-4 border-white group-hover:shadow-2xl transition-all duration-700">
+                    <div className="aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-xl bg-slate-50 border-4 border-white group-hover:shadow-2xl transition-all duration-700 flex items-center justify-center">
                       <img
                         src={img}
                         alt={`User ${idx}`}
-                        className="w-full h-full object-cover cursor-pointer group-hover:scale-110 transition-transform duration-1000"
+                        className="w-full h-full object-contain cursor-pointer group-hover:scale-110 transition-transform duration-1000"
                         onClick={() => setPreviewImage(img)}
                       />
                       <div className="absolute top-3 right-3 flex flex-col gap-2">
@@ -184,11 +184,11 @@ const UploadBox: React.FC<UploadBoxProps> = ({
               <div className="grid grid-cols-2 gap-6 px-2 pb-6">
                 {userPhotos.map((img, idx) => (
                   <div key={idx} className="group relative">
-                    <div className="relative aspect-[3/4] rounded-[2rem] overflow-hidden shadow-md bg-slate-50 border-2 border-white mb-3">
+                    <div className="relative aspect-[3/4] rounded-[2rem] overflow-hidden shadow-md bg-slate-50 border-2 border-white mb-3 flex items-center justify-center">
                       <img
                         src={img}
                         alt={`User ${idx}`}
-                        className="w-full h-full object-cover cursor-pointer group-hover:scale-110 transition-transform duration-500"
+                        className="w-full h-full object-contain cursor-pointer group-hover:scale-110 transition-transform duration-500"
                         onClick={() => setPreviewImage(img)}
                       />
                       <div className="absolute top-3 right-3 flex flex-col gap-2">

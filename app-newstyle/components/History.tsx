@@ -22,9 +22,9 @@ export const History: React.FC<HistoryProps> = ({ items, t }) => {
           {items.map((img, i) => (
             <div 
               key={i} 
-              className="group relative aspect-[3/4] bg-white rounded-[2.5rem] overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 cursor-pointer"
+              className="group relative aspect-[3/4] bg-white rounded-[2.5rem] overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 cursor-pointer flex items-center justify-center"
             >
-              <img src={img} alt={`History ${i}`} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+              <img src={img} alt={`History ${i}`} className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-700" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-6">
                 <div className="flex gap-2">
                   <button className="flex-1 py-3 bg-white text-slate-900 rounded-xl font-bold text-[10px] uppercase tracking-widest">{t.download}</button>

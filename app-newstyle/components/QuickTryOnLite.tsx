@@ -360,37 +360,40 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
             )}
             {resultImage ? (
               <div className="w-full max-w-md space-y-6">
-                <div className="aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-2xl border border-white">
+                <div className="aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-2xl border border-white bg-slate-100 flex items-center justify-center">
                   <img
                     src={resultImage}
                     alt="Результат примерки"
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain"
                   />
                 </div>
                 <div className="flex flex-col md:flex-row gap-3 justify-center">
                   <button
                     onClick={handleAnimate}
-                    className="flex-1 px-5 py-3 rounded-full bg-white text-slate-900 text-[10px] font-black uppercase tracking-[0.25em] shadow-md hover:shadow-lg active:scale-95 transition-all"
+                    className="flex-1 px-5 py-3 rounded-full bg-white text-slate-900 text-[11px] font-semibold uppercase tracking-[0.18em] shadow-md border border-slate-200 hover:bg-slate-50 hover:shadow-lg active:scale-95 transition-all"
                   >
-                    АНИМИРОВАТЬ
+                    Анимация
                   </button>
                   <button
                     onClick={handleDownload}
-                    className="flex-1 px-5 py-3 rounded-full bg-slate-900 text-white text-[10px] font-black uppercase tracking-[0.25em] shadow-md hover:shadow-lg active:scale-95 transition-all"
+                    className="flex-1 px-5 py-3 rounded-full bg-slate-900 text-white text-[11px] font-semibold uppercase tracking-[0.18em] shadow-md hover:shadow-lg hover:-translate-y-0.5 active:scale-95 transition-all"
                   >
-                    СОХРАНИТЬ
+                    Скачать
                   </button>
                   <button
                     onClick={handleShareTelegram}
-                    className="flex-1 px-5 py-3 rounded-full bg-[var(--bg-gradient)] text-white text-[10px] font-black uppercase tracking-[0.25em] shadow-md hover:shadow-lg active:scale-95 transition-all"
+                    className="flex-1 px-5 py-3 rounded-full bg-[var(--bg-gradient)] text-white text-[11px] font-semibold uppercase tracking-[0.18em] shadow-md hover:shadow-lg hover:-translate-y-0.5 active:scale-95 transition-all"
                   >
-                    ЗАПОСТИТЬ
+                    Поделиться
                   </button>
                 </div>
               </div>
             ) : tryonState === 'running' ? (
-              <div className="w-full max-w-md h-64 rounded-[2.5rem] bg-slate-100 flex items-center justify-center text-[10px] font-bold uppercase tracking-[0.3em] text-slate-400">
-                AI генерирует ваш образ…
+              <div className="w-full max-w-md h-64 rounded-[2.5rem] bg-slate-100 flex flex-col items-center justify-center text-[11px] font-medium tracking-[0.06em] text-slate-500">
+                <div className="w-8 h-8 mb-4 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin" />
+                <p>Создаём образ…</p>
+                <p className="mt-1">Выполняется примерка…</p>
+                <p className="mt-1 text-slate-400">Ещё немного терпения.</p>
               </div>
             ) : (
               <div className="w-full max-w-md h-40 rounded-[2.5rem] bg-slate-50 flex items-center justify-center text-[10px] font-bold uppercase tracking-[0.3em] text-slate-300">

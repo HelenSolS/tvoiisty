@@ -126,11 +126,11 @@ export const LookScroller: React.FC<LookScrollerProps> = ({ items, t, onReset, s
             const isLiked = likedLooks.includes(item.imageUrl);
             return (
               <div key={item.id} className="group relative">
-                <div className="aspect-[3/4] rounded-[3.5rem] overflow-hidden shadow-2xl border-8 border-white relative bg-slate-50">
+                <div className="aspect-[3/4] rounded-[3.5rem] overflow-hidden shadow-2xl border-8 border-white relative bg-slate-50 flex items-center justify-center">
                   <img 
                     src={item.imageUrl} 
                     alt={`Look ${idx}`} 
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000 cursor-pointer"
+                    className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-1000 cursor-pointer"
                     onClick={() => setPreviewImage(item.imageUrl)}
                   />
                   <div className="absolute top-8 right-8 flex flex-col gap-4">
@@ -179,11 +179,11 @@ export const LookScroller: React.FC<LookScrollerProps> = ({ items, t, onReset, s
           {sortedItems.map((item, idx) => {
             const isLiked = likedLooks.includes(item.imageUrl);
             return (
-              <div key={item.id} className="group relative aspect-[3/4] rounded-[2rem] overflow-hidden shadow-lg border-4 border-white bg-slate-50">
+              <div key={item.id} className="group relative aspect-[3/4] rounded-[2rem] overflow-hidden shadow-lg border-4 border-white bg-slate-50 flex items-center justify-center">
                 <img 
                   src={item.imageUrl} 
                   alt={`Look ${idx}`} 
-                  className="w-full h-full object-cover cursor-pointer"
+                  className="w-full h-full object-contain cursor-pointer"
                   onClick={() => setPreviewImage(item.imageUrl)}
                 />
                 <button 

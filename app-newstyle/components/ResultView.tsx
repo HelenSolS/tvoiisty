@@ -55,7 +55,7 @@ const ResultView: React.FC<ResultViewProps> = ({
   return (
     <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
       <div className="w-full max-w-md bg-white rounded-[3rem] p-8 shadow-2xl border border-slate-100 overflow-hidden">
-        <div className="relative aspect-[3/4] w-full bg-slate-50 rounded-[2.5rem] overflow-hidden mb-8 group">
+        <div className="relative aspect-[3/4] w-full bg-slate-50 rounded-[2.5rem] overflow-hidden mb-8 group flex items-center justify-center">
           {isProcessing ? (
             <Loader t={t} />
           ) : error ? (
@@ -72,7 +72,7 @@ const ResultView: React.FC<ResultViewProps> = ({
             <img
               src={image}
               alt="Result"
-              className="w-full h-full object-cover animate-in zoom-in duration-1000 cursor-pointer"
+              className="w-full h-full object-contain animate-in zoom-in duration-1000 cursor-pointer"
               onClick={() => setIsPreviewOpen(true)}
             />
           ) : (
