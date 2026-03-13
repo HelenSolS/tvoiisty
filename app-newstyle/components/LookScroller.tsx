@@ -130,7 +130,7 @@ export const LookScroller: React.FC<LookScrollerProps> = ({ items, t, onReset, s
                   <img 
                     src={item.imageUrl} 
                     alt={`Look ${idx}`} 
-                    className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-1000 cursor-pointer"
+                    className="w-full h-full object-contain rounded-[3.5rem] group-hover:scale-105 transition-transform duration-1000 cursor-pointer"
                     onClick={() => setPreviewImage(item.imageUrl)}
                   />
                   <div className="absolute top-8 right-8 flex flex-col gap-4">
@@ -183,7 +183,7 @@ export const LookScroller: React.FC<LookScrollerProps> = ({ items, t, onReset, s
                 <img 
                   src={item.imageUrl} 
                   alt={`Look ${idx}`} 
-                  className="w-full h-full object-contain cursor-pointer"
+                  className="w-full h-full object-contain rounded-[2rem] cursor-pointer"
                   onClick={() => setPreviewImage(item.imageUrl)}
                 />
                 <button 

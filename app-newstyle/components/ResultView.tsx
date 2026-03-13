@@ -47,11 +47,6 @@ const ResultView: React.FC<ResultViewProps> = ({
     window.open(shareUrl, '_blank', 'noopener,noreferrer');
   };
 
-  const handleAnimationStub = () => {
-    if (typeof window === 'undefined') return;
-    window.alert('Анимация скоро будет доступна в этом интерфейсе. Сейчас её можно сделать в основном режиме.');
-  };
-
   return (
     <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
       <div className="w-full max-w-md bg-white rounded-[3rem] p-8 shadow-2xl border border-slate-100 overflow-hidden">
@@ -72,7 +67,7 @@ const ResultView: React.FC<ResultViewProps> = ({
             <img
               src={image}
               alt="Result"
-              className="w-full h-full object-contain animate-in zoom-in duration-1000 cursor-pointer"
+              className="w-full h-full object-contain rounded-[2.5rem] animate-in zoom-in duration-1000 cursor-pointer"
               onClick={() => setIsPreviewOpen(true)}
             />
           ) : (
@@ -110,32 +105,15 @@ const ResultView: React.FC<ResultViewProps> = ({
 
         {image && !isProcessing && !error && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={onCreateVideo}
-                className="py-5 bg-[var(--bg-gradient)] text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:scale-[1.02] transition-transform active:scale-95 shadow-[var(--primary)]/20"
-              >
-                {t.createVideo}
+            <div className="grid grid-cols-3 gap-4 justify-items-center">
+              <button onClick={onCreateVideo} className="w-12 h-12 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title={t.createVideo}>
+                <span className="text-base">🎬</span>
               </button>
-              <button
-                onClick={handleDownload}
-                className="py-5 bg-white text-slate-900 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-slate-50 transition-all active:scale-95 border border-slate-100"
-              >
-                {t.download}
+              <button onClick={handleDownload} className="w-12 h-12 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title={t.download}>
+                <span className="text-base">📥</span>
               </button>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={handleShareTelegram}
-                className="py-5 bg-white text-slate-900 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-slate-50 transition-all active:scale-95 border border-slate-100"
-              >
-                {t.share}
-              </button>
-              <button
-                onClick={handleAnimationStub}
-                className="py-5 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-slate-800 transition-all active:scale-95"
-              >
-                Анимация
+              <button onClick={handleShareTelegram} className="w-12 h-12 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title={t.share}>
+                <span className="text-base">↗</span>
               </button>
             </div>
             <button

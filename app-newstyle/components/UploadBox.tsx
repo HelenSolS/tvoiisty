@@ -153,7 +153,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({
                       <img
                         src={img}
                         alt={`User ${idx}`}
-                        className="w-full h-full object-contain cursor-pointer group-hover:scale-110 transition-transform duration-1000"
+                        className="w-full h-full object-contain rounded-[2.5rem] cursor-pointer group-hover:scale-110 transition-transform duration-1000"
                         onClick={() => setPreviewImage(img)}
                       />
                       <div className="absolute top-3 right-3 flex flex-col gap-2">
@@ -188,7 +188,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({
                       <img
                         src={img}
                         alt={`User ${idx}`}
-                        className="w-full h-full object-contain cursor-pointer group-hover:scale-110 transition-transform duration-500"
+                        className="w-full h-full object-contain rounded-[2rem] cursor-pointer group-hover:scale-110 transition-transform duration-500"
                         onClick={() => setPreviewImage(img)}
                       />
                       <div className="absolute top-3 right-3 flex flex-col gap-2">
@@ -375,11 +375,11 @@ const UploadBox: React.FC<UploadBoxProps> = ({
                 key={item.id}
                 className="flex-shrink-0 w-[80vw] max-w-[320px] snap-center group"
               >
-                <div className="relative aspect-[3/4] rounded-[3rem] overflow-hidden shadow-xl group-hover:shadow-2xl transition-all duration-700 mb-6 bg-slate-50 border-4 border-white">
+                <div className="relative aspect-[3/4] rounded-[3rem] overflow-hidden shadow-xl group-hover:shadow-2xl transition-all duration-700 mb-6 bg-slate-50 border-4 border-white flex items-center justify-center">
                   <img
                     src={item.imageUrl}
                     alt={item.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000 cursor-pointer"
+                    className="w-full h-full object-contain rounded-[3rem] group-hover:scale-105 transition-transform duration-1000 cursor-pointer"
                     onClick={() => setPreviewImage(item.imageUrl)}
                   />
                   <div className="absolute top-6 right-6 flex flex-col gap-3">
@@ -422,11 +422,11 @@ const UploadBox: React.FC<UploadBoxProps> = ({
           <div className="grid grid-cols-2 gap-6 px-2">
             {allItems.map((item) => (
               <div key={item.id} className="group">
-                <div className="relative aspect-[3/4] rounded-[2rem] overflow-hidden shadow-md bg-slate-50 border-2 border-white mb-3">
+                <div className="relative aspect-[3/4] rounded-[2rem] overflow-hidden shadow-md bg-slate-50 border-2 border-white mb-3 flex items-center justify-center">
                   <img
                     src={item.imageUrl}
                     alt={item.title}
-                    className="w-full h-full object-cover cursor-pointer group-hover:scale-110 transition-transform duration-500"
+                    className="w-full h-full object-contain rounded-[2rem] cursor-pointer group-hover:scale-110 transition-transform duration-500"
                     onClick={() => setPreviewImage(item.imageUrl)}
                   />
                   <div className="absolute top-3 right-3 flex flex-col gap-2">

@@ -1,15 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { api, apiRaw, API_URL } from '../src/api/client';
+import { API_URL } from '../src/api/client';
+import { startTryOnLite, startVideoFromImage } from '../services/tryonService';
 
-type UploadState = 'idle' | 'uploading' | 'uploaded' | 'error';
 type TryonState = 'idle' | 'running' | 'done' | 'error';
-type VideoState = 'idle' | 'starting' | 'processing' | 'ready' | 'error';
-
-interface UploadedMedia {
-  id: string;
-  url: string;
-  userId?: string | null;
-}
+type VideoState = 'idle' | 'starting' | 'ready' | 'error';
 
 interface QuickTryOnLiteProps {
   t: any;
@@ -23,19 +17,10 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
   const [personPreview, setPersonPreview] = useState<string | null>(null);
   const [garmentPreview, setGarmentPreview] = useState<string | null>(null);
 
-  const [personUpload, setPersonUpload] = useState<UploadState>('idle');
-  const [garmentUpload, setGarmentUpload] = useState<UploadState>('idle');
-
-  const [personMedia, setPersonMedia] = useState<UploadedMedia | null>(null);
-  const [garmentMedia, setGarmentMedia] = useState<UploadedMedia | null>(null);
-
-  const [backendUserId, setBackendUserId] = useState<string | null>(null);
-
   const [tryonState, setTryonState] = useState<TryonState>('idle');
   const [tryonError, setTryonError] = useState<string | null>(null);
   const [resultImage, setResultImage] = useState<string | null>(null);
 
-  const [sessionId, setSessionId] = useState<string | null>(null);
   const [videoState, setVideoState] = useState<VideoState>('idle');
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
@@ -53,10 +38,7 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
     if (!file) return;
     setPersonFile(file);
     setPersonPreview(URL.createObjectURL(file));
-    setPersonMedia(null);
-    setPersonUpload('idle');
     setResultImage(null);
-    setSessionId(null);
     setVideoUrl(null);
     setVideoState('idle');
     setVideoError(null);
@@ -69,12 +51,9 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
     if (!file) return;
     setGarmentFile(file);
     setGarmentPreview(URL.createObjectURL(file));
-    setGarmentMedia(null);
-    setGarmentUpload('idle');
     setResultImage(null);
     setTryonState('idle');
     setTryonError(null);
-    setSessionId(null);
     setVideoUrl(null);
     setVideoState('idle');
     setVideoError(null);
@@ -93,31 +72,16 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
     setTryonState('running');
     setTryonError(null);
     setResultImage(null);
-    setSessionId(null);
     setVideoUrl(null);
     setVideoState('idle');
     setVideoError(null);
 
     try {
-      const form = new FormData();
-      form.append('person', personFile);
-      form.append('garment', garmentFile);
-
-      const res = await fetch(`${API_URL}/api/tryon-lite`, {
-        method: 'POST',
-        body: form,
+      const { imageUrl } = await startTryOnLite({
+        apiBase: API_URL,
+        person: personFile,
+        garment: garmentFile,
       });
-
-      if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        throw new Error(text || `tryon-lite-start-failed-${res.status}`);
-      }
-
-      const data = await res.json();
-      const imageUrl = data.image_url ?? data.imageUrl ?? null;
-      if (!imageUrl) {
-        throw new Error('no-image-url');
-      }
 
       setResultImage(imageUrl);
       setTryonState('done');
@@ -136,8 +100,6 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
   const canTryOn =
     !!personFile &&
     !!garmentFile &&
-    personUpload !== 'uploading' &&
-    garmentUpload !== 'uploading' &&
     !isBusy;
 
   const handleDownload = async () => {
@@ -165,39 +127,19 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
   };
 
   const handleAnimate = async () => {
-    if (!sessionId || !backendUserId || !API_URL) return;
+    if (!resultImage || !API_URL) return;
     if (videoState === 'starting' || videoState === 'processing') return;
 
     setVideoState('starting');
     setVideoError(null);
 
     try {
-      await api(`/api/tryon/${sessionId}/video`, {
-        method: 'POST',
-        headers: { 'X-User-Id': backendUserId },
+      const { videoUrl: createdVideoUrl } = await startVideoFromImage({
+        apiBase: API_URL,
+        imageUrl: resultImage,
       });
-
-      setVideoState('processing');
-
-      const maxAttempts = 60;
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        const statusData = await api(
-          `/api/tryon/${sessionId}/video-status`,
-          {
-            headers: { 'X-User-Id': backendUserId },
-          },
-        );
-        if (statusData.status === 'completed' && statusData.videoUrl) {
-          setVideoUrl(statusData.videoUrl);
-          setVideoState('ready');
-          return;
-        }
-        if (statusData.status === 'failed') {
-          throw new Error('video-failed');
-        }
-        await new Promise((r) => setTimeout(r, 2000));
-      }
-      throw new Error('video-timeout');
+      setVideoUrl(createdVideoUrl);
+      setVideoState('ready');
     } catch (e) {
       console.error('Simple try-on video error', e);
       setVideoState('error');
@@ -235,7 +177,7 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
                 <img
                   src={personPreview}
                   alt="Фото человека"
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain rounded-[2.5rem]"
                 />
               ) : (
                 <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-400">
@@ -253,16 +195,6 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
               className="hidden"
               onChange={handlePersonChange}
             />
-            {personUpload === 'uploading' && (
-              <p className="mt-3 text-[10px] text-slate-400 uppercase tracking-[0.2em]">
-                Загружаем…
-              </p>
-            )}
-            {personUpload === 'error' && (
-              <p className="mt-3 text-[10px] text-red-500 uppercase tracking-[0.2em]">
-                Ошибка загрузки
-              </p>
-            )}
           </div>
 
           {/* Plus */}
@@ -289,7 +221,7 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
                 <img
                   src={garmentPreview}
                   alt="Одежда"
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain rounded-[2.5rem]"
                 />
               ) : (
                 <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-400">
@@ -307,16 +239,6 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
               className="hidden"
               onChange={handleGarmentChange}
             />
-            {garmentUpload === 'uploading' && (
-              <p className="mt-3 text-[10px] text-slate-400 uppercase tracking-[0.2em]">
-                Загружаем…
-              </p>
-            )}
-            {garmentUpload === 'error' && (
-              <p className="mt-3 text-[10px] text-red-500 uppercase tracking-[0.2em]">
-                Ошибка загрузки
-              </p>
-            )}
           </div>
         </div>
 
@@ -328,7 +250,7 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
             className={`px-16 py-4 rounded-full text-[11px] font-black uppercase tracking-[0.35em] shadow-2xl border border-slate-900/10 transition-all ${
               canTryOn
                 ? 'bg-slate-900 text-white hover:shadow-[0_20px_60px_rgba(15,23,42,0.5)] hover:-translate-y-0.5 active:scale-95'
-                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                : 'bg-slate-900/80 text-white/70 cursor-not-allowed'
             }`}
           >
             ПРИМЕРИТЬ
@@ -364,27 +286,18 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
                   <img
                     src={resultImage}
                     alt="Результат примерки"
-                    className="w-full h-full object-contain"
+                    className="w-full h-full object-contain rounded-[2.5rem]"
                   />
                 </div>
-                <div className="flex flex-col md:flex-row gap-3 justify-center">
-                  <button
-                    onClick={handleAnimate}
-                    className="flex-1 px-5 py-3 rounded-full bg-white text-slate-900 text-[11px] font-semibold uppercase tracking-[0.18em] shadow-md border border-slate-200 hover:bg-slate-50 hover:shadow-lg active:scale-95 transition-all"
-                  >
-                    Анимация
+                <div className="grid grid-cols-3 gap-4 justify-items-center">
+                  <button onClick={handleAnimate} className="w-14 h-14 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title="Анимация">
+                    <span className="text-lg">🎬</span>
                   </button>
-                  <button
-                    onClick={handleDownload}
-                    className="flex-1 px-5 py-3 rounded-full bg-slate-900 text-white text-[11px] font-semibold uppercase tracking-[0.18em] shadow-md hover:shadow-lg hover:-translate-y-0.5 active:scale-95 transition-all"
-                  >
-                    Скачать
+                  <button onClick={handleDownload} className="w-14 h-14 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title="Скачать">
+                    <span className="text-lg">📥</span>
                   </button>
-                  <button
-                    onClick={handleShareTelegram}
-                    className="flex-1 px-5 py-3 rounded-full bg-[var(--bg-gradient)] text-white text-[11px] font-semibold uppercase tracking-[0.18em] shadow-md hover:shadow-lg hover:-translate-y-0.5 active:scale-95 transition-all"
-                  >
-                    Поделиться
+                  <button onClick={handleShareTelegram} className="w-14 h-14 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title="Поделиться">
+                    <span className="text-lg">↗</span>
                   </button>
                 </div>
               </div>

@@ -19,7 +19,7 @@ import { LookScroller } from './components/LookScroller';
 import { AuthModal } from './components/AuthModal';
 import { AdminPanel } from './components/AdminPanel';
 import { AdminDebugPanel } from './components/AdminDebugPanel';
-import { startTryOn, uploadImage, getTryonStatus, startTryonVideo, getTryonVideoStatus } from './services/tryonService';
+import { uploadImage, startTryOnLite, startVideoFromImage } from './services/tryonService';
 
 // Единая база для всего фронта: используем тот же URL, что и демо simple-tryon.
 const API_BASE = API_URL;
@@ -161,15 +161,10 @@ const App: React.FC = () => {
       return null;
     }
   });
-  const [currentPhotoId, setCurrentPhotoId] = useState<string | null>(null);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [backendLooks, setBackendLooks] = useState<{ id: string; imageUrl: string }[]>([]);
 
   const tryonAbortRef = useRef<AbortController | null>(null);
   const videoAbortRef = useRef<AbortController | null>(null);
-  const activeTryonSessionRef = useRef<string | null>(null);
-  const activeVideoSessionRef = useRef<string | null>(null);
-
 
   const t = translations[language];
 
@@ -344,9 +339,6 @@ const App: React.FC = () => {
       // Наш бэкенд возвращает assetId и url
       const id = (data?.assetId ?? data?.id) ? String(data.assetId ?? data.id) : null;
       const url = data?.url ? String(data.url) : '';
-      if (id) {
-        setCurrentPhotoId(id);
-      }
       if (!id || !url) {
         return null;
       }
@@ -358,39 +350,23 @@ const App: React.FC = () => {
     }
   };
 
-  const uploadClothingToBackend = async (img: string): Promise<{ id: string; url: string } | null> => {
-    try {
-      let blob: Blob;
-      if (img.startsWith('http://') || img.startsWith('https://')) {
-        const r = await fetch(img, { mode: 'cors' });
-        if (!r.ok) throw new Error(`fetch image ${r.status}`);
-        blob = await r.blob();
-      } else if (img.startsWith('data:')) {
-        const base64 = img.includes(',') ? img.split(',')[1] : '';
-        if (!base64) throw new Error('invalid-data-url');
-        const bin = atob(base64.replace(/\s/g, ''));
-        const arr = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-        blob = new Blob([arr], { type: img.match(/data:([^;]+)/)?.[1] || 'image/png' });
-      } else {
-        return null;
-      }
-      const formData = new FormData();
-      formData.append('file', blob, 'clothing.png');
-      formData.append('type', 'clothing');
-      const headers: Record<string, string> = {};
-      if (backendUserId) headers['X-User-Id'] = backendUserId;
-      const res = await uploadImage({ apiBase: API_BASE, headers, formData });
-      const data = await res.json();
-      const id = (data?.assetId ?? data?.id) ? String(data.assetId ?? data.id) : null;
-      const url = data?.url ? String(data.url) : '';
-      if (!id || !url) return null;
-      return { id, url };
-    } catch (err) {
-      console.error('uploadClothingToBackend error', err);
-      logError('UPLOAD_CLOTHING', err);
-      return null;
+  const imageToBlob = async (img: string): Promise<Blob> => {
+    if (!img) throw new Error('empty-image');
+    if (img.startsWith('http://') || img.startsWith('https://')) {
+      const r = await fetch(img, { mode: 'cors' });
+      if (!r.ok) throw new Error(`fetch-image-${r.status}`);
+      return r.blob();
     }
+    if (img.startsWith('data:')) {
+      const base64 = img.includes(',') ? img.split(',')[1] : '';
+      if (!base64) throw new Error('invalid-data-url');
+      const binary = atob(base64.replace(/\s/g, ''));
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const mime = img.match(/data:([^;]+)/)?.[1] || 'image/jpeg';
+      return new Blob([bytes], { type: mime });
+    }
+    throw new Error('unsupported-image-format');
   };
 
   const handleUserPhotoUpload = (img: string) => {
@@ -441,94 +417,36 @@ const App: React.FC = () => {
     setCurrentStep(3);
     
     try {
-      // cancel any previous try-on polling
+      // cancel any previous try-on
       if (tryonAbortRef.current) {
         tryonAbortRef.current.abort();
       }
       const tryonController = new AbortController();
       tryonAbortRef.current = tryonController;
 
-      // Ensure we have uploaded photo to backend
-      let photoId = currentPhotoId;
-      if (!photoId) {
-        const uploaded = await uploadUserPhotoToBackend(userPhoto);
-        photoId = uploaded?.id ?? null;
-      }
-      if (!photoId) {
-        throw new Error('no-photo');
-      }
+      const personBlob = await imageToBlob(userPhoto);
+      const garmentBlob = await imageToBlob(garment);
+      if (tryonController.signal.aborted) return;
 
-      // Наш API: person_asset_id, и один из look_id или clothing_image_url
-      let lookId: string | null = null;
-      let clothingImageUrl: string | null = null;
-      if (backendLooks.length > 0 && garment.startsWith('http')) {
-        const matched = backendLooks.find((l) => l.imageUrl === garment);
-        lookId = matched ? matched.id : null;
-      }
-      if (!lookId && (garment.startsWith('http') || garment.startsWith('https'))) {
-        clothingImageUrl = garment;
-      }
-      if (!lookId && !clothingImageUrl) {
-        // Одежда не из каталога (например data URL) — загружаем и используем URL
-        const uploaded = await uploadClothingToBackend(garment);
-        clothingImageUrl = uploaded?.url ?? null;
-      }
-      if (!lookId && !clothingImageUrl) {
-        throw new Error('no-looks-available');
-      }
+      const { imageUrl } = await startTryOnLite({
+        apiBase: API_BASE,
+        person: personBlob,
+        garment: garmentBlob,
+      });
 
-      const body: Record<string, unknown> = { person_asset_id: photoId };
-      if (lookId) body.look_id = lookId;
-      if (clothingImageUrl) body.clothing_image_url = clothingImageUrl;
-
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (backendUserId) headers['X-User-Id'] = backendUserId;
-
-      const data = await startTryOn({ apiBase: API_BASE, headers, body });
-      const sessionId = String(data.tryon_id ?? data.sessionId);
-      setCurrentSessionId(sessionId);
-      activeTryonSessionRef.current = sessionId;
-
-      // Poll try-on status until completed or failed.
-      const maxAttempts = 60;
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        if (activeTryonSessionRef.current !== sessionId) {
-          return;
-        }
-        const headers: Record<string, string> = {};
-        if (backendUserId) headers['X-User-Id'] = backendUserId;
-        const statusData = await getTryonStatus({
-          apiBase: API_BASE,
-          sessionId,
-          headers,
-          signal: tryonController.signal,
-        });
-        const imageUrl = statusData.image_url ?? statusData.imageUrl;
-        if (statusData.status === 'completed' && imageUrl) {
-          const newId = sessionId;
-          setResultId(newId);
-          setResultImage(imageUrl);
-          setState(prev => {
-            const history = prev.auth?.lookHistory || [];
-            return {
-              ...prev,
-              auth: { 
-                ...prev.auth, 
-                lookHistory: [
-                  { id: newId, imageUrl, timestamp: Date.now() }, 
-                  ...history.slice(0, 49)
-                ] 
-              }
-            };
-          });
-          return;
-        }
-        if (statusData.status === 'failed') {
-          throw new Error('tryon-failed');
-        }
-        await new Promise((r) => setTimeout(r, 2000));
-      }
-      throw new Error('tryon-timeout');
+      const newId = `${Date.now()}`;
+      setResultId(newId);
+      setResultImage(imageUrl);
+      setState(prev => {
+        const history = prev.auth?.lookHistory || [];
+        return {
+          ...prev,
+          auth: {
+            ...prev.auth,
+            lookHistory: [{ id: newId, imageUrl, timestamp: Date.now() }, ...history.slice(0, 49)],
+          },
+        };
+      });
     } catch (err: any) {
       if (err?.name === 'AbortError') {
         return;
@@ -574,56 +492,26 @@ const App: React.FC = () => {
     setResultImage(null);
     setResultVideo(null);
     setTryonError(null);
-    activeTryonSessionRef.current = null;
-    activeVideoSessionRef.current = null;
     tryonAbortRef.current?.abort();
     videoAbortRef.current?.abort();
   };
 
   const handleCreateVideo = async () => {
-    if (!resultImage || !backendUserId || !currentSessionId) return;
+    if (!resultImage) return;
     setIsProcessing(true);
     try {
-      // cancel any previous video polling
+      // cancel any previous video request
       if (videoAbortRef.current) {
         videoAbortRef.current.abort();
       }
       const videoController = new AbortController();
       videoAbortRef.current = videoController;
-      activeVideoSessionRef.current = currentSessionId;
-
-      await startTryonVideo({
+      const { videoUrl } = await startVideoFromImage({
         apiBase: API_BASE,
-        sessionId: currentSessionId,
-        headers: { 'X-User-Id': backendUserId },
-        signal: videoController.signal,
+        imageUrl: resultImage,
       });
-
-      const maxAttempts = 60;
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        if (activeVideoSessionRef.current !== currentSessionId) {
-          return;
-        }
-        const statusData = await getTryonVideoStatus({
-          apiBase: API_BASE,
-          sessionId: currentSessionId,
-          headers: { 'X-User-Id': backendUserId },
-          signal: videoController.signal,
-        });
-        if (statusData.status === 'completed' && statusData.videoUrl) {
-          handleVideoCreated(statusData.videoUrl);
-          return;
-        }
-        if (statusData.status === 'failed') {
-          throw new Error('video-failed');
-        }
-        if (statusData.status === 'none') {
-          await new Promise((r) => setTimeout(r, 2000));
-        } else {
-          await new Promise((r) => setTimeout(r, 2000));
-        }
-      }
-      throw new Error('video-timeout');
+      if (videoController.signal.aborted) return;
+      handleVideoCreated(videoUrl);
     } catch (err: any) {
       if (err?.name === 'AbortError') {
         return;
