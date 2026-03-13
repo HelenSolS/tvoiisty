@@ -20,6 +20,26 @@ import { AuthModal } from './components/AuthModal';
 import { AdminPanel } from './components/AdminPanel';
 import { AdminDebugPanel } from './components/AdminDebugPanel';
 import { uploadImage, startTryOnLite, startVideoFromImage } from './services/tryonService';
+import { getOrCreateOwnerClientId, getOwnerHeaders, readOwnerClientIdFromResponse } from './services/ownerService';
+import {
+  enqueuePendingPersonUpload,
+  getPendingPersonUploads,
+  removePendingPersonUpload,
+} from './services/pendingSyncQueue';
+import {
+  deleteHistoryItem,
+  markHistoryViewed,
+  normalizeHistoryRows,
+  reanimateHistoryItem,
+  setHistoryLike,
+} from './services/historyService';
+import {
+  enqueueHistoryDelete,
+  enqueueHistoryLike,
+  enqueueHistoryReanimate,
+  getPendingHistoryActions,
+  removePendingHistoryAction,
+} from './services/pendingHistoryQueue';
 
 // Единая база для всего фронта: используем тот же URL, что и демо simple-tryon.
 const API_BASE = API_URL;
@@ -69,7 +89,7 @@ const App: React.FC = () => {
                 .filter(Boolean)
                 .filter((u: string) => !u.startsWith('data:'))
             )
-          );
+          ).slice(0, 10);
 
           const historyUrls = Array.isArray(merged.auth.lookHistory)
             ? merged.auth.lookHistory
@@ -100,6 +120,12 @@ const App: React.FC = () => {
               ...merged.auth,
               userPhotos: cleanedUserPhotos,
               garmentMemory: cleanedGarments,
+              lookHistory: Array.isArray(merged.auth.lookHistory)
+                ? merged.auth.lookHistory
+                    .filter((x: any) => x && x.imageUrl)
+                    .sort((a: any, b: any) => Number(b?.timestamp || 0) - Number(a?.timestamp || 0))
+                    .slice(0, 50)
+                : [],
               // если выбранное фото больше не существует, сбрасываем выбор
               selectedUserPhoto:
                 merged.auth.selectedUserPhoto && cleanedUserPhotos.includes(merged.auth.selectedUserPhoto)
@@ -156,12 +182,15 @@ const App: React.FC = () => {
   const [backendUserId, setBackendUserId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     try {
-      return localStorage.getItem(BACKEND_USER_ID_KEY);
+      const fromStorage = localStorage.getItem(BACKEND_USER_ID_KEY);
+      if (fromStorage && fromStorage.trim()) return fromStorage.trim();
+      return getOrCreateOwnerClientId();
     } catch {
-      return null;
+      return getOrCreateOwnerClientId();
     }
   });
   const [backendLooks, setBackendLooks] = useState<{ id: string; imageUrl: string }[]>([]);
+  const [syncTick, setSyncTick] = useState(0);
 
   const tryonAbortRef = useRef<AbortController | null>(null);
   const videoAbortRef = useRef<AbortController | null>(null);
@@ -189,9 +218,44 @@ const App: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    const onOnline = () => setSyncTick((v) => v + 1);
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const syncPendingPersonUploads = async () => {
+      const pending = getPendingPersonUploads();
+      if (pending.length === 0) return;
+      for (const originalImg of pending) {
+        if (cancelled) return;
+        const uploaded = await uploadUserPhotoToBackend(originalImg);
+        if (!uploaded) continue;
+        removePendingPersonUpload(originalImg);
+        const stableUrl = uploaded.url;
+        setState((prev) => {
+          const nextPhotos = (prev.auth?.userPhotos || []).map((p) => (p === originalImg ? stableUrl : p));
+          const unique = Array.from(new Set(nextPhotos)).slice(0, 10);
+          const selectedUserPhoto =
+            prev.auth?.selectedUserPhoto === originalImg ? stableUrl : prev.auth?.selectedUserPhoto;
+          return {
+            ...prev,
+            auth: { ...prev.auth, userPhotos: unique, selectedUserPhoto },
+          };
+        });
+      }
+    };
+    syncPendingPersonUploads();
+    return () => {
+      cancelled = true;
+    };
+  }, [syncTick, backendUserId]);
+
   const updateBackendUserIdFromHeaders = (res: Response) => {
     try {
-      const headerId = res.headers.get('x-user-id');
+      const headerId = readOwnerClientIdFromResponse(res);
       if (headerId && headerId !== backendUserId) {
         setBackendUserId(headerId);
         if (typeof window !== 'undefined') {
@@ -203,11 +267,59 @@ const App: React.FC = () => {
     }
   };
 
+  const getApiHeaders = () => {
+    const token = localStorage.getItem('tvoiisty_token');
+    return getOwnerHeaders(backendUserId, token);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    const flushPendingHistory = async () => {
+      const pending = getPendingHistoryActions();
+      if (pending.length === 0) return;
+      for (const action of pending) {
+        if (cancelled) return;
+        try {
+          if (action.kind === 'like') {
+            await setHistoryLike({ apiBase: API_BASE, headers: getApiHeaders() }, action.sessionId, action.liked);
+          } else if (action.kind === 'delete') {
+            await deleteHistoryItem({ apiBase: API_BASE, headers: getApiHeaders() }, action.sessionId);
+          } else if (action.kind === 'reanimate') {
+            const { videoUrl } = await reanimateHistoryItem(
+              { apiBase: API_BASE, headers: getApiHeaders() },
+              action.sessionId,
+            );
+            setState((prev) => ({
+              ...prev,
+              auth: {
+                ...prev.auth,
+                lookHistory: (prev.auth.lookHistory || []).map((x) =>
+                  x.id === action.sessionId ? { ...x, videoUrl } : x,
+                ),
+              },
+            }));
+          }
+          removePendingHistoryAction(action.id);
+        } catch {
+          // keep queued for next reconnect
+        }
+      }
+    };
+    flushPendingHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [syncTick, backendUserId, setState]);
+
   // GET /api/looks — наш бэкенд: optionalAuth, ответ { looks: [{ id, imageUrl, ... }] }
   useEffect(() => {
     const fetchLooks = async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/looks`);
+        const token = localStorage.getItem('tvoiisty_token');
+        const res = await fetch(`${API_BASE}/api/looks`, {
+          headers: getOwnerHeaders(backendUserId, token),
+        });
+        updateBackendUserIdFromHeaders(res);
         if (!res.ok) throw new Error(`GET /api/looks ${res.status}`);
         const data = await res.json();
         const list = Array.isArray(data?.looks) ? data.looks : Array.isArray(data) ? data : [];
@@ -218,26 +330,26 @@ const App: React.FC = () => {
       }
     };
     fetchLooks();
-  }, []);
+  }, [backendUserId, syncTick]);
 
-  // GET /api/my/photos — у нашего бэкенда нет; при 404 считаем пустой список
+  // GET /api/my/photos — owner-based список (лимит 10)
   useEffect(() => {
-    if (!backendUserId) return;
     const fetchMyPhotos = async () => {
       try {
+        const token = localStorage.getItem('tvoiisty_token');
         const res = await fetch(`${API_BASE}/api/my/photos`, {
-          headers: { 'X-User-Id': backendUserId },
+          headers: getOwnerHeaders(backendUserId, token),
         });
+        updateBackendUserIdFromHeaders(res);
         if (!res.ok && res.status !== 404) return;
         if (res.status === 404) return;
         const data = await res.json();
         const urls: string[] = Array.isArray(data)
           ? data.map((x: any) => String(x.url)).filter(Boolean)
           : [];
-        if (urls.length === 0) return;
         setState(prev => {
-          const existing = new Set(prev.auth?.userPhotos || []);
-          const merged = [...urls.filter((u) => !existing.has(u)), ...(prev.auth?.userPhotos || [])];
+          const existing = prev.auth?.userPhotos || [];
+          const merged = Array.from(new Set([...urls, ...existing])).slice(0, 10);
           return {
             ...prev,
             auth: { ...prev.auth, userPhotos: merged },
@@ -249,33 +361,46 @@ const App: React.FC = () => {
       }
     };
     fetchMyPhotos();
-  }, [backendUserId, setState]);
+  }, [backendUserId, setState, syncTick]);
 
-  // GET /api/history — наш бэкенд: requireAuth (Bearer). При 401 — пустая история.
+  // GET /api/history — owner-based история (лимит 50)
   useEffect(() => {
-    if (!backendUserId) return;
     const fetchHistory = async () => {
       try {
-        const headers: Record<string, string> = {};
         const token = localStorage.getItem('tvoiisty_token');
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-        else headers['X-User-Id'] = backendUserId;
+        const headers = getOwnerHeaders(backendUserId, token);
         const res = await fetch(`${API_BASE}/api/history`, { headers });
+        updateBackendUserIdFromHeaders(res);
         if (!res.ok) {
           if (res.status === 401) return;
           return;
         }
         const data = await res.json();
         if (!Array.isArray(data)) return;
-        const items = data.map((x: any) => ({
-          id: String(x.sessionId),
-          imageUrl: String(x.imageUrl || ''),
-          videoUrl: x.videoUrl ? String(x.videoUrl) : undefined,
-          timestamp: x.createdAt ? (typeof x.createdAt === 'string' ? Date.parse(x.createdAt) : Number(x.createdAt)) || Date.now() : Date.now(),
-        }));
+        const items = normalizeHistoryRows(data);
         setState(prev => ({
           ...prev,
-          auth: { ...prev.auth, lookHistory: items },
+          auth: {
+            ...prev.auth,
+            lookHistory: Array.from(
+              new Map(
+                [...items, ...(prev.auth?.lookHistory || [])]
+                  .map((item: any) => [String(item.id || `${item.imageUrl}_${item.timestamp}`), item]),
+              ).values(),
+            )
+              .sort((a: any, b: any) => {
+                const aNew = !!a.isNew;
+                const bNew = !!b.isNew;
+                if (aNew && !bNew) return -1;
+                if (!aNew && bNew) return 1;
+                const aLiked = !!a.liked;
+                const bLiked = !!b.liked;
+                if (aLiked && !bLiked) return -1;
+                if (!aLiked && bLiked) return 1;
+                return Number(b.timestamp || 0) - Number(a.timestamp || 0);
+              })
+              .slice(0, 50),
+          },
         }));
       } catch (err) {
         console.error('history load error', err);
@@ -283,7 +408,7 @@ const App: React.FC = () => {
       }
     };
     fetchHistory();
-  }, [backendUserId, setState]);
+  }, [backendUserId, setState, syncTick]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -330,8 +455,8 @@ const App: React.FC = () => {
       formData.append('file', blob, blob.type?.startsWith('image/') ? 'photo.' + blob.type.split('/')[1] : 'photo.png');
       formData.append('type', 'person');
 
-      const headers: Record<string, string> = {};
-      if (backendUserId) headers['X-User-Id'] = backendUserId;
+      const token = localStorage.getItem('tvoiisty_token');
+      const headers: Record<string, string> = getOwnerHeaders(backendUserId, token);
 
       const res = await uploadImage({ apiBase: API_BASE, headers, formData });
       updateBackendUserIdFromHeaders(res);
@@ -385,7 +510,10 @@ const App: React.FC = () => {
 
     // Параллельно отправляем в backend и, если вернулся URL, заменяем base64 на стабильный URL.
     uploadUserPhotoToBackend(img).then((uploaded) => {
-      if (!uploaded) return;
+      if (!uploaded) {
+        enqueuePendingPersonUpload(img);
+        return;
+      }
       const url = uploaded.url;
       setState(prev => {
         const userPhotos = prev.auth?.userPhotos || [];
@@ -428,13 +556,14 @@ const App: React.FC = () => {
       const garmentBlob = await imageToBlob(garment);
       if (tryonController.signal.aborted) return;
 
-      const { imageUrl } = await startTryOnLite({
+      const { imageUrl, sessionId } = await startTryOnLite({
         apiBase: API_BASE,
         person: personBlob,
         garment: garmentBlob,
+        headers: getOwnerHeaders(backendUserId, localStorage.getItem('tvoiisty_token')),
       });
 
-      const newId = `${Date.now()}`;
+      const newId = sessionId || `${Date.now()}`;
       setResultId(newId);
       setResultImage(imageUrl);
       setState(prev => {
@@ -443,7 +572,7 @@ const App: React.FC = () => {
           ...prev,
           auth: {
             ...prev.auth,
-            lookHistory: [{ id: newId, imageUrl, timestamp: Date.now() }, ...history.slice(0, 49)],
+            lookHistory: [{ id: newId, imageUrl, timestamp: Date.now(), isNew: true }, ...history.slice(0, 49)],
           },
         };
       });
@@ -509,6 +638,7 @@ const App: React.FC = () => {
       const { videoUrl } = await startVideoFromImage({
         apiBase: API_BASE,
         imageUrl: resultImage,
+        headers: getOwnerHeaders(backendUserId, localStorage.getItem('tvoiisty_token')),
       });
       if (videoController.signal.aborted) return;
       handleVideoCreated(videoUrl);
@@ -636,6 +766,55 @@ const App: React.FC = () => {
           onReset={handleReset} 
           state={state} 
           setState={setState} 
+          onLike={async (sessionId, liked) => {
+            setState((prev) => ({
+              ...prev,
+              auth: {
+                ...prev.auth,
+                lookHistory: (prev.auth.lookHistory || []).map((x) =>
+                  x.id === sessionId ? { ...x, liked } : x,
+                ),
+              },
+            }));
+            try {
+              await setHistoryLike({ apiBase: API_BASE, headers: getApiHeaders() }, sessionId, liked);
+            } catch {
+              enqueueHistoryLike(sessionId, liked);
+            }
+          }}
+          onDelete={async (sessionId) => {
+            try {
+              await deleteHistoryItem({ apiBase: API_BASE, headers: getApiHeaders() }, sessionId);
+            } catch {
+              enqueueHistoryDelete(sessionId);
+            }
+          }}
+          onReanimate={async (sessionId) => {
+            try {
+              const { videoUrl } = await reanimateHistoryItem(
+                { apiBase: API_BASE, headers: getApiHeaders() },
+                sessionId,
+              );
+              setState((prev) => ({
+                ...prev,
+                auth: {
+                  ...prev.auth,
+                  lookHistory: (prev.auth.lookHistory || []).map((x) =>
+                    x.id === sessionId ? { ...x, videoUrl } : x,
+                  ),
+                },
+              }));
+            } catch {
+              enqueueHistoryReanimate(sessionId);
+            }
+          }}
+          onViewed={async (ids) => {
+            try {
+              await markHistoryViewed({ apiBase: API_BASE, headers: getApiHeaders() }, ids);
+            } catch {
+              // сервер обновится при следующем успешном sync
+            }
+          }}
         />;
       default:
         return null;
@@ -650,12 +829,13 @@ const App: React.FC = () => {
           onResult={(sessionId: string, imageUrl: string) => {
             setState(prev => {
               const history = prev.auth?.lookHistory || [];
+              const itemId = sessionId && sessionId !== 'tryon-lite' ? sessionId : `tryon-lite-${Date.now()}`;
               return {
                 ...prev,
                 auth: {
                   ...prev.auth,
                   lookHistory: [
-                    { id: sessionId, imageUrl, timestamp: Date.now() },
+                    { id: itemId, imageUrl, timestamp: Date.now(), isNew: true },
                     ...history.slice(0, 49),
                   ],
                 },

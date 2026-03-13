@@ -87,6 +87,8 @@ export interface LookHistoryItem {
   imageUrl: string;
   videoUrl?: string;
   timestamp: number;
+  liked?: boolean;
+  isNew?: boolean;
 }
 
 export interface AuthState {

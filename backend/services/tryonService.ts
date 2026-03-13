@@ -9,17 +9,19 @@ import {
   createPendingTryon,
   findExistingTryonByClientRequest,
   findTryonById,
-  listUserTryons,
   markTryonCompleted,
   markTryonCompletedWithImageUrl,
   markTryonFailed,
   markTryonProcessing,
+  trimCompletedOwnerTryons,
 } from '../tryonSessions.js';
 import { logTryonTokenCharge } from '../tokens.js';
 
 export interface CreateTryonInput {
   db: Pool;
   userId: string | null;
+  ownerType: 'user' | 'client';
+  ownerKey: string;
   personAssetId: string;
   lookId?: string | null;
   clothingImageUrl?: string | null;
@@ -35,13 +37,13 @@ export interface CreateTryonResult {
 }
 
 export async function maybeReuseExistingTryon(input: {
-  userId: string | null;
+  ownerKey: string;
   clientRequestId?: string;
 }): Promise<CreateTryonResult | null> {
-  const { userId, clientRequestId } = input;
-  if (!userId || !clientRequestId) return null;
+  const { ownerKey, clientRequestId } = input;
+  if (!ownerKey || !clientRequestId) return null;
 
-  const existing = await findExistingTryonByClientRequest(userId, clientRequestId);
+  const existing = await findExistingTryonByClientRequest(ownerKey, clientRequestId);
   if (!existing) return null;
 
   return { tryon_id: existing.id, status: existing.status };
@@ -51,6 +53,8 @@ export async function createTryonSession(input: CreateTryonInput): Promise<Creat
   const {
     db,
     userId,
+    ownerType,
+    ownerKey,
     personAssetId,
     lookId,
     clothingImageUrl,
@@ -62,6 +66,8 @@ export async function createTryonSession(input: CreateTryonInput): Promise<Creat
 
   const session = await createPendingTryon({
     userId,
+    ownerType,
+    ownerKey,
     personAssetId,
     lookId: lookId || null,
     sceneType,
@@ -150,6 +156,7 @@ export async function createTryonSession(input: CreateTryonInput): Promise<Creat
           tokensCharged: 1,
           resultMeta: {},
         });
+        await trimCompletedOwnerTryons(ownerKey, 50);
       } catch (storageErr) {
         console.warn('[tryon] mirror/storage failed, delivering provider URL', storageErr);
         await markTryonCompletedWithImageUrl({
@@ -157,6 +164,7 @@ export async function createTryonSession(input: CreateTryonInput): Promise<Creat
           imageUrl: providerImageUrl,
           tokensCharged: 1,
         });
+        await trimCompletedOwnerTryons(ownerKey, 50);
       }
 
       if (lookId) {
@@ -207,4 +215,12 @@ export async function getTryonStatus(db: Pool, id: string) {
 }
 
 export { listUserTryons } from '../tryonSessions.js';
+export { listOwnerTryons } from '../tryonSessions.js';
+export {
+  setTryonLiked,
+  deleteOwnerTryon,
+  findTryonById,
+  updateOwnerTryonVideoAsset,
+  markOwnerTryonsViewed,
+} from '../tryonSessions.js';
 

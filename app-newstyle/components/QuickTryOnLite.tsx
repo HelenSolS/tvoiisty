@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { API_URL } from '../src/api/client';
 import { startTryOnLite, startVideoFromImage } from '../services/tryonService';
+import { getOrCreateOwnerClientId, getOwnerHeaders } from '../services/ownerService';
 
 type TryonState = 'idle' | 'running' | 'done' | 'error';
 type VideoState = 'idle' | 'starting' | 'ready' | 'error';
@@ -77,16 +78,19 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
     setVideoError(null);
 
     try {
-      const { imageUrl } = await startTryOnLite({
+      const ownerClientId = getOrCreateOwnerClientId();
+      const token = localStorage.getItem('tvoiisty_token');
+      const { imageUrl, sessionId } = await startTryOnLite({
         apiBase: API_URL,
         person: personFile,
         garment: garmentFile,
+        headers: getOwnerHeaders(ownerClientId, token),
       });
 
       setResultImage(imageUrl);
       setTryonState('done');
       if (onResult) {
-        onResult('tryon-lite', imageUrl);
+        onResult(sessionId || 'tryon-lite', imageUrl);
       }
     } catch (err: any) {
       console.error('Simple try-on error (adapted)', err);
@@ -134,9 +138,12 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
     setVideoError(null);
 
     try {
+      const ownerClientId = getOrCreateOwnerClientId();
+      const token = localStorage.getItem('tvoiisty_token');
       const { videoUrl: createdVideoUrl } = await startVideoFromImage({
         apiBase: API_URL,
         imageUrl: resultImage,
+        headers: getOwnerHeaders(ownerClientId, token),
       });
       setVideoUrl(createdVideoUrl);
       setVideoState('ready');
@@ -250,7 +257,7 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
             className={`px-16 py-4 rounded-full text-[11px] font-black uppercase tracking-[0.35em] shadow-2xl border border-slate-900/10 transition-all ${
               canTryOn
                 ? 'bg-[var(--bg-gradient)] text-white hover:shadow-[0_20px_60px_rgba(99,102,241,0.35)] hover:-translate-y-0.5 active:scale-95'
-                : 'bg-[var(--bg-gradient)] text-white/65 cursor-not-allowed opacity-75'
+                : 'bg-white text-slate-400 border border-slate-200 cursor-not-allowed'
             }`}
           >
             ПРИМЕРИТЬ

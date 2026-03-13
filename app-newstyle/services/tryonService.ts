@@ -46,15 +46,17 @@ type TryonLiteParams = {
   apiBase: string;
   person: Blob;
   garment: Blob;
+  headers?: Record<string, string>;
 };
 
-export async function startTryOnLite({ apiBase, person, garment }: TryonLiteParams): Promise<{ imageUrl: string }> {
+export async function startTryOnLite({ apiBase, person, garment, headers }: TryonLiteParams): Promise<{ imageUrl: string; sessionId?: string }> {
   const form = new FormData();
   form.append('person', person, 'person.jpg');
   form.append('garment', garment, 'garment.jpg');
 
   const res = await fetch(`${apiBase}/api/tryon-lite`, {
     method: 'POST',
+    headers,
     body: form,
   });
 
@@ -68,18 +70,20 @@ export async function startTryOnLite({ apiBase, person, garment }: TryonLitePara
   if (!imageUrl) {
     throw new Error('no-image-url');
   }
-  return { imageUrl };
+  const sessionId = (data?.session_id ?? data?.sessionId ?? '').toString();
+  return { imageUrl, ...(sessionId ? { sessionId } : {}) };
 }
 
 type StartVideoFromImageParams = {
   apiBase: string;
   imageUrl: string;
+  headers?: Record<string, string>;
 };
 
-export async function startVideoFromImage({ apiBase, imageUrl }: StartVideoFromImageParams): Promise<{ videoUrl: string }> {
+export async function startVideoFromImage({ apiBase, imageUrl, headers }: StartVideoFromImageParams): Promise<{ videoUrl: string }> {
   const res = await fetch(`${apiBase}/api/generate-video`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(headers || {}) },
     body: JSON.stringify({ imageUrl }),
   });
 
