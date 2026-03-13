@@ -249,8 +249,8 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
             disabled={!canTryOn}
             className={`px-16 py-4 rounded-full text-[11px] font-black uppercase tracking-[0.35em] shadow-2xl border border-slate-900/10 transition-all ${
               canTryOn
-                ? 'bg-slate-900 text-white hover:shadow-[0_20px_60px_rgba(15,23,42,0.5)] hover:-translate-y-0.5 active:scale-95'
-                : 'bg-slate-900/80 text-white/70 cursor-not-allowed'
+                ? 'bg-[var(--bg-gradient)] text-white hover:shadow-[0_20px_60px_rgba(99,102,241,0.35)] hover:-translate-y-0.5 active:scale-95'
+                : 'bg-[var(--bg-gradient)] text-white/65 cursor-not-allowed opacity-75'
             }`}
           >
             ПРИМЕРИТЬ
@@ -282,23 +282,23 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
             )}
             {resultImage ? (
               <div className="w-full max-w-md space-y-6">
-                <div className="aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-2xl border border-white bg-slate-100 flex items-center justify-center">
+                <div className="relative group aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-2xl border border-white bg-slate-100 flex items-center justify-center p-2">
                   <img
                     src={resultImage}
                     alt="Результат примерки"
-                    className="w-full h-full object-contain rounded-[2.5rem]"
+                    className="max-w-full max-h-full object-contain rounded-[2.2rem]"
                   />
-                </div>
-                <div className="grid grid-cols-3 gap-4 justify-items-center">
-                  <button onClick={handleAnimate} className="w-14 h-14 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title="Анимация">
-                    <span className="text-lg">🎬</span>
-                  </button>
-                  <button onClick={handleDownload} className="w-14 h-14 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title="Скачать">
-                    <span className="text-lg">📥</span>
-                  </button>
-                  <button onClick={handleShareTelegram} className="w-14 h-14 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title="Поделиться">
-                    <span className="text-lg">↗</span>
-                  </button>
+                  <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                    <button onClick={handleAnimate} className="w-10 h-10 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title="Анимация">
+                      <span className="text-base">🎬</span>
+                    </button>
+                    <button onClick={handleDownload} className="w-10 h-10 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title="Скачать">
+                      <span className="text-base">📥</span>
+                    </button>
+                    <button onClick={handleShareTelegram} className="w-10 h-10 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title="Поделиться">
+                      <span className="text-base">↗</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : tryonState === 'running' ? (

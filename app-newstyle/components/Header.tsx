@@ -48,7 +48,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="w-8 h-8 bg-[var(--bg-gradient)] rounded-lg flex items-center justify-center shadow-md transform group-hover:rotate-6 transition-transform border border-white/20">
              <span className="text-white font-black text-[10px] drop-shadow-sm">ИИ</span>
           </div>
-          <span className="font-black text-xl tracking-tighter text-slate-900">Твой <span className="text-[var(--primary)]">ИИ</span>стиль</span>
+          <span className="font-black text-xl tracking-tighter text-slate-900">тво<span className="text-[var(--primary)]">ИИ</span>стиль</span>
         </div>
 
         <button 
@@ -73,27 +73,27 @@ export const Header: React.FC<HeaderProps> = ({
             <nav className="flex flex-col gap-6">
               <button 
                 onClick={() => { 
-                  setIsQuickLite(false);
-                  setView('home'); 
-                  // "Главная" возвращает в "Мои фото"
-                  setCurrentStep(1); 
-                  setIsMenuOpen(false); 
-                }}
-                className="text-2xl font-black tracking-tight text-left hover:text-[var(--primary)] transition-colors"
-              >
-                {t.home}
-              </button>
-              <button 
-                onClick={() => { 
                   setIsQuickLite(true);
                   setView('home'); 
                   // Быстрая примерка — отдельный режим, step не важен
                   setCurrentStep(1); 
                   setIsMenuOpen(false); 
                 }}
-                className="text-2xl font-black tracking-tight text-left hover:text-[var(--primary)] transition-colors"
+                className="text-xl font-black tracking-tight text-left text-[var(--primary)] hover:opacity-80 transition-opacity"
               >
                 {t.quickTryon}
+              </button>
+              <button 
+                onClick={() => { 
+                  setIsQuickLite(false);
+                  setView('home'); 
+                  // "Мои фото" — шаг 1
+                  setCurrentStep(1); 
+                  setIsMenuOpen(false); 
+                }}
+                className="text-2xl font-black tracking-tight text-left hover:text-[var(--primary)] transition-colors"
+              >
+                Мои фото
               </button>
               <button 
                 onClick={() => { 
