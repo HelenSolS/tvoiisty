@@ -1,8 +1,11 @@
 /**
  * Минимальный клиент Fal для примерки на бэкенде.
  * Принимает URL фото человека и одежды, возвращает URL результата.
- * Канон: по умолчанию fal-ai/nano-banana-pro/edit (как в настройках). virtual-try-on — только fallback при ошибке модели.
+ * Канон: по умолчанию fal-ai/nano-banana-pro/edit c тем же input-форматом,
+ * что и в общем Fal-провайдере (prompt + image_urls).
  */
+
+import { DEFAULT_IMAGE_PROMPT } from '../lib/provider-abstraction.js';
 
 const FAL_MODEL_DEFAULT = 'fal-ai/nano-banana-pro/edit';
 const FAL_POLL_TIMEOUT_MS = 70_000;
@@ -25,13 +28,32 @@ export async function tryOnWithFal(
   clothingImageUrl: string,
   model: string = FAL_MODEL_DEFAULT,
 ): Promise<string> {
-  const m = (typeof model === 'string' ? model : '').toLowerCase();
-  const effectiveModel =
-    m.includes('virtual-try-on') || m.includes('image-apps-v2') ? FAL_MODEL_DEFAULT : (model || FAL_MODEL_DEFAULT);
   const key = process.env.FAL_KEY?.trim();
   if (!key) {
     throw new Error('FAL_KEY не задан. Задайте в .env для fallback-примерки.');
   }
+
+  const m = (typeof model === 'string' ? model : '').toLowerCase();
+  const effectiveModel =
+    m.includes('virtual-try-on') || m.includes('image-apps-v2') ? FAL_MODEL_DEFAULT : (model || FAL_MODEL_DEFAULT);
+
+  // Для nano-banana используем тот же формат, что и в lib/providers/fal-image:
+  // prompt + image_urls, фиксированное разрешение 1K и вертикальное соотношение сторон.
+  const falInput =
+    effectiveModel === FAL_MODEL_DEFAULT
+      ? {
+          prompt: DEFAULT_IMAGE_PROMPT,
+          image_urls: [personImageUrl, clothingImageUrl],
+          num_images: 1,
+          aspect_ratio: '9:16' as const,
+          output_format: 'png' as const,
+          resolution: '1K' as const,
+        }
+      : {
+          person_image_url: personImageUrl,
+          clothing_image_url: clothingImageUrl,
+          preserve_pose: true,
+        };
 
   const res = await fetch(`https://queue.fal.run/${effectiveModel}`, {
     method: 'POST',
@@ -39,11 +61,7 @@ export async function tryOnWithFal(
       Authorization: `Key ${key}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      person_image_url: personImageUrl,
-      clothing_image_url: clothingImageUrl,
-      preserve_pose: true,
-    }),
+    body: JSON.stringify(falInput),
   });
 
   const raw = await res.text();

@@ -22,9 +22,10 @@ async function uploadToSupabase(params: UploadParams): Promise<StoredObject> {
   const path = `media/${type}/${Date.now()}-${filename}`;
 
   const res = await fetch(
-    `${SUPABASE_URL.replace(/\/$/, '')}/storage/v1/object/${encodeURIComponent(
-      `${SUPABASE_BUCKET}/${path}`,
-    )}`,
+    // В Supabase путь должен быть вида /object/<bucket>/<path> без URL-энкодинга слэшей.
+    // Кодирование всей строки как единичного сегмента даёт 404 вида
+    // "Route POST:/object/media%2Fmedia%2Fperson/.. not found".
+    `${SUPABASE_URL.replace(/\/$/, '')}/storage/v1/object/${SUPABASE_BUCKET}/${path}`,
     {
       method: 'POST',
       headers: {
@@ -59,17 +60,11 @@ async function uploadToVercelBlob(params: UploadParams): Promise<StoredObject> {
     throw new Error('Хранилище временно недоступно. Попробуйте позже.');
   }
 
-  const blob = await vercelPut(
-    `media/${params.type}/${Date.now()}-${params.filename}`,
-    params.buffer,
-    {
-      // Store в Vercel сконфигурирован как private.
-      // Не просим public-доступ, иначе получаем ошибку
-      // "Cannot use public access on a private store".
-      access: 'private',
-      token: process.env.BLOB_READ_WRITE_TOKEN,
-    },
-  );
+  const blob = await vercelPut(`media/${params.type}/${Date.now()}-${params.filename}`, params.buffer, {
+    // В проде store настроен как public, поэтому Blob SDK требует access: "public".
+    access: 'public',
+    token: process.env.BLOB_READ_WRITE_TOKEN,
+  });
 
   const storageKey = new URL(blob.url).pathname.replace(/^\//, '');
   return {
