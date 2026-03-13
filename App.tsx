@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ImageUploader } from './components/ImageUploader';
 import { AdminPanel } from './components/AdminPanel';
-import { prepareTryonPrompt, generateTryOn, generateVideo } from './services/geminiService';
+import { prepareTryonPrompt, generateVideo } from './services/geminiService';
 import {
   getDefaultImageModel,
   getDefaultVideoModel,
@@ -14,6 +14,8 @@ import {
   getEffectiveImagePrompt,
   getEffectiveVideoPrompt,
   getImageFallbackEnabled,
+  setAdminSettings,
+  DEFAULT_ADMIN_SETTINGS,
 } from './services/adminSettings';
 import { TryOnState, User, CuratedOutfit, PersonGalleryItem, HistoryItem, AppTheme, CategoryType } from './types';
 import { getHistory, saveHistory, ARCHIVE_MAX_ITEMS } from './services/historyStorage';
@@ -31,6 +33,9 @@ import {
 } from './services/socials';
 import { SCENES, type SceneType } from './lib/ai/scenes.config';
 import { buildPrompt as buildScenePrompt } from './lib/ai/prompt-builder';
+import { uploadPersonPhoto, uploadClothingImage } from './services/mediaService';
+import { createTryon, getTryonStatus } from './services/tryonService';
+import { fetchUserPreferences, updateUserPreferences } from './services/userSettings';
 
 // Стартовая витрина для демо — красивые образы с Unsplash (как было раньше).
 const INITIAL_BOUTIQUE: CuratedOutfit[] = [
@@ -93,6 +98,7 @@ const App: React.FC = () => {
   const [authModal, setAuthModal] = useState(false);
   const [verificationModal, setVerificationModal] = useState(false);
   const [addProductModal, setAddProductModal] = useState(false);
+  const [publishingProduct, setPublishingProduct] = useState(false);
   const [socialModal, setSocialModal] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
@@ -103,7 +109,7 @@ const App: React.FC = () => {
   const [collectionImages, setCollectionImages] = useState<string[]>([]);
   const [collectionForm, setCollectionForm] = useState({ name: '', shopUrl: '', category: 'casual' as CategoryType });
   
-  const [state, setState] = useState<TryOnState & { currentShopUrl: string | null }>({
+  const [state, setState] = useState<TryOnState & { currentShopUrl: string | null; personAssetId: string | null }>({
     personImage: null,
     outfitImage: null,
     resultImage: null,
@@ -111,6 +117,7 @@ const App: React.FC = () => {
     isProcessing: false,
     status: '',
     error: null,
+    personAssetId: null,
   });
 
   /** URL готового видео (после «Создать видео» для текущего результата). */
@@ -146,6 +153,8 @@ const App: React.FC = () => {
   const loadingUrls = useRef<Set<string>>(new Set());
   /** Блок с видео на экране результата — для автопрокрутки, когда видео готово. */
   const resultVideoRef = useRef<HTMLDivElement | null>(null);
+  /** Синхронная блокировка примерки: не даёт отправить второй запрос до ре-рендера (state.isProcessing обновляется асинхронно). */
+  const tryOnInProgressRef = useRef(false);
 
   const initUser = () => {
     const guest: User = { 
@@ -176,6 +185,23 @@ const App: React.FC = () => {
       } else {
         initUser();
       }
+      // Пытаемся подтянуть серверные пользовательские настройки, если есть токен.
+      fetchUserPreferences()
+        .then((prefs) => {
+          if (!prefs) return;
+          setUser((prev) => {
+            if (!prev) return prev;
+            const nextTheme = prefs.theme ?? prev.theme;
+            const next = { ...prev, theme: nextTheme };
+            document.body.className = `theme-${next.theme}`;
+            saveToStorage('user', next);
+            return next;
+          });
+          if (prefs.preferredScene && SCENES.some((s) => s.id === prefs.preferredScene)) {
+            setSceneType(prefs.preferredScene as SceneType);
+          }
+        })
+        .catch(() => {});
     } catch (e) { 
       console.error(e);
       initUser();
@@ -245,17 +271,29 @@ const App: React.FC = () => {
     return all;
   }, [activeCategory, searchQuery, merchantProducts]);
 
-  const handleQuickTryOn = async (outfitUrl: string, shopUrl: string = '#') => {
-    if (!state.personImage) {
-      setState(prev => ({ ...prev, error: 'Сначала фото (Шаг 01)' }));
-      setTimeout(() => setState(p => ({ ...p, error: null })), 3000);
+  const handleQuickTryOn = async (outfit: CuratedOutfit, shopUrl: string = '#') => {
+    if (tryOnInProgressRef.current) {
+      setSuccessMsg('Дождитесь завершения текущей примерки');
+      setTimeout(() => setSuccessMsg(null), 2000);
       return;
     }
-    if (!user?.isRegistered) { setAuthModal(true); return; }
+    if (state.isProcessing) {
+      setSuccessMsg('Дождитесь завершения текущей примерки');
+      setTimeout(() => setSuccessMsg(null), 2000);
+      return;
+    }
+    tryOnInProgressRef.current = true;
+    if (!state.personAssetId) {
+      setState(prev => ({ ...prev, error: 'Сначала загрузите фото (Шаг 01)' }));
+      setTimeout(() => setState(p => ({ ...p, error: null })), 3000);
+      tryOnInProgressRef.current = false;
+      return;
+    }
+    if (!user?.isRegistered) { setAuthModal(true); tryOnInProgressRef.current = false; return; }
 
     setState(prev => ({
       ...prev,
-      outfitImage: outfitUrl,
+      outfitImage: outfit.imageUrl,
       currentShopUrl: shopUrl,
       isProcessing: true,
       status: 'Анализ стиля...',
@@ -265,38 +303,105 @@ const App: React.FC = () => {
     setResultVideoUrl(null);
     setVideoError(null);
     try {
-      // Инвариант: только готовые данные из хранилища. Никакого resize/загрузки по URL здесь.
-      const personBase64 = state.personImage!;
-      let outfitBase64: string;
-      if (outfitUrl.startsWith('data:')) {
-        outfitBase64 = outfitUrl;
+      const scene = sceneType === 'minimal' ? undefined : sceneType;
+      // URL картинки одежды: либо уже https (демо/каталог), либо загружаем с клиента (коллекция магазина — data:).
+      let clothingImageUrl: string;
+      if (outfit.imageUrl && (outfit.imageUrl.startsWith('http://') || outfit.imageUrl.startsWith('https://'))) {
+        clothingImageUrl = outfit.imageUrl;
+      } else if (outfit.lookId) {
+        const { tryon_id } = await createTryon({
+          personAssetId: state.personAssetId,
+          lookId: outfit.lookId,
+          sceneType: scene,
+          clientRequestId: `web_${Date.now()}`,
+        });
+        setState(prev => ({ ...prev, status: 'Примерка запущена...' }));
+        let finalImageUrl: string | null = null;
+        const pollStart = Date.now();
+        const POLL_MAX_MS = 90_000;
+        for (;;) {
+          if (Date.now() - pollStart > POLL_MAX_MS) {
+            throw new Error('Примерка занимает больше обычного. Попробуйте ещё раз.');
+          }
+          await new Promise((r) => setTimeout(r, 2000));
+          const status = await getTryonStatus(tryon_id);
+          if (status.status === 'completed') {
+            finalImageUrl = status.image_url;
+            break;
+          }
+          if (status.status === 'failed' || status.status === 'cancelled') {
+            throw new Error(status.error || 'Примерка не удалась. Попробуйте снова.');
+          }
+        }
+        if (!finalImageUrl) throw new Error('Не удалось получить результат примерки.');
+        setState(prev => ({ ...prev, resultImage: finalImageUrl, isProcessing: false, status: '' }));
+        setResultVideoUrl(null);
+        setVideoError(null);
+        if (shopUrl && shopUrl !== '#') {
+          const updatedProducts = merchantProducts.map(p =>
+            p.imageUrl === outfit.imageUrl && p.shopUrl === shopUrl ? { ...p, stats: { tryOns: (p.stats?.tryOns ?? 0) + 1, clicks: p.stats?.clicks ?? 0 } } : p,
+          );
+          if (updatedProducts !== merchantProducts) {
+            setMerchantProducts(updatedProducts);
+            saveToStorage('merchant_products', updatedProducts);
+          }
+        }
+        if (!finalImageUrl.startsWith('data:')) {
+          incrementMetric('totalTryOns').then(() => incrementMetric('totalArchiveSaves')).then(() => getMetrics().then(setMetrics));
+          const newItem: HistoryItem = { id: `h_${Date.now()}`, resultUrl: finalImageUrl, outfitUrl: outfit.imageUrl, shopUrl, timestamp: Date.now() };
+          const newHistory = [newItem, ...history].slice(0, ARCHIVE_MAX_ITEMS);
+          setHistory(newHistory);
+          saveHistory(newHistory, `${STORAGE_VER}_history`);
+        }
+        return;
+      } else if (outfit.imageUrl && outfit.imageUrl.startsWith('data:')) {
+        const { url } = await uploadClothingImage(outfit.imageUrl);
+        clothingImageUrl = url;
       } else {
-        const stored = await getCompressedByUrl(outfitUrl);
-        if (stored) {
-          outfitBase64 = stored;
-        } else {
-          // В редком случае, когда фоновӓя загрузка ещё не успела сжать картинку,
-          // не блокируем пользователя — дотягиваем изображение напрямую.
-          outfitBase64 = await urlToBase64(outfitUrl);
+        setState(prev => ({ ...prev, isProcessing: false, error: 'Выберите образ из витрины и попробуйте снова.' }));
+        setTimeout(() => setState(p => ({ ...p, error: null })), 5000);
+        tryOnInProgressRef.current = false;
+        return;
+      }
+
+      const { tryon_id } = await createTryon({
+        personAssetId: state.personAssetId,
+        clothingImageUrl,
+        sceneType: scene,
+        clientRequestId: `web_${Date.now()}`,
+      });
+
+      setState(prev => ({ ...prev, status: 'Примерка запущена...' }));
+
+      let finalImageUrl: string | null = null;
+      const pollStart = Date.now();
+      const POLL_MAX_MS = 90_000;
+      for (;;) {
+        if (Date.now() - pollStart > POLL_MAX_MS) {
+          throw new Error('Примерка занимает больше обычного. Попробуйте ещё раз.');
+        }
+        await new Promise((r) => setTimeout(r, 2000));
+        const status = await getTryonStatus(tryon_id);
+        if (status.status === 'completed') {
+          finalImageUrl = status.image_url;
+          break;
+        }
+        if (status.status === 'failed' || status.status === 'cancelled') {
+          throw new Error(status.error || 'Примерка не удалась. Попробуйте снова.');
         }
       }
-      setState(prev => ({ ...prev, status: 'Подготовка промпта...' }));
-      const prompt =
-        sceneType === 'minimal'
-          ? await getEffectiveImagePrompt(() => prepareTryonPrompt(personBase64, outfitBase64))
-          : buildScenePrompt(sceneType);
-      setState(prev => ({ ...prev, status: 'Примеряем образ...' }));
-      const imageModel = showImageModelDropdown() ? selectedImageModel : getDefaultImageModel();
-      const imageUrl = await generateTryOn(personBase64, outfitBase64, prompt, {
-        model: imageModel,
-        fallbackOnError: getImageFallbackEnabled(),
-        consent: user?.hasConsent === true,
-      });
+
+      if (!finalImageUrl) {
+        throw new Error('Не удалось получить результат примерки.');
+      }
+
+      const imageUrl = finalImageUrl;
+
       setState(prev => ({ ...prev, resultImage: imageUrl, isProcessing: false, status: '' }));
       // Локальная статистика магазина: считаем примерки по товарам мерчанта.
       if (shopUrl && shopUrl !== '#') {
         const updatedProducts = merchantProducts.map(p =>
-          p.imageUrl === outfitUrl && p.shopUrl === shopUrl
+          p.imageUrl === outfit.imageUrl && p.shopUrl === shopUrl
             ? {
                 ...p,
                 stats: {
@@ -319,7 +424,7 @@ const App: React.FC = () => {
         const newItem: HistoryItem = {
           id: `h_${now}`,
           resultUrl: imageUrl,
-          outfitUrl,
+          outfitUrl: outfit.imageUrl,
           shopUrl,
           timestamp: now,
         };
@@ -337,11 +442,16 @@ const App: React.FC = () => {
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : '';
       const isNetwork = /failed to fetch|network error|load failed/i.test(raw) || raw === '';
+      const isTechnicalApi = /look_id|clothing_image_url|person_asset_id|Нужен|Не указан/i.test(raw);
       const msg = isNetwork
         ? 'Нет связи с сервером. Проверьте интернет и попробуйте снова.'
-        : (raw || 'ИИ перегружен, попробуйте снова');
+        : isTechnicalApi
+          ? 'Не удалось запустить примерку. Выберите образ из витрины и попробуйте снова.'
+          : (raw || 'ИИ перегружен, попробуйте снова');
       setState(prev => ({ ...prev, isProcessing: false, error: msg }));
       setTimeout(() => setState(p => ({ ...p, error: null })), 5000);
+    } finally {
+      tryOnInProgressRef.current = false;
     }
   };
 
@@ -641,18 +751,74 @@ const App: React.FC = () => {
                   <div className="flex justify-between items-end px-1"><h3 className="serif text-2xl font-black italic">Ваше фото</h3><span className="text-[9px] font-black text-gray-300 uppercase tracking-widest">Шаг 01</span></div>
                   <div className="flex gap-4 overflow-x-auto no-scrollbar py-2">
                     <div className="flex-shrink-0 w-24 h-32">
-                      <ImageUploader label="Добавить" image={null} onImageSelect={(img) => { 
-                        const MAX_PERSON_PHOTOS = 10;
-                        const updated = [{id:`p_${Date.now()}`, imageUrl:img}, ...personGallery].slice(0, MAX_PERSON_PHOTOS); 
-                        setPersonGallery(updated); 
-                        saveToStorage('person_gallery', updated); 
-                        setState(p=>({...p, personImage:img})); 
-                      }} icon={<svg className="w-8 h-8 text-theme" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"/></svg>} />
+                      <ImageUploader
+                        label="Добавить"
+                        image={null}
+                        onFileSelect={async (file) => {
+                          try {
+                            const uploaded = await uploadPersonPhoto(file);
+                            const reader = new FileReader();
+                            reader.onloadend = async () => {
+                              const raw = reader.result as string;
+                              const img = await resizeDataUrl(raw);
+                              const MAX_PERSON_PHOTOS = 10;
+                              const item = {
+                                id: `p_${Date.now()}`,
+                                imageUrl: img,
+                                assetId: uploaded.assetId,
+                              };
+                              const updated = [item, ...personGallery].slice(
+                                0,
+                                MAX_PERSON_PHOTOS,
+                              );
+                              setPersonGallery(updated);
+                              saveToStorage('person_gallery', updated);
+                              setState((p) => ({
+                                ...p,
+                                personImage: img,
+                                personAssetId: uploaded.assetId,
+                              }));
+                            };
+                            reader.readAsDataURL(file);
+                          } catch (e) {
+                            console.error(e);
+                            setState((prev) => ({
+                              ...prev,
+                              error: 'Не удалось загрузить фото. Попробуйте ещё раз.',
+                            }));
+                            setTimeout(
+                              () => setState((p) => ({ ...p, error: null })),
+                              3000,
+                            );
+                          }
+                        }}
+                        icon={
+                          <svg
+                            className="w-8 h-8 text-theme"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M12 4v16m8-8H4"
+                            />
+                          </svg>
+                        }
+                      />
                     </div>
                     {personGallery.map(item => (
                       <button
                         key={item.id}
-                        onClick={() => setState(s=>({...s, personImage:item.imageUrl}))}
+                        onClick={() =>
+                          setState((s) => ({
+                            ...s,
+                            personImage: item.imageUrl,
+                            personAssetId: item.assetId ?? s.personAssetId,
+                          }))
+                        }
                         className={`relative flex-shrink-0 w-24 h-32 rounded-[2rem] overflow-hidden border-[2px] transition-all ${
                           state.personImage === item.imageUrl
                             ? 'border-theme shadow-3xl scale-105 ring-2 ring-theme'
@@ -737,7 +903,13 @@ const App: React.FC = () => {
                         >
                           <img src={outfit.imageUrl} className="w-full h-full object-cover" onLoad={() => loadThenCompressAndStore(outfit.imageUrl)} alt="" />
                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all flex flex-col justify-end p-4 gap-2 backdrop-blur-[2px]">
-                            <button onClick={() => handleQuickTryOn(outfit.imageUrl, outfit.shopUrl)} className="w-full py-2.5 btn-theme rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg">Примерить</button>
+                            <button
+                              onClick={() => handleQuickTryOn(outfit, outfit.shopUrl)}
+                              disabled={state.isProcessing}
+                              className="w-full py-2.5 btn-theme rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              Примерить
+                            </button>
                             {outfit.shopUrl && outfit.shopUrl !== '#' && (
                               <button onClick={(e) => { e.stopPropagation(); openInStore(outfit.shopUrl); }} className="w-full py-2 bg-white text-black rounded-full text-[7px] font-black uppercase tracking-widest shadow-lg">В магазин</button>
                             )}
@@ -905,6 +1077,10 @@ const App: React.FC = () => {
               <AdminPanel
                 onBack={() => { setAdminUnlockedSession(false); goToTab('settings'); }}
                 unlocked={adminUnlockedSession}
+                onRestoreStability={() => {
+                  setSelectedImageModel(getDefaultImageModel());
+                  setSelectedVideoModel(getDefaultVideoModel());
+                }}
                 onUnlock={() => {
                   setAdminUnlockedSession(true);
                   setAdminSessionUnlocked(true);
@@ -921,9 +1097,48 @@ const App: React.FC = () => {
                 <h3 className="serif text-2xl font-black italic text-center">Настройки</h3>
 
                 <div className="flex justify-center gap-6">
-                    <button onClick={() => { const u = { ...user!, theme: 'turquoise' as AppTheme }; setUser(u); saveToStorage('user', u); document.body.className = 'theme-turquoise'; }} className={`w-14 h-14 rounded-full bg-[#0d9488] border-4 ${user?.theme === 'turquoise' ? 'border-white scale-125 shadow-2xl' : 'border-transparent opacity-30'} transition-all`}></button>
-                    <button onClick={() => { const u = { ...user!, theme: 'lavender' as AppTheme }; setUser(u); saveToStorage('user', u); document.body.className = 'theme-lavender'; }} className={`w-14 h-14 rounded-full bg-[#8b5cf6] border-4 ${user?.theme === 'lavender' ? 'border-white scale-125 shadow-2xl' : 'border-transparent opacity-30'} transition-all`}></button>
-                    <button onClick={() => { const u = { ...user!, theme: 'peach' as AppTheme }; setUser(u); saveToStorage('user', u); document.body.className = 'theme-peach'; }} className={`w-14 h-14 rounded-full bg-[#f97316] border-4 ${user?.theme === 'peach' ? 'border-white scale-125 shadow-2xl' : 'border-transparent opacity-30'} transition-all`}></button>
+                    <button
+                      onClick={() => {
+                        const u = { ...user!, theme: 'turquoise' as AppTheme };
+                        setUser(u);
+                        saveToStorage('user', u);
+                        document.body.className = 'theme-turquoise';
+                        void updateUserPreferences({ theme: 'turquoise' });
+                      }}
+                      className={`w-14 h-14 rounded-full bg-[#0d9488] border-4 ${
+                        user?.theme === 'turquoise'
+                          ? 'border-white scale-125 shadow-2xl'
+                          : 'border-transparent opacity-30'
+                      } transition-all`}
+                    ></button>
+                    <button
+                      onClick={() => {
+                        const u = { ...user!, theme: 'lavender' as AppTheme };
+                        setUser(u);
+                        saveToStorage('user', u);
+                        document.body.className = 'theme-lavender';
+                        void updateUserPreferences({ theme: 'lavender' });
+                      }}
+                      className={`w-14 h-14 rounded-full bg-[#8b5cf6] border-4 ${
+                        user?.theme === 'lavender'
+                          ? 'border-white scale-125 shadow-2xl'
+                          : 'border-transparent opacity-30'
+                      } transition-all`}
+                    ></button>
+                    <button
+                      onClick={() => {
+                        const u = { ...user!, theme: 'peach' as AppTheme };
+                        setUser(u);
+                        saveToStorage('user', u);
+                        document.body.className = 'theme-peach';
+                        void updateUserPreferences({ theme: 'peach' });
+                      }}
+                      className={`w-14 h-14 rounded-full bg-[#f97316] border-4 ${
+                        user?.theme === 'peach'
+                          ? 'border-white scale-125 shadow-2xl'
+                          : 'border-transparent opacity-30'
+                      } transition-all`}
+                    ></button>
                 </div>
 
                 <div className="pt-5 space-y-3 text-center">
@@ -1002,15 +1217,34 @@ const App: React.FC = () => {
                 {CATEGORIES.filter(c=>c.id!=='all').map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
               </select>
             </div>
-            <button onClick={() => {
-              if (!newProduct.name || !newProduct.image) return;
-              const product: CuratedOutfit = { id: `m_${Date.now()}`, name: newProduct.name, imageUrl: newProduct.image, category: newProduct.category, shopUrl: newProduct.shopUrl || '#', merchantId: 'me' };
-              const updated = [product, ...merchantProducts];
-              setMerchantProducts(updated);
-              saveMerchantProducts(updated, `${STORAGE_VER}_merchant_products`);
-              setAddProductModal(false);
-              setNewProduct({ name: '', image: '', category: 'casual', shopUrl: '' });
-            }} className="w-full py-5 btn-theme rounded-3xl font-black text-[10px] uppercase tracking-widest shadow-xl">Опубликовать</button>
+            <button
+              disabled={!!publishingProduct}
+              onClick={async () => {
+                if (!newProduct.name || !newProduct.image) return;
+                setPublishingProduct(true);
+                try {
+                  let imageUrl = newProduct.image;
+                  if (imageUrl.startsWith('data:')) {
+                    const { url } = await uploadClothingImage(imageUrl);
+                    imageUrl = url;
+                  }
+                  const product: CuratedOutfit = { id: `m_${Date.now()}`, name: newProduct.name, imageUrl, category: newProduct.category, shopUrl: newProduct.shopUrl || '#', merchantId: 'me' };
+                  const updated = [product, ...merchantProducts];
+                  setMerchantProducts(updated);
+                  saveMerchantProducts(updated, `${STORAGE_VER}_merchant_products`);
+                  setAddProductModal(false);
+                  setNewProduct({ name: '', image: '', category: 'casual', shopUrl: '' });
+                } catch (e) {
+                  setState((p) => ({ ...p, error: e instanceof Error ? e.message : 'Не удалось загрузить фото. Попробуйте снова.' }));
+                  setTimeout(() => setState((s) => ({ ...s, error: null })), 5000);
+                } finally {
+                  setPublishingProduct(false);
+                }
+              }}
+              className="w-full py-5 btn-theme rounded-3xl font-black text-[10px] uppercase tracking-widest shadow-xl disabled:opacity-60"
+            >
+              {publishingProduct ? 'Загрузка…' : 'Опубликовать'}
+            </button>
           </div>
         </div>
       )}
@@ -1135,33 +1369,50 @@ const App: React.FC = () => {
               {CATEGORIES.filter(c => c.id !== 'all').map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
             </select>
             <button
-              onClick={() => {
+              disabled={collectionImages.length === 0 || !!publishingProduct}
+              onClick={async () => {
                 if (collectionImages.length === 0) return;
-                const name = collectionForm.name.trim() || 'Коллекция';
-                const shopUrl = collectionForm.shopUrl.trim() || '#';
-                const category = collectionForm.category;
-                const newItems: CuratedOutfit[] = collectionImages.map((imageUrl, i) => ({
-                  id: `m_${Date.now()}_${i}`,
-                  name,
-                  imageUrl,
-                  shopUrl,
-                  category,
-                  merchantId: 'me',
-                }));
-                incrementMetric('totalCollectionsCreated').then(() => incrementMetric('totalOutfitsUploaded', newItems.length)).then(() => getMetrics().then(setMetrics));
-                const updated = [...newItems, ...merchantProducts];
-                setMerchantProducts(updated);
-                saveMerchantProducts(updated, `${STORAGE_VER}_merchant_products`);
-                setCollectionUploadOpen(false);
-                setCollectionImages([]);
-                setCollectionForm({ name: '', shopUrl: '', category: 'casual' });
-                setSuccessMsg(`Добавлено образов: ${newItems.length}`);
-                setTimeout(() => setSuccessMsg(null), 2500);
+                setPublishingProduct(true);
+                try {
+                  const name = collectionForm.name.trim() || 'Коллекция';
+                  const shopUrl = collectionForm.shopUrl.trim() || '#';
+                  const category = collectionForm.category;
+                  const urls: string[] = [];
+                  for (let i = 0; i < collectionImages.length; i++) {
+                    const img = collectionImages[i];
+                    if (img.startsWith('http')) urls.push(img);
+                    else {
+                      const { url } = await uploadClothingImage(img);
+                      urls.push(url);
+                    }
+                  }
+                  const newItems: CuratedOutfit[] = urls.map((imageUrl, i) => ({
+                    id: `m_${Date.now()}_${i}`,
+                    name,
+                    imageUrl,
+                    shopUrl,
+                    category,
+                    merchantId: 'me',
+                  }));
+                  incrementMetric('totalCollectionsCreated').then(() => incrementMetric('totalOutfitsUploaded', newItems.length)).then(() => getMetrics().then(setMetrics));
+                  const updated = [...newItems, ...merchantProducts];
+                  setMerchantProducts(updated);
+                  saveMerchantProducts(updated, `${STORAGE_VER}_merchant_products`);
+                  setCollectionUploadOpen(false);
+                  setCollectionImages([]);
+                  setCollectionForm({ name: '', shopUrl: '', category: 'casual' });
+                  setSuccessMsg(`Добавлено образов: ${newItems.length}`);
+                  setTimeout(() => setSuccessMsg(null), 2500);
+                } catch (e) {
+                  setState((p) => ({ ...p, error: e instanceof Error ? e.message : 'Не удалось загрузить образы. Попробуйте снова.' }));
+                  setTimeout(() => setState((s) => ({ ...s, error: null })), 5000);
+                } finally {
+                  setPublishingProduct(false);
+                }
               }}
-              disabled={collectionImages.length === 0}
               className="w-full py-5 btn-theme rounded-3xl font-black text-[10px] uppercase tracking-widest shadow-xl disabled:opacity-50"
             >
-              Опубликовать коллекцию
+              {publishingProduct ? 'Загрузка…' : 'Опубликовать коллекцию'}
             </button>
           </div>
         </div>
@@ -1375,6 +1626,9 @@ const App: React.FC = () => {
               <button
                 onClick={() => {
                   localStorage.clear();
+                  setAdminSettings(DEFAULT_ADMIN_SETTINGS);
+                  setSelectedImageModel(getDefaultImageModel());
+                  setSelectedVideoModel(getDefaultVideoModel());
                   setPersonGallery([]);
                   setHistory([]);
                   setMerchantProducts([]);

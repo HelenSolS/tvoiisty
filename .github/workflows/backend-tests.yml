@@ -1,0 +1,63 @@
+name: Backend Tests
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [dev]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: tvoiisty
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: tvoiisty_db
+        options: >-
+          --health-cmd="pg_isready -U tvoiisty -d tvoiisty_db"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: tvoiisty
+      PGPASSWORD: testpassword
+      PGDATABASE: tvoiisty_db
+      NODE_ENV: test
+
+      # Тестовый JWT секрет (совпадает с использованием в тестах)
+      JWT_SECRET: test-secret-admin-settings
+
+      # Важно: в CI реальные AI‑ключи не нужны и не используются
+      OPENROUTER_API_KEY: dummy
+      FAL_KEY: dummy
+      FAL_OPENAI_PROXY_URL: http://localhost/dummy
+      FAL_PROXY_API_KEY: dummy
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit and integration tests
+        run: npm run test
+
+      - name: Run coverage
+        run: npm run coverage
+

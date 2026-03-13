@@ -3,7 +3,7 @@
  * Production: без model (бэкенд подставляет по умолчанию). Lab (dev): передаёт model из выпадающего списка.
  */
 
-const API_BASE = '';
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
 /** Пул моделей для изображений (Lab): KIE + Fal AI. */
 export const IMAGE_MODEL_POOL = [

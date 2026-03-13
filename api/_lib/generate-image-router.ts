@@ -8,7 +8,8 @@ import { getImageProvider } from './provider-abstraction.js';
 import { runFalTryOn } from './providers/fal-image.js';
 import { runKieTryOn } from './providers/kie-image.js';
 
-const FAL_FALLBACK_MODEL = 'fal-ai/image-apps-v2/virtual-try-on';
+/** Канон: nano-banana. virtual-try-on не используем (артефакты). */
+const FAL_FALLBACK_MODEL = 'fal-ai/nano-banana-pro/edit';
 /** Только при явной ошибке Fal (не таймаут) — пробуем KIE. При 408 таймаут не вызываем KIE (нет дублирования, кто платит за вторую картинку). */
 const KIE_FALLBACK_MODEL = 'flux-2/flex-image-to-image';
 

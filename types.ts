@@ -61,6 +61,8 @@ export interface CuratedOutfit {
   category: CategoryType;
   status?: 'active' | 'moderation';
   merchantId?: string;
+  /** ID серверного образа (look_id), если он уже создан в БД. */
+  lookId?: string;
   stats?: {
     tryOns: number;
     clicks: number;
@@ -70,6 +72,8 @@ export interface CuratedOutfit {
 export interface PersonGalleryItem {
   id: string;
   imageUrl: string;
+  /** ID серверного ассета (person_asset_id) из media_assets. */
+  assetId?: string;
 }
 
 export interface HistoryItem {

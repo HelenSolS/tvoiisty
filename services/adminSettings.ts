@@ -90,7 +90,7 @@ export function showVideoModelDropdown(): boolean {
   return getAdminSettings().videoModelChoice === 'dropdown';
 }
 
-/** Модель по умолчанию для картинок. */
+/** Модель по умолчанию для картинок. Используется сохранённая в настройках; при первом входе/после деплоя — дефолт из DEFAULT_ADMIN_SETTINGS. */
 export function getDefaultImageModel(): string {
   const s = getAdminSettings();
   const pool = [...IMAGE_MODEL_POOL];

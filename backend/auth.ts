@@ -117,6 +117,23 @@ export async function loginHandler(req: Request, res: Response) {
   }
 }
 
+/** Если передан Bearer token — верифицирует и ставит req.user; иначе req.user остаётся undefined. Не возвращает 401. */
+export function optionalAuth(req: Request, res: Response, next: NextFunction) {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ') || !JWT_SECRET) {
+    next();
+    return;
+  }
+  try {
+    const token = header.slice('Bearer '.length);
+    const payload = jwt.verify(token, JWT_SECRET) as JwtUserPayload;
+    (req as any).user = payload;
+  } catch (_) {
+    /* invalid or expired — leave user undefined */
+  }
+  next();
+}
+
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
   try {
     const header = req.headers.authorization;

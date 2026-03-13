@@ -8,28 +8,45 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "server": "tsx server.ts"
+    "server": "tsx server.ts",
+    "test": "vitest",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "vitest run tests/e2e",
+    "test:smoke": "vitest run tests/smoke",
+    "test:canon": "vitest run tests/tryon-fallback.test.ts",
+    "test:docker": "docker compose exec -w /app backend npx vitest run",
+    "coverage": "vitest run --coverage",
+    "health:tryon": "tsx scripts/tryon-health-check.ts"
   },
   "dependencies": {
     "@google/genai": "^1.41.0",
     "@vercel/blob": "^0.25.0",
     "bcryptjs": "^2.4.3",
+    "cors": "^2.8.6",
     "dotenv": "^16.6.1",
     "express": "^4.22.1",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
     "pg": "^8.20.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^4.17.25",
+    "@types/multer": "^1.4.7",
     "@types/node": "^22.19.11",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/supertest": "^6.0.3",
     "@vitejs/plugin-react": "^4.3.4",
+    "@vitest/coverage-v8": "^2.0.0",
+    "supertest": "^7.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.7.3",
-    "vite": "^6.0.7"
+    "vite": "^6.0.7",
+    "vitest": "^2.0.0"
   }
 }
