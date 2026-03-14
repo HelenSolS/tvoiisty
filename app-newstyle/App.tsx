@@ -349,7 +349,8 @@ const App: React.FC = () => {
           : [];
         setState(prev => {
           const existing = prev.auth?.userPhotos || [];
-          const merged = Array.from(new Set([...urls, ...existing])).slice(0, 10);
+          // Сначала оставляем уже видимые в UI фото (в т.ч. только что загруженные), потом дополняем сервером.
+          const merged = Array.from(new Set([...existing, ...urls])).slice(0, 10);
           return {
             ...prev,
             auth: { ...prev.auth, userPhotos: merged },
@@ -411,7 +412,28 @@ const App: React.FC = () => {
   }, [backendUserId, setState, syncTick]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    try {
+      // Не сохраняем heavy data: URL в localStorage — это может выбивать quota (особенно в Telegram WebView).
+      const persistableState: AppState = {
+        ...state,
+        auth: {
+          ...state.auth,
+          userPhotos: (state.auth?.userPhotos || []).filter(
+            (u) => typeof u === 'string' && !u.startsWith('data:'),
+          ),
+          garmentMemory: (state.auth?.garmentMemory || []).filter(
+            (u) => typeof u === 'string' && !u.startsWith('data:'),
+          ),
+          lookHistory: (state.auth?.lookHistory || [])
+            .filter((h: any) => h && typeof h.imageUrl === 'string' && !h.imageUrl.startsWith('data:'))
+            .slice(0, 50),
+        },
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(persistableState));
+    } catch (err) {
+      // Мягко игнорируем ошибки персистентности, чтобы не ронять интерфейс.
+      logError('PERSISTENCE', err);
+    }
     document.body.className = `theme-${state.theme} transition-colors duration-500 antialiased overflow-x-hidden`;
   }, [state]);
 
