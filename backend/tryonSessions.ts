@@ -6,6 +6,8 @@ export type TryonStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'c
 export interface TryonSession {
   id: string;
   user_id: string | null;
+  owner_type: string | null;
+  owner_key: string | null;
   person_asset_id: string | null;
   look_id: string | null;
   result_image_asset_id: string | null;
@@ -25,6 +27,8 @@ export interface TryonSession {
   completed_at: Date | null;
   created_at: Date;
   updated_at: Date;
+  liked: boolean;
+  viewed_at: Date | null;
 }
 
 export async function ensureTryonTables(): Promise<void> {
@@ -32,6 +36,8 @@ export async function ensureTryonTables(): Promise<void> {
     CREATE TABLE IF NOT EXISTS tryon_sessions (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID REFERENCES users(id),
+      owner_type TEXT,
+      owner_key TEXT,
       person_asset_id UUID REFERENCES media_assets(id),
       look_id UUID REFERENCES looks(id),
       result_image_asset_id UUID REFERENCES media_assets(id),
@@ -51,14 +57,31 @@ export async function ensureTryonTables(): Promise<void> {
       completed_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
+      ,liked BOOLEAN NOT NULL DEFAULT FALSE
+      ,viewed_at TIMESTAMPTZ
     )
   `);
 
+  // Мягкая миграция для существующих БД.
+  await pool.query(`ALTER TABLE tryon_sessions ADD COLUMN IF NOT EXISTS owner_type TEXT`);
+  await pool.query(`ALTER TABLE tryon_sessions ADD COLUMN IF NOT EXISTS owner_key TEXT`);
+  await pool.query(`ALTER TABLE tryon_sessions ADD COLUMN IF NOT EXISTS liked BOOLEAN NOT NULL DEFAULT FALSE`);
+  await pool.query(`ALTER TABLE tryon_sessions ADD COLUMN IF NOT EXISTS viewed_at TIMESTAMPTZ`);
+  await pool.query(`
+    UPDATE tryon_sessions
+    SET owner_type = COALESCE(owner_type, CASE WHEN user_id IS NOT NULL THEN 'user' ELSE 'client' END),
+        owner_key = COALESCE(owner_key, CASE WHEN user_id IS NOT NULL THEN ('user:' || user_id::text) ELSE NULL END)
+  `);
+
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_tryon_user_created ON tryon_sessions(user_id, created_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_tryon_owner_created ON tryon_sessions(owner_key, created_at DESC)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_tryon_look_created ON tryon_sessions(look_id, created_at DESC)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_tryon_status ON tryon_sessions(status)`);
   await pool.query(
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_tryon_user_client_req ON tryon_sessions(user_id, client_request_id)`,
+  );
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_tryon_owner_client_req ON tryon_sessions(owner_key, client_request_id) WHERE client_request_id IS NOT NULL`,
   );
 }
 
@@ -68,34 +91,40 @@ export async function findTryonById(id: string): Promise<TryonSession | null> {
 }
 
 export async function findExistingTryonByClientRequest(
-  userId: string | null,
+  ownerKey: string,
   clientRequestId: string,
 ): Promise<TryonSession | null> {
-  if (!userId) return null;
+  if (!ownerKey) return null;
   const res = await pool.query<TryonSession>(
-    'SELECT * FROM tryon_sessions WHERE user_id = $1 AND client_request_id = $2 LIMIT 1',
-    [userId, clientRequestId],
+    'SELECT * FROM tryon_sessions WHERE owner_key = $1 AND client_request_id = $2 LIMIT 1',
+    [ownerKey, clientRequestId],
   );
   return res.rows[0] ?? null;
 }
 
-export async function listUserTryons(userId: string, limit = 50): Promise<TryonSession[]> {
+export async function listOwnerTryons(ownerKey: string, limit = 50): Promise<TryonSession[]> {
   const res = await pool.query<TryonSession>(
     `
     SELECT *
     FROM tryon_sessions
-    WHERE user_id = $1
+    WHERE owner_key = $1
     ORDER BY created_at DESC
     LIMIT $2
     `,
-    [userId, limit],
+    [ownerKey, limit],
   );
   return res.rows;
 }
 
+export async function listUserTryons(userId: string, limit = 50): Promise<TryonSession[]> {
+  return listOwnerTryons(`user:${userId}`, limit);
+}
+
 export async function createPendingTryon(params: {
   userId?: string | null;
-  personAssetId: string;
+  ownerType: 'user' | 'client';
+  ownerKey: string;
+  personAssetId?: string | null;
   lookId: string | null;
   sceneType?: string;
   provider?: string;
@@ -108,6 +137,8 @@ export async function createPendingTryon(params: {
     `
     INSERT INTO tryon_sessions (
       user_id,
+      owner_type,
+      owner_key,
       person_asset_id,
       look_id,
       scene_type,
@@ -119,12 +150,14 @@ export async function createPendingTryon(params: {
       request_meta,
       requested_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8, $9::jsonb, NOW())
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10, $11::jsonb, NOW())
     RETURNING *
     `,
     [
       params.userId ?? null,
-      params.personAssetId,
+      params.ownerType,
+      params.ownerKey,
+      params.personAssetId ?? null,
       params.lookId,
       params.sceneType ?? null,
       params.provider ?? null,
@@ -135,6 +168,25 @@ export async function createPendingTryon(params: {
     ],
   );
   return res.rows[0];
+}
+
+export async function trimCompletedOwnerTryons(ownerKey: string, limit = 50): Promise<void> {
+  await pool.query(
+    `
+    DELETE FROM tryon_sessions
+    WHERE owner_key = $1
+      AND status = 'completed'
+      AND id IN (
+        SELECT id
+        FROM tryon_sessions
+        WHERE owner_key = $1
+          AND status = 'completed'
+        ORDER BY created_at DESC
+        OFFSET $2
+      )
+    `,
+    [ownerKey, limit],
+  );
 }
 
 export async function markTryonProcessing(id: string): Promise<void> {
@@ -206,6 +258,58 @@ export async function markTryonFailed(id: string, errorMessage: string): Promise
     WHERE id = $1
     `,
     [id, errorMessage],
+  );
+}
+
+export async function setTryonLiked(ownerKey: string, sessionId: string, liked: boolean): Promise<void> {
+  await pool.query(
+    `
+    UPDATE tryon_sessions
+    SET liked = $3,
+        updated_at = NOW()
+    WHERE id = $1 AND owner_key = $2
+    `,
+    [sessionId, ownerKey, liked],
+  );
+}
+
+export async function deleteOwnerTryon(ownerKey: string, sessionId: string): Promise<void> {
+  await pool.query(
+    `
+    DELETE FROM tryon_sessions
+    WHERE id = $1 AND owner_key = $2
+    `,
+    [sessionId, ownerKey],
+  );
+}
+
+export async function markOwnerTryonsViewed(ownerKey: string, sessionIds: string[]): Promise<void> {
+  if (!ownerKey || sessionIds.length === 0) return;
+  await pool.query(
+    `
+    UPDATE tryon_sessions
+    SET viewed_at = COALESCE(viewed_at, NOW()),
+        updated_at = NOW()
+    WHERE owner_key = $1
+      AND id = ANY($2::uuid[])
+    `,
+    [ownerKey, sessionIds],
+  );
+}
+
+export async function updateOwnerTryonVideoAsset(
+  ownerKey: string,
+  sessionId: string,
+  videoAssetId: string,
+): Promise<void> {
+  await pool.query(
+    `
+    UPDATE tryon_sessions
+    SET result_video_asset_id = $3,
+        updated_at = NOW()
+    WHERE id = $1 AND owner_key = $2
+    `,
+    [sessionId, ownerKey, videoAssetId],
   );
 }
 

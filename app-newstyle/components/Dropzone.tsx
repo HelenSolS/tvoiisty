@@ -29,7 +29,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({ image = null, onImageUpload,
         />
         
         {image ? (
-          <img src={image} alt="Preview" className="w-full h-full object-cover animate-in fade-in duration-500" />
+          <img src={image} alt="Preview" className="w-full h-full object-contain rounded-[2rem] animate-in fade-in duration-500" />
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center text-slate-300 group-hover:text-[var(--primary)] transition-colors">
             <div className="w-12 h-12 rounded-full border border-slate-200 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">

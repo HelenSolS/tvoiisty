@@ -42,6 +42,64 @@ export async function uploadImage({ apiBase, headers, formData }: UploadImagePar
   return res;
 }
 
+type TryonLiteParams = {
+  apiBase: string;
+  person: Blob;
+  garment: Blob;
+  headers?: Record<string, string>;
+};
+
+export async function startTryOnLite({ apiBase, person, garment, headers }: TryonLiteParams): Promise<{ imageUrl: string; sessionId?: string }> {
+  const form = new FormData();
+  form.append('person', person, 'person.jpg');
+  form.append('garment', garment, 'garment.jpg');
+
+  const res = await fetch(`${apiBase}/api/tryon-lite`, {
+    method: 'POST',
+    headers,
+    body: form,
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `tryon-lite-start-failed-${res.status}`);
+  }
+
+  const data = await res.json().catch(() => ({}));
+  const imageUrl = (data?.image_url ?? data?.imageUrl ?? '').toString();
+  if (!imageUrl) {
+    throw new Error('no-image-url');
+  }
+  const sessionId = (data?.session_id ?? data?.sessionId ?? '').toString();
+  return { imageUrl, ...(sessionId ? { sessionId } : {}) };
+}
+
+type StartVideoFromImageParams = {
+  apiBase: string;
+  imageUrl: string;
+  headers?: Record<string, string>;
+};
+
+export async function startVideoFromImage({ apiBase, imageUrl, headers }: StartVideoFromImageParams): Promise<{ videoUrl: string }> {
+  const res = await fetch(`${apiBase}/api/generate-video`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(headers || {}) },
+    body: JSON.stringify({ imageUrl }),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as any)?.error || `video-start-failed-${res.status}`);
+  }
+
+  const data = await res.json().catch(() => ({}));
+  const videoUrl = (data?.videoUrl ?? '').toString();
+  if (!videoUrl) {
+    throw new Error('no-video-url');
+  }
+  return { videoUrl };
+}
+
 type TryonStatusParams = {
   apiBase: string;
   sessionId: string;

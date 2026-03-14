@@ -89,5 +89,14 @@ export function saveHistory(items: HistoryItem[], _localStorageKey: string): Pro
   const sorted = [...items]
     .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
     .slice(0, ARCHIVE_MAX_ITEMS);
+  // Надёжность: пишем в localStorage как fallback для окружений,
+  // где IndexedDB может быть недоступен/очищаться.
+  try {
+    if (_localStorageKey) {
+      localStorage.setItem(_localStorageKey, JSON.stringify(sorted));
+    }
+  } catch {
+    // ignore localStorage write errors
+  }
   return putToIDB(sorted).catch(() => {});
 }

@@ -13,7 +13,7 @@ export const Step4Video: React.FC<Step4VideoProps> = ({ video, onReset, onVideoC
       <div className="w-full max-w-md bg-white rounded-[3rem] p-8 shadow-2xl border border-slate-100 overflow-hidden">
         <div className="relative aspect-[3/4] w-full bg-slate-50 rounded-[2.5rem] overflow-hidden mb-8">
           {video ? (
-            <video src={video} controls autoPlay loop className="w-full h-full object-cover animate-in zoom-in duration-1000" />
+            <video src={video} controls autoPlay loop className="w-full h-full object-contain rounded-[2.5rem] animate-in zoom-in duration-1000" />
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-slate-300">
               <div className="w-12 h-12 border-4 border-slate-100 border-t-[var(--primary)] rounded-full animate-spin mb-6"></div>

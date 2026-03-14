@@ -88,6 +88,7 @@ const App: React.FC = () => {
   const [merchantProducts, setMerchantProducts] = useState<CuratedOutfit[]>([]);
   const [testClothes, setTestClothes] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'history' | 'settings' | 'showroom' | 'admin'>('home');
+  const [historyViewMode, setHistoryViewMode] = useState<'grid' | 'list'>('list');
   const [outfitPage, setOutfitPage] = useState(1);
   const [adminUnlockedSession, setAdminUnlockedSession] = useState(false);
   /** Кто ввёл 888 в этой сессии — показываем шестерёнку в шапке для быстрого перехода в настройки. */
@@ -346,13 +347,13 @@ const App: React.FC = () => {
             saveToStorage('merchant_products', updatedProducts);
           }
         }
-        if (!finalImageUrl.startsWith('data:')) {
-          incrementMetric('totalTryOns').then(() => incrementMetric('totalArchiveSaves')).then(() => getMetrics().then(setMetrics));
-          const newItem: HistoryItem = { id: `h_${Date.now()}`, resultUrl: finalImageUrl, outfitUrl: outfit.imageUrl, shopUrl, timestamp: Date.now() };
-          const newHistory = [newItem, ...history].slice(0, ARCHIVE_MAX_ITEMS);
-          setHistory(newHistory);
-          saveHistory(newHistory, `${STORAGE_VER}_history`);
-        }
+        incrementMetric('totalTryOns').then(() => incrementMetric('totalArchiveSaves')).then(() => getMetrics().then(setMetrics));
+        const newItem: HistoryItem = { id: `h_${Date.now()}`, resultUrl: finalImageUrl, outfitUrl: outfit.imageUrl, shopUrl, timestamp: Date.now() };
+        setHistory((prev) => {
+          const newHistory = [newItem, ...prev].slice(0, ARCHIVE_MAX_ITEMS);
+          void saveHistory(newHistory, `${STORAGE_VER}_history`);
+          return newHistory;
+        });
         return;
       } else if (outfit.imageUrl && outfit.imageUrl.startsWith('data:')) {
         const { url } = await uploadClothingImage(outfit.imageUrl);
@@ -416,29 +417,28 @@ const App: React.FC = () => {
           saveToStorage('merchant_products', updatedProducts);
         }
       }
-      if (!imageUrl.startsWith('data:')) {
-        incrementMetric('totalTryOns')
-          .then(() => incrementMetric('totalArchiveSaves'))
-          .then(() => getMetrics().then(setMetrics));
-        const now = Date.now();
-        const newItem: HistoryItem = {
-          id: `h_${now}`,
-          resultUrl: imageUrl,
-          outfitUrl: outfit.imageUrl,
-          shopUrl,
-          timestamp: now,
-        };
-        const prevLen = history.length;
-        const newHistory = [newItem, ...history].slice(0, ARCHIVE_MAX_ITEMS);
-        const didOverflow = prevLen >= ARCHIVE_MAX_ITEMS;
-        setHistory(newHistory);
-        saveHistory(newHistory, `${STORAGE_VER}_history`);
+      incrementMetric('totalTryOns')
+        .then(() => incrementMetric('totalArchiveSaves'))
+        .then(() => getMetrics().then(setMetrics));
+      const now = Date.now();
+      const newItem: HistoryItem = {
+        id: `h_${now}`,
+        resultUrl: imageUrl,
+        outfitUrl: outfit.imageUrl,
+        shopUrl,
+        timestamp: now,
+      };
+      setHistory((prev) => {
+        const didOverflow = prev.length >= ARCHIVE_MAX_ITEMS;
+        const newHistory = [newItem, ...prev].slice(0, ARCHIVE_MAX_ITEMS);
+        void saveHistory(newHistory, `${STORAGE_VER}_history`);
         if (didOverflow && !archiveOverflowToastShown) {
           setArchiveOverflowToastShown(true);
           setSuccessMsg(`В архиве хранятся последние ${ARCHIVE_MAX_ITEMS} примерок. Самая старая запись удалена.`);
           setTimeout(() => setSuccessMsg(null), 4000);
         }
-      }
+        return newHistory;
+      });
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : '';
       const isNetwork = /failed to fetch|network error|load failed/i.test(raw) || raw === '';
@@ -648,41 +648,56 @@ const App: React.FC = () => {
                className="relative rounded-[3rem] overflow-hidden shadow-4xl border-[3px] border-white ring-2 ring-[var(--theme-color)]/40 bg-white flex items-center justify-center"
                style={{ maxHeight: 'min(75vh, 900px)' }}
              >
-                <img src={state.resultImage} className="w-full max-h-[min(75vh,900px)] object-contain" alt="Результат примерки" />
+                <img src={state.resultImage} className="w-full max-h-[min(75vh,900px)] object-contain rounded-[3rem]" alt="Результат примерки" />
              </div>
 
-            {/* Главные действия сразу под картинкой — всегда видны */}
-            <button 
-              onClick={() => openInStore(state.currentShopUrl!)} 
-              className="w-full py-4 rounded-3xl font-black text-[11px] uppercase tracking-widest shadow-2xl active:scale-95 flex items-center justify-center gap-2 bg-[var(--theme-color)] text-white border-2 border-[var(--theme-color)] ring-2 ring-black/10"
+            {/* Круглые действия под результатом (канон UI). */}
+            <div className="flex items-center justify-center gap-4">
+              <button
+                onClick={handleCreateVideo}
+                disabled={isVideoProcessing}
+                title={resultVideoUrl ? 'Переделать видео' : 'Анимация'}
+                className="w-14 h-14 rounded-full bg-white/95 border border-gray-200 shadow-xl flex items-center justify-center text-gray-900 active:scale-95 disabled:opacity-60"
+              >
+                {isVideoProcessing ? (
+                  <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 100 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z" />
+                  </svg>
+                ) : (
+                  <span className="text-xl">🎬</span>
+                )}
+              </button>
+              <button
+                onClick={() => handleDownload(state.resultImage!)}
+                title="Скачать итоговое фото примерки"
+                className="w-14 h-14 rounded-full bg-white/95 border border-gray-200 shadow-xl flex items-center justify-center text-gray-900 active:scale-95"
+              >
+                <span className="text-xl">📥</span>
+              </button>
+              <button
+                onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(state.resultImage); }}
+                title="Поделиться итоговым фото"
+                className="w-14 h-14 rounded-full bg-white/95 border border-gray-200 shadow-xl flex items-center justify-center text-gray-900 active:scale-95"
+              >
+                <span className="text-xl">↗</span>
+              </button>
+              {state.currentShopUrl && state.currentShopUrl !== '#' && (
+                <button
+                  onClick={() => openInStore(state.currentShopUrl!)}
+                  title="Купить в магазине"
+                  className="w-14 h-14 rounded-full bg-[var(--theme-color)] text-white shadow-xl flex items-center justify-center active:scale-95"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+                </button>
+              )}
+            </div>
+            <button
+              onClick={() => { setState(s => ({ ...s, resultImage: null })); setResultVideoUrl(null); setVideoError(null); }}
+              className="w-full py-2 text-gray-500 font-black text-[9px] uppercase tracking-widest active:scale-95"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
-              Купить в магазине
+              Примерить другое
             </button>
-
-            {/* Скачивание/шаринг фото — сразу под кнопкой магазина. */}
-            <div className="grid grid-cols-2 gap-3">
-               <button
-                 onClick={() => handleDownload(state.resultImage!)}
-                 title="Скачать итоговое фото примерки"
-                 className="py-3 bg-white border border-gray-200 rounded-3xl font-black text-[8px] uppercase tracking-widest shadow-xl active:scale-95 text-gray-800"
-               >
-                 Скачать фото
-               </button>
-               <button
-                 onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(state.resultImage); }}
-                 title="Поделиться итоговым фото"
-                 className="py-3 bg-white border border-gray-200 rounded-3xl font-black text-[8px] uppercase tracking-widest shadow-xl active:scale-95 text-gray-800"
-               >
-                 Поделиться
-               </button>
-               <button
-                 onClick={() => { setState(s => ({ ...s, resultImage: null })); setResultVideoUrl(null); setVideoError(null); }}
-                 className="col-span-2 py-3 text-gray-500 font-black text-[9px] uppercase tracking-widest active:scale-95"
-               >
-                 Примерить другое
-               </button>
-             </div>
 
             {/* Блок видео: выбор модели (если включено), запуск и просмотр. */}
             <div className="space-y-3">
@@ -694,27 +709,6 @@ const App: React.FC = () => {
                   </select>
                 </div>
               )}
-              <button
-                onClick={handleCreateVideo}
-                disabled={isVideoProcessing}
-                className="w-full py-4 bg-white border-2 border-theme text-theme rounded-3xl font-black text-[11px] uppercase tracking-widest shadow-xl active:scale-95 flex items-center justify-center gap-2 disabled:opacity-60"
-                title={resultVideoUrl ? 'Пересоздать видео для этого образа' : 'Создать видео по этому образу'}
-              >
-                {isVideoProcessing ? (
-                  <>
-                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 100 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z" />
-                    </svg>
-                    Создаём видео...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/><path d="M4 5h2v14H4z"/></svg>
-                    {resultVideoUrl ? 'Переделать видео' : 'Создать видео'}
-                  </>
-                )}
-              </button>
               {videoError && (
                 <p className="text-red-500 text-[10px] font-bold text-center">
                   {videoError}
@@ -731,13 +725,22 @@ const App: React.FC = () => {
                      <video src={resultVideoUrl} controls className="w-full h-full object-contain" playsInline />
                    </div>
                  </div>
-                 <button
-                   onClick={handleDownloadVideo}
-                   title="Скачать текущее видео на устройство"
-                   className="w-full py-3 bg-white border border-gray-100 rounded-2xl font-black text-[9px] uppercase tracking-widest shadow-lg active:scale-95"
-                 >
-                   Скачать видео
-                 </button>
+                 <div className="flex items-center justify-center gap-4">
+                   <button
+                     onClick={handleDownloadVideo}
+                     title="Скачать текущее видео на устройство"
+                     className="w-12 h-12 rounded-full bg-white/95 border border-gray-200 shadow-lg flex items-center justify-center active:scale-95"
+                   >
+                     <span className="text-lg">📥</span>
+                   </button>
+                   <button
+                     onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(resultVideoUrl); }}
+                     title="Поделиться видео"
+                     className="w-12 h-12 rounded-full bg-white/95 border border-gray-200 shadow-lg flex items-center justify-center active:scale-95"
+                   >
+                     <span className="text-lg">↗</span>
+                   </button>
+                 </div>
                </>
               )}
             </div>
@@ -935,62 +938,100 @@ const App: React.FC = () => {
               </div>
             ) : activeTab === 'history' ? (
               <div className="px-4 py-5 space-y-6 animate-in fade-in max-w-[420px] mx-auto">
-                <h3 className="serif text-2xl font-black italic text-center">Архив</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="serif text-2xl font-black italic">Архив</h3>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setHistoryViewMode('grid')}
+                      className={`w-9 h-9 rounded-full flex items-center justify-center text-xs ${historyViewMode === 'grid' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-400'}`}
+                    >
+                      ⊞
+                    </button>
+                    <button
+                      onClick={() => setHistoryViewMode('list')}
+                      className={`w-9 h-9 rounded-full flex items-center justify-center text-xs ${historyViewMode === 'list' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-400'}`}
+                    >
+                      ≡
+                    </button>
+                  </div>
+                </div>
                 <p className="text-[9px] text-gray-500 text-center uppercase tracking-widest">Хранятся последние {ARCHIVE_MAX_ITEMS} примерок</p>
                 {history.length === 0 ? (
                   <div className="text-center pt-20 opacity-30">
                     <p className="text-[10px] font-black uppercase tracking-widest">Пусто</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-4">
-                    {history.map(item => {
-                      const thumbLoaded = archiveThumbLoaded[item.id] === true;
-                      return (
-                        <div
-                          key={item.id}
-                          className="aspect-[3/4] rounded-[2.5rem] overflow-hidden border-[2px] border-white shadow-xl active:scale-95 relative bg-gray-50"
-                          onClick={() => {
-                            setSelectedHistoryItem(item);
-                            setArchiveImageLoaded(false);
-                            // Если к этой примерке уже есть видео, сразу подхватываем его в модалку.
-                            setArchiveVideoUrl(item.videoUrl ?? null);
-                            setArchiveVideoError(null);
-                          }}
-                        >
-                          {!thumbLoaded && (
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <div className="w-8 h-8 border-[3px] border-theme border-t-transparent rounded-full animate-spin shadow-md" />
-                            </div>
-                          )}
-                          <img
-                            src={item.resultUrl}
-                            className="w-full h-full object-cover"
-                            onLoad={() =>
-                              setArchiveThumbLoaded((prev) => ({
-                                ...prev,
-                                [item.id]: true,
-                              }))
-                            }
-                            onError={() =>
-                              setArchiveThumbLoaded((prev) => ({
-                                ...prev,
-                                [item.id]: true,
-                              }))
-                            }
-                          />
-                          {item.videoUrl && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                              <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-                                <svg className="w-4 h-4 text-gray-800" fill="currentColor" viewBox="0 0 20 20">
-                                  <path d="M6.5 5.5v9l7-4.5-7-4.5z" />
-                                </svg>
+                  historyViewMode === 'list' ? (
+                    <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
+                      {history.map((item) => {
+                        const thumbLoaded = archiveThumbLoaded[item.id] === true;
+                        return (
+                          <div
+                            key={item.id}
+                            className="flex-shrink-0 w-44 aspect-[3/4] rounded-[2.5rem] overflow-hidden border-[2px] border-white shadow-xl active:scale-95 relative bg-gray-50"
+                            onClick={() => {
+                              setSelectedHistoryItem(item);
+                              setArchiveImageLoaded(false);
+                              setArchiveVideoUrl(item.videoUrl ?? null);
+                              setArchiveVideoError(null);
+                            }}
+                          >
+                            {!thumbLoaded && (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="w-8 h-8 border-[3px] border-theme border-t-transparent rounded-full animate-spin shadow-md" />
                               </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                            )}
+                            <img
+                              src={item.resultUrl}
+                              className="w-full h-full object-contain rounded-[2.5rem]"
+                              onLoad={() => setArchiveThumbLoaded((prev) => ({ ...prev, [item.id]: true }))}
+                              onError={() => setArchiveThumbLoaded((prev) => ({ ...prev, [item.id]: true }))}
+                            />
+                            {item.videoUrl && (
+                              <div className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/95 flex items-center justify-center shadow-lg">
+                                <span className="text-sm">🎬</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4">
+                      {history.map((item) => {
+                        const thumbLoaded = archiveThumbLoaded[item.id] === true;
+                        return (
+                          <div
+                            key={item.id}
+                            className="aspect-[3/4] rounded-[2.5rem] overflow-hidden border-[2px] border-white shadow-xl active:scale-95 relative bg-gray-50"
+                            onClick={() => {
+                              setSelectedHistoryItem(item);
+                              setArchiveImageLoaded(false);
+                              setArchiveVideoUrl(item.videoUrl ?? null);
+                              setArchiveVideoError(null);
+                            }}
+                          >
+                            {!thumbLoaded && (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="w-8 h-8 border-[3px] border-theme border-t-transparent rounded-full animate-spin shadow-md" />
+                              </div>
+                            )}
+                            <img
+                              src={item.resultUrl}
+                              className="w-full h-full object-contain rounded-[2.5rem]"
+                              onLoad={() => setArchiveThumbLoaded((prev) => ({ ...prev, [item.id]: true }))}
+                              onError={() => setArchiveThumbLoaded((prev) => ({ ...prev, [item.id]: true }))}
+                            />
+                            {item.videoUrl && (
+                              <div className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/95 flex items-center justify-center shadow-lg">
+                                <span className="text-sm">🎬</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
                 )}
               </div>
             ) : activeTab === 'showroom' ? (
@@ -1443,35 +1484,97 @@ const App: React.FC = () => {
               )}
               <img
                 src={selectedHistoryItem.resultUrl}
-                className="w-full max-h-[min(70vh,800px)] object-contain"
+                className="w-full max-h-[min(70vh,800px)] object-contain rounded-[3rem]"
                 alt=""
                 onLoad={() => setArchiveImageLoaded(true)}
                 onError={() => setArchiveImageLoaded(true)}
               />
             </div>
 
-            <div className="mt-8 grid grid-cols-2 gap-3">
-              <button
-                onClick={() => openInStore(selectedHistoryItem.shopUrl)}
-                className="col-span-2 py-4 rounded-3xl font-black text-[11px] uppercase tracking-widest shadow-2xl flex items-center justify-center gap-2 bg-[var(--theme-color)] text-white border-2 border-[var(--theme-color)] ring-2 ring-black/10"
-              >
-                Купить в магазине
-              </button>
+            <div className="mt-8 space-y-4">
+              <div className="flex items-center justify-center gap-4">
+                <button
+                  onClick={() => {
+                    if (selectedHistoryItem) {
+                      downloadUrlAsFile(selectedHistoryItem.resultUrl, 'look.png');
+                    }
+                  }}
+                  title="Скачать фото"
+                  className="w-12 h-12 rounded-full bg-white border border-gray-200 shadow-lg flex items-center justify-center active:scale-95"
+                >
+                  <span className="text-lg">📥</span>
+                </button>
+                <button
+                  onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(selectedHistoryItem.resultUrl); }}
+                  title="Поделиться в Telegram"
+                  className="w-12 h-12 rounded-full bg-white border border-gray-200 shadow-lg flex items-center justify-center active:scale-95"
+                >
+                  <span className="text-lg">↗</span>
+                </button>
+                <button
+                  onClick={async () => {
+                    setArchiveVideoError(null);
+                    setIsArchiveVideoProcessing(true);
+                    try {
+                      const videoModel = showVideoModelDropdown() ? selectedVideoModel : getDefaultVideoModel();
+                      const videoPrompt = getEffectiveVideoPrompt();
+                      const url = await generateVideo(selectedHistoryItem!.resultUrl, { model: videoModel, prompt: videoPrompt });
+                      incrementMetric('totalVideos').then(() => getMetrics().then(setMetrics));
+                      setArchiveVideoUrl(url);
+                      const idx = history.findIndex((h) => h.id === selectedHistoryItem.id);
+                      if (idx >= 0) {
+                        const updated: HistoryItem = { ...history[idx], videoUrl: url };
+                        const next = [...history];
+                        next[idx] = updated;
+                        setHistory(next);
+                        void saveHistory(next, `${STORAGE_VER}_history`);
+                        setSelectedHistoryItem(updated);
+                      }
+                    } catch (err: unknown) {
+                      const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
+                      setArchiveVideoError(msg);
+                    } finally {
+                      setIsArchiveVideoProcessing(false);
+                    }
+                  }}
+                  disabled={isArchiveVideoProcessing}
+                  title={archiveVideoUrl ? 'Анимировать заново' : 'Анимировать'}
+                  className="w-12 h-12 rounded-full bg-white border border-gray-200 shadow-lg flex items-center justify-center active:scale-95 disabled:opacity-50"
+                >
+                  {isArchiveVideoProcessing ? (
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 100 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z" />
+                    </svg>
+                  ) : (
+                    <span className="text-lg">🎬</span>
+                  )}
+                </button>
+                {selectedHistoryItem.shopUrl && selectedHistoryItem.shopUrl !== '#' && (
+                  <button
+                    onClick={() => openInStore(selectedHistoryItem.shopUrl)}
+                    title="Купить в магазине"
+                    className="w-12 h-12 rounded-full bg-[var(--theme-color)] text-white shadow-lg flex items-center justify-center active:scale-95"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+                  </button>
+                )}
+              </div>
+
               <button
                 onClick={() => {
-                  if (selectedHistoryItem) {
-                    downloadUrlAsFile(selectedHistoryItem.resultUrl, 'look.png');
-                  }
+                  setHistory((prev) => {
+                    const next = prev.filter((h) => h.id !== selectedHistoryItem.id);
+                    void saveHistory(next, `${STORAGE_VER}_history`);
+                    return next;
+                  });
+                  setSelectedHistoryItem(null);
+                  setArchiveVideoUrl(null);
+                  setArchiveVideoError(null);
                 }}
-                className="py-3 bg-white border border-gray-100 rounded-3xl font-black text-[8px] uppercase tracking-widest"
+                className="w-full py-2 text-gray-400 font-black text-[9px] uppercase tracking-widest"
               >
-                Скачать фото
-              </button>
-              <button
-                onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(selectedHistoryItem.resultUrl); }}
-                className="py-3 bg-white border border-gray-100 rounded-3xl font-black text-[8px] uppercase tracking-widest"
-              >
-                Поделиться
+                Удалить из истории
               </button>
 
               {archiveVideoError && (
@@ -1486,60 +1589,47 @@ const App: React.FC = () => {
                   >
                     <video src={archiveVideoUrl} className="w-full max-h-[min(70vh,800px)] object-contain" controls playsInline />
                   </div>
-                  <button
-                    onClick={() => {
-                      if (archiveVideoUrl) {
-                        downloadUrlAsFile(archiveVideoUrl, 'look.mp4');
-                      }
-                    }}
-                    className="col-span-2 py-3 rounded-3xl font-black text-[8px] uppercase tracking-widest bg-white text-gray-900 border border-gray-200"
-                  >
-                    Скачать видео
-                  </button>
-                  <button
-                    onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(archiveVideoUrl); }}
-                    className="col-span-2 py-3 bg-white border border-gray-100 rounded-3xl font-black text-[8px] uppercase tracking-widest"
-                  >
-                    Поделиться видео
-                  </button>
+                  <div className="col-span-2 flex items-center justify-center gap-4">
+                    <button
+                      onClick={() => {
+                        if (archiveVideoUrl) {
+                          downloadUrlAsFile(archiveVideoUrl, 'look.mp4');
+                        }
+                      }}
+                      title="Скачать видео"
+                      className="w-12 h-12 rounded-full bg-white border border-gray-200 shadow-lg flex items-center justify-center active:scale-95"
+                    >
+                      <span className="text-lg">📥</span>
+                    </button>
+                    <button
+                      onClick={() => { incrementMetric('totalShares').then(() => getMetrics().then(setMetrics)); setSocialModal(archiveVideoUrl); }}
+                      title="Поделиться видео"
+                      className="w-12 h-12 rounded-full bg-white border border-gray-200 shadow-lg flex items-center justify-center active:scale-95"
+                    >
+                      <span className="text-lg">↗</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        const idx = history.findIndex((h) => h.id === selectedHistoryItem.id);
+                        if (idx >= 0) {
+                          const updated: HistoryItem = { ...history[idx], videoUrl: undefined };
+                          const next = [...history];
+                          next[idx] = updated;
+                          setHistory(next);
+                          void saveHistory(next, `${STORAGE_VER}_history`);
+                          setSelectedHistoryItem(updated);
+                        }
+                        setArchiveVideoUrl(null);
+                        setArchiveVideoError(null);
+                      }}
+                      title="Удалить видео"
+                      className="w-12 h-12 rounded-full bg-white border border-red-200 text-red-500 shadow-lg flex items-center justify-center active:scale-95"
+                    >
+                      <span className="text-lg">✕</span>
+                    </button>
+                  </div>
                 </>
               )}
-
-              <button
-                onClick={async () => {
-                  setArchiveVideoError(null);
-                  setIsArchiveVideoProcessing(true);
-                  try {
-                    const videoModel = showVideoModelDropdown() ? selectedVideoModel : getDefaultVideoModel();
-                    const videoPrompt = getEffectiveVideoPrompt();
-                    const url = await generateVideo(selectedHistoryItem!.resultUrl, { model: videoModel, prompt: videoPrompt });
-                    incrementMetric('totalVideos').then(() => getMetrics().then(setMetrics));
-                    setArchiveVideoUrl(url);
-                    const idx = history.findIndex((h) => h.id === selectedHistoryItem.id);
-                    if (idx >= 0) {
-                      const updated: HistoryItem = { ...history[idx], videoUrl: url };
-                      const next = [...history];
-                      next[idx] = updated;
-                      setHistory(next);
-                      saveHistory(next, `${STORAGE_VER}_history`);
-                      setSelectedHistoryItem(updated);
-                    }
-                  } catch (err: unknown) {
-                    const msg = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте снова.';
-                    setArchiveVideoError(msg);
-                  } finally {
-                    setIsArchiveVideoProcessing(false);
-                  }
-                }}
-                disabled={isArchiveVideoProcessing}
-                className="col-span-2 py-3 bg-white border border-theme text-theme rounded-3xl font-black text-[8px] uppercase tracking-widest shadow-md disabled:opacity-50"
-              >
-                {isArchiveVideoProcessing
-                  ? 'Создаём видео...'
-                  : archiveVideoUrl
-                  ? 'Переделать видео'
-                  : 'Создать видео'}
-              </button>
 
               <button
                 onClick={() => { setSelectedHistoryItem(null); setArchiveVideoUrl(null); setArchiveVideoError(null); }}

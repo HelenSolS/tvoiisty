@@ -146,14 +146,14 @@ const UploadBox: React.FC<UploadBoxProps> = ({
         <div className="w-full max-w-md">
           {userPhotos.length > 0 ? (
             viewMode === 'list' ? (
-              <div className="flex gap-4 overflow-x-auto no-scrollbar pb-6 -mx-6 px-6 snap-x">
+              <div className="flex gap-4 overflow-x-auto no-scrollbar pb-6 -mx-6 px-6 snap-x snap-mandatory">
                 {userPhotos.map((img, idx) => (
-                  <div key={idx} className="flex-shrink-0 w-40 snap-start group relative">
+                  <div key={idx} className={`flex-shrink-0 w-40 snap-start group relative ${userPhotos.length === 1 ? 'mx-auto' : ''}`}>
                     <div className="aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-xl bg-slate-50 border-4 border-white group-hover:shadow-2xl transition-all duration-700 flex items-center justify-center">
                       <img
                         src={img}
                         alt={`User ${idx}`}
-                        className="w-full h-full object-contain cursor-pointer group-hover:scale-110 transition-transform duration-1000"
+                        className="w-full h-full object-contain rounded-[2.5rem] cursor-pointer group-hover:scale-110 transition-transform duration-1000"
                         onClick={() => setPreviewImage(img)}
                       />
                       <div className="absolute top-3 right-3 flex flex-col gap-2">
@@ -188,7 +188,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({
                       <img
                         src={img}
                         alt={`User ${idx}`}
-                        className="w-full h-full object-contain cursor-pointer group-hover:scale-110 transition-transform duration-500"
+                        className="w-full h-full object-contain rounded-[2rem] cursor-pointer group-hover:scale-110 transition-transform duration-500"
                         onClick={() => setPreviewImage(img)}
                       />
                       <div className="absolute top-3 right-3 flex flex-col gap-2">
@@ -283,6 +283,31 @@ const UploadBox: React.FC<UploadBoxProps> = ({
       : (isDev ? mockItems : []);
 
   const allItems = [...uploadedItems, ...shopItems];
+  const likedLooks = state.auth?.likedLooks || [];
+  const sortedItems = [...allItems].sort((a, b) => {
+    const aLiked = likedLooks.includes(a.imageUrl);
+    const bLiked = likedLooks.includes(b.imageUrl);
+    if (aLiked && !bLiked) return -1;
+    if (!aLiked && bLiked) return 1;
+    return 0;
+  });
+
+  const toggleLike = (imageUrl: string) => {
+    setState((prev) => {
+      const currentLiked = prev.auth?.likedLooks || [];
+      const isLiked = currentLiked.includes(imageUrl);
+      const nextLiked = isLiked
+        ? currentLiked.filter((u) => u !== imageUrl)
+        : [imageUrl, ...currentLiked];
+      return {
+        ...prev,
+        auth: {
+          ...prev.auth,
+          likedLooks: nextLiked,
+        },
+      };
+    });
+  };
 
   return (
     <div className="flex flex-col items-center px-6 animate-in fade-in slide-in-from-bottom-8 duration-700 pb-20">
@@ -293,7 +318,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({
               {t.gallery}
             </h3>
             <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-              {(allItems?.length || 0)} ВЕЩЕЙ
+              {(sortedItems?.length || 0)} ВЕЩЕЙ
             </p>
           </div>
           <div className="flex gap-2">
@@ -369,27 +394,40 @@ const UploadBox: React.FC<UploadBoxProps> = ({
 
       <div className="w-full max-w-md">
         {galleryMode === 'scroll' ? (
-          <div className="flex gap-6 overflow-x-auto no-scrollbar pb-10 -mx-6 px-6 snap-x">
-            {allItems.map((item) => (
+          <div className="flex gap-6 overflow-x-auto no-scrollbar pb-10 -mx-6 px-6 snap-x snap-mandatory">
+            {sortedItems.map((item) => (
               <div
                 key={item.id}
-                className="flex-shrink-0 w-[80vw] max-w-[320px] snap-center group"
+                className={`flex-shrink-0 w-56 sm:w-64 snap-center group ${sortedItems.length === 1 ? 'mx-auto' : ''}`}
               >
-                <div className="relative aspect-[3/4] rounded-[3rem] overflow-hidden shadow-xl group-hover:shadow-2xl transition-all duration-700 mb-6 bg-slate-50 border-4 border-white">
+                <div className="relative aspect-[3/4] rounded-[3rem] overflow-hidden shadow-xl group-hover:shadow-2xl transition-all duration-700 mb-6 bg-slate-50 border-4 border-white flex items-center justify-center">
                   <img
                     src={item.imageUrl}
                     alt={item.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000 cursor-pointer"
+                    className="w-full h-full object-contain rounded-[3rem] group-hover:scale-105 transition-transform duration-1000 cursor-pointer"
                     onClick={() => setPreviewImage(item.imageUrl)}
                   />
                   <div className="absolute top-6 right-6 flex flex-col gap-3">
-                    {item.isBackendLook && onUpload && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleLike(item.imageUrl);
+                      }}
+                      className={`w-10 h-10 backdrop-blur-xl rounded-full flex items-center justify-center shadow-xl transition-opacity ${
+                        likedLooks.includes(item.imageUrl)
+                          ? 'bg-red-500/90 text-white opacity-100'
+                          : 'bg-white/80 text-slate-900 opacity-0 group-hover:opacity-100'
+                      }`}
+                    >
+                      <span className="text-base">{likedLooks.includes(item.imageUrl) ? '❤️' : '🤍'}</span>
+                    </button>
+                    {onUpload && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           onUpload(item.imageUrl);
                         }}
-                        className="w-12 h-12 bg-white/80 backdrop-blur-xl rounded-full flex items-center justify-center text-slate-900 shadow-xl"
+                        className="w-12 h-12 bg-white/80 backdrop-blur-xl rounded-full flex items-center justify-center text-slate-900 shadow-xl opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <span className="text-xl">◎</span>
                       </button>
@@ -400,7 +438,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({
                           e.stopPropagation();
                           deleteGarment(item.imageUrl);
                         }}
-                        className="w-12 h-12 bg-red-500/80 backdrop-blur-xl rounded-full flex items-center justify-center text-white shadow-xl"
+                        className="w-12 h-12 bg-red-500/80 backdrop-blur-xl rounded-full flex items-center justify-center text-white shadow-xl opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <span className="text-xl">✕</span>
                       </button>
@@ -420,17 +458,30 @@ const UploadBox: React.FC<UploadBoxProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-6 px-2">
-            {allItems.map((item) => (
+            {sortedItems.map((item) => (
               <div key={item.id} className="group">
-                <div className="relative aspect-[3/4] rounded-[2rem] overflow-hidden shadow-md bg-slate-50 border-2 border-white mb-3">
+                <div className="relative aspect-[3/4] rounded-[2rem] overflow-hidden shadow-md bg-slate-50 border-2 border-white mb-3 flex items-center justify-center">
                   <img
                     src={item.imageUrl}
                     alt={item.title}
-                    className="w-full h-full object-cover cursor-pointer group-hover:scale-110 transition-transform duration-500"
+                    className="w-full h-full object-contain rounded-[2rem] cursor-pointer group-hover:scale-110 transition-transform duration-500"
                     onClick={() => setPreviewImage(item.imageUrl)}
                   />
                   <div className="absolute top-3 right-3 flex flex-col gap-2">
-                    {item.isBackendLook && onUpload && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleLike(item.imageUrl);
+                      }}
+                      className={`w-8 h-8 backdrop-blur-md rounded-full flex items-center justify-center shadow-sm transition-opacity ${
+                        likedLooks.includes(item.imageUrl)
+                          ? 'bg-red-500/90 text-white opacity-100'
+                          : 'bg-white/80 text-slate-900 opacity-0 group-hover:opacity-100'
+                      }`}
+                    >
+                      <span className="text-xs">{likedLooks.includes(item.imageUrl) ? '❤️' : '🤍'}</span>
+                    </button>
+                    {onUpload && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();

@@ -4,10 +4,12 @@ import type { MediaType } from '../media.js';
 import { findAssetByHash, findOrCreateAssetByHash } from '../media.js';
 import { enqueuePhotoAnalysis } from '../aiPhotoPipeline.js';
 import { uploadBuffer } from '../storage.js';
+import { trimUserPhotos, upsertUserPhoto } from '../userPhotos.js';
 
 const ALLOWED_TYPES: MediaType[] = ['person', 'clothing', 'location'];
 
 export async function uploadMediaHandler(req: Request, res: Response): Promise<void> {
+  const owner = (req as Request & { owner?: { ownerKey?: string } }).owner;
   const file = (req as Request & { file?: Express.Multer.File }).file;
   const typeRaw = (req.body?.type as string | undefined) ?? 'person';
 
@@ -58,6 +60,12 @@ export async function uploadMediaHandler(req: Request, res: Response): Promise<v
       type,
       analysisType: 'photo_llm_v1',
     });
+
+    // Для "Моих фото" ведём отдельный список владельца с лимитом 10.
+    if (type === 'person' && owner?.ownerKey) {
+      await upsertUserPhoto(owner.ownerKey, asset.id);
+      await trimUserPhotos(owner.ownerKey, 10);
+    }
 
     res.status(201).json({
       assetId: asset.id,

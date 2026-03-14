@@ -3,6 +3,13 @@ import type { Express } from 'express';
 import multer from 'multer';
 import { uploadBuffer } from '../storage.js';
 import { tryOnWithFal } from '../falClient.js';
+import {
+  createPendingTryon,
+  markTryonCompletedWithImageUrl,
+  markTryonFailed,
+  markTryonProcessing,
+  trimCompletedOwnerTryons,
+} from '../tryonSessions.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -14,7 +21,24 @@ router.post(
     { name: 'garment', maxCount: 1 },
   ]),
   async (req, res) => {
+    const owner = (req as express.Request & {
+      owner?: { ownerType: 'user' | 'client'; ownerKey: string; userId: string | null };
+    }).owner;
+    if (!owner?.ownerKey) {
+      res.status(400).json({ error: 'Не удалось определить владельца сессии.' });
+      return;
+    }
+    const session = await createPendingTryon({
+      userId: owner.userId ?? null,
+      ownerType: owner.ownerType,
+      ownerKey: owner.ownerKey,
+      personAssetId: null,
+      lookId: null,
+      source: 'web-lite',
+      requestMeta: {},
+    });
     try {
+      await markTryonProcessing(session.id);
       const files = req.files as
         | Record<string, Express.Multer.File[] | undefined>
         | undefined;
@@ -46,10 +70,17 @@ router.post(
         personStored.url,
         garmentStored.url,
       );
+      await markTryonCompletedWithImageUrl({
+        id: session.id,
+        imageUrl,
+        tokensCharged: 1,
+      });
+      await trimCompletedOwnerTryons(owner.ownerKey, 50);
 
-      res.json({ image_url: imageUrl });
+      res.json({ image_url: imageUrl, session_id: session.id });
     } catch (e: any) {
       console.error('[tryon-lite] failed', e);
+      await markTryonFailed(session.id, 'Не удалось создать примерку. Попробуйте ещё раз.');
       res.status(502).json({
         error: 'Не удалось создать примерку. Попробуйте ещё раз.',
       });

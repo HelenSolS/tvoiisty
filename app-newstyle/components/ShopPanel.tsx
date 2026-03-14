@@ -141,8 +141,8 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({ isOpen, onClose, role, onS
             <div className="grid grid-cols-2 gap-6">
               {currentCollection.items.map(item => (
                 <div key={item.id} className="group animate-in fade-in zoom-in duration-500">
-                  <div className="aspect-[3/4] rounded-[2rem] overflow-hidden bg-slate-50 relative border border-slate-50 shadow-sm">
-                    <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" />
+                  <div className="aspect-[3/4] rounded-[2rem] overflow-hidden bg-slate-50 relative border border-slate-50 shadow-sm flex items-center justify-center">
+                    <img src={item.imageUrl} alt={item.title} className="w-full h-full object-contain rounded-[2rem] group-hover:scale-110 transition-transform duration-1000" />
                     <div className="absolute inset-0 bg-slate-900/80 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-3 p-6 transition-opacity">
                       <button 
                         onClick={() => { onSelectItem(item); onClose(); }}

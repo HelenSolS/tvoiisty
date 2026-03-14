@@ -47,15 +47,10 @@ const ResultView: React.FC<ResultViewProps> = ({
     window.open(shareUrl, '_blank', 'noopener,noreferrer');
   };
 
-  const handleAnimationStub = () => {
-    if (typeof window === 'undefined') return;
-    window.alert('Анимация скоро будет доступна в этом интерфейсе. Сейчас её можно сделать в основном режиме.');
-  };
-
   return (
     <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
       <div className="w-full max-w-md bg-white rounded-[3rem] p-8 shadow-2xl border border-slate-100 overflow-hidden">
-        <div className="relative aspect-[3/4] w-full bg-slate-50 rounded-[2.5rem] overflow-hidden mb-8 group flex items-center justify-center">
+        <div className="relative aspect-[3/4] w-full bg-slate-50 rounded-[2.5rem] overflow-hidden mb-8 group flex items-center justify-center p-2">
           {isProcessing ? (
             <Loader t={t} />
           ) : error ? (
@@ -69,12 +64,25 @@ const ResultView: React.FC<ResultViewProps> = ({
               </p>
             </div>
           ) : image ? (
-            <img
-              src={image}
-              alt="Result"
-              className="w-full h-full object-contain animate-in zoom-in duration-1000 cursor-pointer"
-              onClick={() => setIsPreviewOpen(true)}
-            />
+            <>
+              <img
+                src={image}
+                alt="Result"
+                className="max-w-full max-h-full object-contain rounded-[2.2rem] animate-in zoom-in duration-1000 cursor-pointer"
+                onClick={() => setIsPreviewOpen(true)}
+              />
+              <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                <button onClick={onCreateVideo} className="w-10 h-10 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title={t.createVideo}>
+                  <span className="text-base">🎬</span>
+                </button>
+                <button onClick={handleDownload} className="w-10 h-10 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title={t.download}>
+                  <span className="text-base">📥</span>
+                </button>
+                <button onClick={handleShareTelegram} className="w-10 h-10 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title={t.share}>
+                  <span className="text-base">↗</span>
+                </button>
+              </div>
+            </>
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-slate-300">
               <span className="text-5xl mb-4">✨</span>
@@ -110,34 +118,6 @@ const ResultView: React.FC<ResultViewProps> = ({
 
         {image && !isProcessing && !error && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={onCreateVideo}
-                className="py-5 bg-[var(--bg-gradient)] text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:scale-[1.02] transition-transform active:scale-95 shadow-[var(--primary)]/20"
-              >
-                {t.createVideo}
-              </button>
-              <button
-                onClick={handleDownload}
-                className="py-5 bg-white text-slate-900 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-slate-50 transition-all active:scale-95 border border-slate-100"
-              >
-                {t.download}
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={handleShareTelegram}
-                className="py-5 bg-white text-slate-900 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-slate-50 transition-all active:scale-95 border border-slate-100"
-              >
-                {t.share}
-              </button>
-              <button
-                onClick={handleAnimationStub}
-                className="py-5 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-slate-800 transition-all active:scale-95"
-              >
-                Анимация
-              </button>
-            </div>
             <button
               onClick={onReset}
               className="w-full py-4 text-slate-400 font-bold text-[10px] uppercase tracking-widest hover:text-slate-600 transition-colors"

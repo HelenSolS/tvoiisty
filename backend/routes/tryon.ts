@@ -7,11 +7,31 @@ import { Router } from 'express';
  */
 
 import type { Request, Response } from 'express';
-import { createTryonSession, getTryonStatus as getTryonStatusService, maybeReuseExistingTryon } from '../services/tryonService.js';
+import {
+  deleteOwnerTryon,
+  findTryonById,
+  markOwnerTryonsViewed,
+  createTryonSession,
+  getTryonStatus as getTryonStatusService,
+  listOwnerTryons,
+  listUserTryons,
+  maybeReuseExistingTryon,
+  setTryonLiked,
+  updateOwnerTryonVideoAsset,
+} from '../services/tryonService.js';
+import { generateVideoFromImage } from '../kieClient.js';
+import { getSetting } from '../settings.js';
+import { mirrorFromUrl } from '../storage.js';
+import { createMediaAsset } from '../media.js';
 
 export async function createTryonHandler(req: Request, res: Response): Promise<void> {
+  const owner = (req as Request & { owner?: { ownerType: 'user' | 'client'; ownerKey: string; userId: string | null } }).owner;
+  if (!owner?.ownerKey) {
+    res.status(400).json({ error: 'Не удалось определить владельца сессии.' });
+    return;
+  }
   const user = (req as Request & { user?: { id: string } }).user;
-  const userId: string | null = user?.id ?? null;
+  const userId: string | null = user?.id ?? owner.userId ?? null;
 
   const {
     person_asset_id: personAssetId,
@@ -40,7 +60,7 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
     return;
   }
 
-  const reused = await maybeReuseExistingTryon({ userId, clientRequestId });
+  const reused = await maybeReuseExistingTryon({ ownerKey: owner.ownerKey, clientRequestId });
   if (reused) {
     res.status(200).json(reused);
     return;
@@ -50,6 +70,8 @@ export async function createTryonHandler(req: Request, res: Response): Promise<v
   const result = await createTryonSession({
     db,
     userId,
+    ownerType: owner.ownerType,
+    ownerKey: owner.ownerKey,
     personAssetId,
     lookId: lookId || null,
     clothingImageUrl: clothingImageUrl || null,
@@ -124,13 +146,13 @@ export async function listMyTryonsHandler(req: Request, res: Response): Promise<
 
 /** GET /api/history — формат для newstyle UI: sessionId, imageUrl, videoUrl, createdAt, lookId, hasVideo. Только completed, текущий пользователь. */
 export async function getHistoryHandler(req: Request, res: Response): Promise<void> {
-  const user = (req as Request & { user?: { id: string } }).user;
-  if (!user) {
-    res.status(401).json({ error: 'Требуется авторизация.' });
+  const owner = (req as Request & { owner?: { ownerKey: string } }).owner;
+  if (!owner?.ownerKey) {
+    res.status(400).json({ error: 'Не удалось определить владельца истории.' });
     return;
   }
 
-  const sessions = await listUserTryons(user.id, 50);
+  const sessions = await listOwnerTryons(owner.ownerKey, 50);
   const completed = sessions.filter((s) => s.status === 'completed');
   const ids = completed
     .map((s) => [s.result_image_asset_id, s.result_video_asset_id] as const)
@@ -162,10 +184,114 @@ export async function getHistoryHandler(req: Request, res: Response): Promise<vo
       createdAt: s.completed_at ?? s.created_at,
       lookId: s.look_id ?? undefined,
       hasVideo: !!s.result_video_asset_id,
+      liked: !!s.liked,
+      isNew: !s.viewed_at,
     };
   });
 
   res.json(rows);
+}
+
+export async function setHistoryLikeHandler(req: Request, res: Response): Promise<void> {
+  const owner = (req as Request & { owner?: { ownerKey: string } }).owner;
+  const sessionId = req.params.id;
+  const liked = !!(req.body as { liked?: boolean } | undefined)?.liked;
+  if (!owner?.ownerKey || !sessionId) {
+    res.status(400).json({ error: 'Не удалось определить владельца/сессию.' });
+    return;
+  }
+  await setTryonLiked(owner.ownerKey, sessionId, liked);
+  res.json({ ok: true, liked });
+}
+
+export async function deleteHistoryItemHandler(req: Request, res: Response): Promise<void> {
+  const owner = (req as Request & { owner?: { ownerKey: string } }).owner;
+  const sessionId = req.params.id;
+  if (!owner?.ownerKey || !sessionId) {
+    res.status(400).json({ error: 'Не удалось определить владельца/сессию.' });
+    return;
+  }
+  await deleteOwnerTryon(owner.ownerKey, sessionId);
+  res.json({ ok: true });
+}
+
+async function resolveVideoModel(bodyModel: unknown): Promise<string> {
+  const ALLOWED = new Set([
+    'grok-imagine/image-to-video',
+    'kling/v2-1-standard',
+    'veo-3-1',
+    'runway/gen-3-alpha-turbo',
+    'hailuo/2-3-image-to-video-standard',
+    'wan/2-2-a14b-image-to-video-turbo',
+  ]);
+  if (typeof bodyModel === 'string' && ALLOWED.has(bodyModel)) return bodyModel;
+  const fromSettings = await getSetting<string>('DEFAULT_VIDEO_MODEL');
+  if (typeof fromSettings === 'string' && fromSettings.trim()) return fromSettings.trim();
+  return process.env.KIE_VIDEO_MODEL || 'grok-imagine/image-to-video';
+}
+
+export async function reanimateHistoryItemHandler(req: Request, res: Response): Promise<void> {
+  const owner = (req as Request & { owner?: { ownerKey: string } }).owner;
+  const sessionId = req.params.id;
+  if (!owner?.ownerKey || !sessionId) {
+    res.status(400).json({ error: 'Не удалось определить владельца/сессию.' });
+    return;
+  }
+
+  const session = await findTryonById(sessionId);
+  if (!session || session.owner_key !== owner.ownerKey) {
+    res.status(404).json({ error: 'Сессия истории не найдена.' });
+    return;
+  }
+
+  let imageUrl: string | null = null;
+  if (session.result_image_asset_id) {
+    const imageRes = await req.app
+      .get('db')
+      .query<{ original_url: string }>('SELECT original_url FROM media_assets WHERE id = $1', [
+        session.result_image_asset_id,
+      ]);
+    imageUrl = imageRes.rows[0]?.original_url ?? null;
+  }
+  if (!imageUrl && session.result_meta && typeof session.result_meta === 'object' && 'image_url' in session.result_meta) {
+    const fromMeta = (session.result_meta as { image_url?: string }).image_url;
+    if (typeof fromMeta === 'string' && fromMeta.trim()) imageUrl = fromMeta.trim();
+  }
+  if (!imageUrl) {
+    res.status(422).json({ error: 'Не удалось получить изображение для анимации.' });
+    return;
+  }
+
+  const body = req.body as { prompt?: string; model?: string };
+  const model = await resolveVideoModel(body?.model);
+  const providerVideoUrl = await generateVideoFromImage(imageUrl, body?.prompt, model);
+
+  // Сохраняем видео в нашем хранилище и обновляем существующую history-сессию (overwrite pointer).
+  const stored = await mirrorFromUrl(providerVideoUrl, {
+    type: 'tryon_result_video',
+    filename: 'tryon-video.mp4',
+  });
+  const hash = Buffer.from(stored.storageKey).toString('hex').slice(0, 64);
+  const videoAsset = await createMediaAsset({
+    type: 'tryon_result_video',
+    originalUrl: stored.url,
+    storageKey: stored.storageKey,
+    hash,
+  });
+  await updateOwnerTryonVideoAsset(owner.ownerKey, sessionId, videoAsset.id);
+
+  res.json({ ok: true, videoUrl: stored.url });
+}
+
+export async function markHistoryViewedHandler(req: Request, res: Response): Promise<void> {
+  const owner = (req as Request & { owner?: { ownerKey: string } }).owner;
+  const ids = ((req.body as { ids?: string[] } | undefined)?.ids || []).filter(Boolean);
+  if (!owner?.ownerKey || ids.length === 0) {
+    res.json({ ok: true });
+    return;
+  }
+  await markOwnerTryonsViewed(owner.ownerKey, ids);
+  res.json({ ok: true });
 }
 
 /**

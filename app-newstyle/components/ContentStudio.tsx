@@ -54,7 +54,7 @@ export const ContentStudio: React.FC<ContentStudioProps> = ({ isOpen, onClose, m
 
         <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto no-scrollbar">
           <div className="relative aspect-square rounded-[2rem] overflow-hidden bg-slate-100 shadow-inner">
-            <img src={mediaUrl} alt="Post preview" className="w-full h-full object-cover" />
+            <img src={mediaUrl} alt="Post preview" className="w-full h-full object-contain rounded-[2rem]" />
             <div className="absolute bottom-4 right-4 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20">
               <span className="text-[8px] font-black text-white uppercase tracking-widest">VT-MAGIC 2026</span>
             </div>

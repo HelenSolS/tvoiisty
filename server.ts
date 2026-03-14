@@ -23,6 +23,7 @@ import { initDb, pool } from './backend/db.js';
 import { ensureAppSettings } from './backend/settings.js';
 import { ensureAiLogsTable } from './backend/aiLogs.js';
 import { ensureMediaTables } from './backend/media.js';
+import { ensureUserPhotosTable } from './backend/userPhotos.js';
 import { ensureUsersTable } from './backend/users.js';
 import { ensureLooksTables } from './backend/looks.js';
 import { ensureTryonTables } from './backend/tryonSessions.js';
@@ -54,12 +55,18 @@ import {
 } from './backend/routes/userSettings.js';
 import {
   createTryonHandler,
+  deleteHistoryItemHandler,
   getTryonStatusHandler,
   getHistoryHandler,
   listMyTryonsHandler,
+  markHistoryViewedHandler,
+  reanimateHistoryItemHandler,
+  setHistoryLikeHandler,
 } from './backend/routes/tryon.js';
 import { healthHandler } from './backend/routes/health.js';
 import tryonLiteRouter from './backend/routes/tryonLite.js';
+import { getMyPhotosHandler } from './backend/routes/myPhotos.js';
+import { resolveOwnerMiddleware } from './backend/owner.js';
 
 async function main() {
   ensureKieConfig();
@@ -67,6 +74,7 @@ async function main() {
   await ensureAppSettings();
   await ensureAiLogsTable();
   await ensureMediaTables();
+  await ensureUserPhotosTable();
   await ensureUsersTable();
   await ensureLooksTables();
   await ensureTryonTables();
@@ -86,12 +94,14 @@ async function main() {
       return cb(null, false);
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Id', 'X-User-Id', 'X-Telegram-Init-Data'],
   };
   app.use(cors(corsOptions));
   app.options('*', cors(corsOptions));
 
   app.use(express.json({ limit: '20mb' }));
+  app.use(optionalAuth);
+  app.use(resolveOwnerMiddleware);
 
   // Health-check для nginx/Docker и автотестов (JSON)
   app.get('/health', healthHandler);
@@ -163,12 +173,17 @@ async function main() {
   );
 
   // Store looks API (Issue 51) — список образов и лайки. GET /api/looks без авторизации для демо (optionalAuth).
-  app.get('/api/looks', optionalAuth, getLooksHandler);
+  app.get('/api/looks', getLooksHandler);
   app.post('/api/looks/:id/like', requireAuth, likeLookHandler);
   app.delete('/api/looks/:id/like', requireAuth, unlikeLookHandler);
 
   // История примерок в формате для newstyle UI (sessionId, imageUrl, ...).
-  app.get('/api/history', requireAuth, getHistoryHandler);
+  app.get('/api/history', getHistoryHandler);
+  app.post('/api/history/viewed', markHistoryViewedHandler);
+  app.post('/api/history/:id/like', setHistoryLikeHandler);
+  app.delete('/api/history/:id', deleteHistoryItemHandler);
+  app.post('/api/history/:id/reanimate', reanimateHistoryItemHandler);
+  app.get('/api/my/photos', getMyPhotosHandler);
 
   // Unified upload API + LLM pipeline for photos (Issue 39).
   // Для демо разрешаем загрузку без авторизации (user_photos/лимиты будут позже).
