@@ -9,6 +9,7 @@ export type ProviderId = 'kie' | 'fal';
 export interface TryOnRequest {
   personUrl: string;
   clothingUrl: string;
+  prompt?: string;
   modelName?: string;
 }
 

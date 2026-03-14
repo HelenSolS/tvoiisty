@@ -43,7 +43,7 @@ export async function executeKieTryOn(request: TryOnRequest): Promise<ProviderEx
     const imageUrl = await generateImageTryOn(
       personBase64,
       clothingBase64,
-      undefined,
+      request.prompt,
       request.modelName,
     );
     return { success: true, imageUrl, provider: 'kie' };

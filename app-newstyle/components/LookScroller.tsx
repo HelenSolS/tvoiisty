@@ -26,6 +26,7 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
   onViewed,
 }) => {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewVideo, setPreviewVideo] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [stableOrderIds, setStableOrderIds] = useState<string[]>([]);
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
@@ -209,7 +210,7 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
                        </button>
                        {item.videoUrl && (
                          <button 
-                           onClick={(e) => { e.stopPropagation(); window.open(item.videoUrl, '_blank'); }}
+                           onClick={(e) => { e.stopPropagation(); setPreviewVideo(item.videoUrl || null); }}
                            className="w-12 h-12 bg-white/20 backdrop-blur-xl rounded-full flex items-center justify-center text-white shadow-lg active:scale-90 transition-transform"
                          >
                             <span className="text-xl">🎬</span>
@@ -268,6 +269,7 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
       )}
 
       <FullscreenPreview image={previewImage} onClose={() => setPreviewImage(null)} />
+      <FullscreenPreview image={null} video={previewVideo} onClose={() => setPreviewVideo(null)} />
     </div>
   );
 };

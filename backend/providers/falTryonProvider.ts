@@ -44,7 +44,7 @@ function effectiveTryonModel(name?: string | null): string {
 export async function executeFalTryOn(request: TryOnRequest): Promise<ProviderExecutionResult> {
   try {
     const model = effectiveTryonModel(request.modelName);
-    const imageUrl = await tryOnWithFal(request.personUrl, request.clothingUrl, model);
+    const imageUrl = await tryOnWithFal(request.personUrl, request.clothingUrl, model, request.prompt);
     return { success: true, imageUrl, provider: 'fal' };
   } catch (err) {
     const { errorType, message, isTimeout } = normalizeFalError(err);

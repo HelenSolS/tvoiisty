@@ -2,11 +2,14 @@ import React from 'react';
 
 interface FullscreenPreviewProps {
   image: string | null;
+  video?: string | null;
   onClose: () => void;
 }
 
-export const FullscreenPreview: React.FC<FullscreenPreviewProps> = ({ image, onClose }) => {
-  if (!image) return null;
+export const FullscreenPreview: React.FC<FullscreenPreviewProps> = ({ image, video = null, onClose }) => {
+  const hasImage = !!image;
+  const hasVideo = !!video;
+  if (!hasImage && !hasVideo) return null;
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-[var(--bg-main)]/95 backdrop-blur-xl animate-in fade-in duration-300 p-6">
@@ -19,11 +22,21 @@ export const FullscreenPreview: React.FC<FullscreenPreviewProps> = ({ image, onC
       
       <div className="relative w-full h-full flex items-center justify-center">
         <div className="relative max-w-full max-h-full p-2 bg-white rounded-[3rem] shadow-2xl animate-in zoom-in duration-500 overflow-hidden">
-          <img 
-            src={image} 
-            alt="Fullscreen Preview" 
-            className="max-w-full max-h-[80vh] object-contain rounded-[2.5rem]"
-          />
+          {hasVideo ? (
+            <video
+              src={video || undefined}
+              controls
+              autoPlay
+              loop
+              className="max-w-full max-h-[80vh] object-contain rounded-[2.5rem]"
+            />
+          ) : (
+            <img
+              src={image || undefined}
+              alt="Fullscreen Preview"
+              className="max-w-full max-h-[80vh] object-contain rounded-[2.5rem]"
+            />
+          )}
         </div>
       </div>
     </div>
