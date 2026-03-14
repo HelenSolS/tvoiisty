@@ -550,6 +550,10 @@ const App: React.FC = () => {
   };
 
   const handleTryOn = async (garment: string) => {
+    if (isProcessing) {
+      // Prevent parallel try-on/video operations from overlapping.
+      return;
+    }
     if (!userPhoto || !garment) return;
     
     // запоминаем активное фото пользователя для последующих заходов
@@ -759,6 +763,7 @@ const App: React.FC = () => {
             state={state}
             setState={setState}
             backendLooks={backendLooks}
+            disableTryOnActions={isProcessing}
           />
         );
       case 3:
@@ -772,7 +777,10 @@ const App: React.FC = () => {
           onReset={() => setCurrentStep(5)}
           error={tryonError}
           onRetry={handleRetryTryOn}
-          onChooseAnother={() => setCurrentStep(2)}
+          onChooseAnother={() => {
+            if (isProcessing) return;
+            setCurrentStep(2);
+          }}
           t={t} 
         />;
       case 4:
