@@ -444,7 +444,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({
                           e.stopPropagation();
                           deleteGarment(item.imageUrl);
                         }}
-                        className="w-12 h-12 bg-red-500/80 backdrop-blur-xl rounded-full flex items-center justify-center text-white shadow-xl opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="w-12 h-12 bg-red-500/80 backdrop-blur-xl rounded-full flex items-center justify-center text-white shadow-xl opacity-100 transition-opacity"
                       >
                         <span className="text-xl">✕</span>
                       </button>
@@ -508,7 +508,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({
                           e.stopPropagation();
                           deleteGarment(item.imageUrl);
                         }}
-                        className="w-8 h-8 bg-red-500/80 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="w-8 h-8 bg-red-500/80 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-sm opacity-100 transition-opacity"
                       >
                         <span className="text-sm">✕</span>
                       </button>
