@@ -62,17 +62,6 @@ export async function ensureTryonTables(): Promise<void> {
     )
   `);
 
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_tryon_user_created ON tryon_sessions(user_id, created_at DESC)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_tryon_owner_created ON tryon_sessions(owner_key, created_at DESC)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_tryon_look_created ON tryon_sessions(look_id, created_at DESC)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_tryon_status ON tryon_sessions(status)`);
-  await pool.query(
-    `CREATE UNIQUE INDEX IF NOT EXISTS idx_tryon_user_client_req ON tryon_sessions(user_id, client_request_id)`,
-  );
-  await pool.query(
-    `CREATE UNIQUE INDEX IF NOT EXISTS idx_tryon_owner_client_req ON tryon_sessions(owner_key, client_request_id) WHERE client_request_id IS NOT NULL`,
-  );
-
   // Мягкая миграция для существующих БД.
   await pool.query(`ALTER TABLE tryon_sessions ADD COLUMN IF NOT EXISTS owner_type TEXT`);
   await pool.query(`ALTER TABLE tryon_sessions ADD COLUMN IF NOT EXISTS owner_key TEXT`);
@@ -83,6 +72,17 @@ export async function ensureTryonTables(): Promise<void> {
     SET owner_type = COALESCE(owner_type, CASE WHEN user_id IS NOT NULL THEN 'user' ELSE 'client' END),
         owner_key = COALESCE(owner_key, CASE WHEN user_id IS NOT NULL THEN ('user:' || user_id::text) ELSE NULL END)
   `);
+
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_tryon_user_created ON tryon_sessions(user_id, created_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_tryon_owner_created ON tryon_sessions(owner_key, created_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_tryon_look_created ON tryon_sessions(look_id, created_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_tryon_status ON tryon_sessions(status)`);
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_tryon_user_client_req ON tryon_sessions(user_id, client_request_id)`,
+  );
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_tryon_owner_client_req ON tryon_sessions(owner_key, client_request_id) WHERE client_request_id IS NOT NULL`,
+  );
 }
 
 export async function findTryonById(id: string): Promise<TryonSession | null> {
