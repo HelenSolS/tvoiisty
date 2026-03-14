@@ -17,6 +17,7 @@ interface UploadBoxProps {
   t: any;
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
+  disableTryOnActions?: boolean;
 }
 
 const UploadBox: React.FC<UploadBoxProps> = ({
@@ -27,6 +28,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({
   t,
   state,
   setState,
+  disableTryOnActions = false,
 }) => {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
@@ -425,9 +427,13 @@ const UploadBox: React.FC<UploadBoxProps> = ({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (disableTryOnActions) return;
                           onUpload(item.imageUrl);
                         }}
-                        className="w-12 h-12 bg-white/80 backdrop-blur-xl rounded-full flex items-center justify-center text-slate-900 shadow-xl opacity-0 group-hover:opacity-100 transition-opacity"
+                        disabled={disableTryOnActions}
+                        className={`w-12 h-12 bg-white/80 backdrop-blur-xl rounded-full flex items-center justify-center text-slate-900 shadow-xl opacity-0 group-hover:opacity-100 transition-opacity ${
+                          disableTryOnActions ? 'cursor-not-allowed opacity-40 group-hover:opacity-40' : ''
+                        }`}
                       >
                         <span className="text-xl">◎</span>
                       </button>
@@ -438,7 +444,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({
                           e.stopPropagation();
                           deleteGarment(item.imageUrl);
                         }}
-                        className="w-12 h-12 bg-red-500/80 backdrop-blur-xl rounded-full flex items-center justify-center text-white shadow-xl opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="w-12 h-12 bg-red-500/80 backdrop-blur-xl rounded-full flex items-center justify-center text-white shadow-xl opacity-100 transition-opacity"
                       >
                         <span className="text-xl">✕</span>
                       </button>
@@ -485,9 +491,13 @@ const UploadBox: React.FC<UploadBoxProps> = ({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (disableTryOnActions) return;
                           onUpload(item.imageUrl);
                         }}
-                        className="w-8 h-8 bg-white/80 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                        disabled={disableTryOnActions}
+                        className={`w-8 h-8 bg-white/80 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity ${
+                          disableTryOnActions ? 'cursor-not-allowed opacity-40 group-hover:opacity-40' : ''
+                        }`}
                       >
                         <span className="text-sm">◎</span>
                       </button>
@@ -498,7 +508,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({
                           e.stopPropagation();
                           deleteGarment(item.imageUrl);
                         }}
-                        className="w-8 h-8 bg-red-500/80 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="w-8 h-8 bg-red-500/80 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-sm opacity-100 transition-opacity"
                       >
                         <span className="text-sm">✕</span>
                       </button>

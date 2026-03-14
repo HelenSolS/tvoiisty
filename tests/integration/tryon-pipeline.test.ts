@@ -18,6 +18,7 @@ import {
   getTryonStatusHandler,
 } from '../../backend/routes/tryon.js';
 import { uploadMediaHandler } from '../../backend/routes/uploadMedia.js';
+import { resolveOwnerMiddleware } from '../../backend/owner.js';
 
 const dbAvailable = await (async () => {
   try {
@@ -55,9 +56,12 @@ vi.mock('../../backend/aiPhotoPipeline.js', () => ({
   enqueuePhotoAnalysis: vi.fn(),
 }));
 
+const TEST_OWNER_HEADER = 'X-Client-Id';
+
 function createApp() {
   const app = express();
   app.use(express.json());
+  app.use(resolveOwnerMiddleware);
   const upload = multer({ storage: multer.memoryStorage() });
 
   app.post('/api/media/upload', upload.single('file'), uploadMediaHandler);
@@ -124,6 +128,7 @@ describe.skipIf(!dbAvailable)(
 
     const createTryon = await request(app)
       .post('/api/tryon')
+      .set(TEST_OWNER_HEADER, 'test-client-pipeline')
       .send({
         person_asset_id: personAssetId,
         clothing_image_url: 'https://example.com/clothing.png',

@@ -97,4 +97,13 @@ describe('Server viability (smoke)', () => {
     const err = (data as { error?: string })?.error;
     expect(typeof err === 'string').toBe(true);
   });
+
+  // QA F18: requests with owner headers are not blocked (CORS / API behaviour)
+  it('GET /api/history with X-Client-Id returns 200 and array', async () => {
+    const { status, data } = await fetchJson('/api/history', {
+      headers: { 'X-Client-Id': 'smoke-test-client' },
+    });
+    expect(status).toBe(200);
+    expect(Array.isArray(data)).toBe(true);
+  });
 });

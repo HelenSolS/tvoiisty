@@ -102,6 +102,22 @@ export async function findExistingTryonByClientRequest(
   return res.rows[0] ?? null;
 }
 
+export async function findActiveOwnerTryon(ownerKey: string): Promise<TryonSession | null> {
+  if (!ownerKey) return null;
+  const res = await pool.query<TryonSession>(
+    `
+    SELECT *
+    FROM tryon_sessions
+    WHERE owner_key = $1
+      AND status IN ('pending', 'processing')
+    ORDER BY created_at DESC
+    LIMIT 1
+    `,
+    [ownerKey],
+  );
+  return res.rows[0] ?? null;
+}
+
 export async function listOwnerTryons(ownerKey: string, limit = 50): Promise<TryonSession[]> {
   const res = await pool.query<TryonSession>(
     `

@@ -62,7 +62,13 @@ export async function startTryOnLite({ apiBase, person, garment, headers }: Tryo
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(text || `tryon-lite-start-failed-${res.status}`);
+    let parsed: any = {};
+    try {
+      parsed = text ? JSON.parse(text) : {};
+    } catch {
+      parsed = {};
+    }
+    throw new Error(parsed?.error || text || `tryon-lite-start-failed-${res.status}`);
   }
 
   const data = await res.json().catch(() => ({}));

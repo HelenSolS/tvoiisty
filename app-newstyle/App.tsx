@@ -174,10 +174,12 @@ const App: React.FC = () => {
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [resultVideo, setResultVideo] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isQuickProcessing, setIsQuickProcessing] = useState(false);
   const [tryonError, setTryonError] = useState<string | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [presets, setPresets] = useState<MagicPreset[]>(DEFAULT_PRESETS);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const isAnyProcessing = isProcessing || isQuickProcessing;
 
   const [backendUserId, setBackendUserId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -349,7 +351,8 @@ const App: React.FC = () => {
           : [];
         setState(prev => {
           const existing = prev.auth?.userPhotos || [];
-          const merged = Array.from(new Set([...urls, ...existing])).slice(0, 10);
+          // Сначала оставляем уже видимые в UI фото (в т.ч. только что загруженные), потом дополняем сервером.
+          const merged = Array.from(new Set([...existing, ...urls])).slice(0, 10);
           return {
             ...prev,
             auth: { ...prev.auth, userPhotos: merged },
@@ -411,7 +414,28 @@ const App: React.FC = () => {
   }, [backendUserId, setState, syncTick]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    try {
+      // Не сохраняем heavy data: URL в localStorage — это может выбивать quota (особенно в Telegram WebView).
+      const persistableState: AppState = {
+        ...state,
+        auth: {
+          ...state.auth,
+          userPhotos: (state.auth?.userPhotos || []).filter(
+            (u) => typeof u === 'string' && !u.startsWith('data:'),
+          ),
+          garmentMemory: (state.auth?.garmentMemory || []).filter(
+            (u) => typeof u === 'string' && !u.startsWith('data:'),
+          ),
+          lookHistory: (state.auth?.lookHistory || [])
+            .filter((h: any) => h && typeof h.imageUrl === 'string' && !h.imageUrl.startsWith('data:'))
+            .slice(0, 50),
+        },
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(persistableState));
+    } catch (err) {
+      // Мягко игнорируем ошибки персистентности, чтобы не ронять интерфейс.
+      logError('PERSISTENCE', err);
+    }
     document.body.className = `theme-${state.theme} transition-colors duration-500 antialiased overflow-x-hidden`;
   }, [state]);
 
@@ -528,6 +552,10 @@ const App: React.FC = () => {
   };
 
   const handleTryOn = async (garment: string) => {
+    if (isAnyProcessing) {
+      // Prevent parallel try-on/video operations from overlapping.
+      return;
+    }
     if (!userPhoto || !garment) return;
     
     // запоминаем активное фото пользователя для последующих заходов
@@ -737,6 +765,7 @@ const App: React.FC = () => {
             state={state}
             setState={setState}
             backendLooks={backendLooks}
+            disableTryOnActions={isAnyProcessing}
           />
         );
       case 3:
@@ -750,7 +779,10 @@ const App: React.FC = () => {
           onReset={() => setCurrentStep(5)}
           error={tryonError}
           onRetry={handleRetryTryOn}
-          onChooseAnother={() => setCurrentStep(2)}
+          onChooseAnother={() => {
+            if (isAnyProcessing) return;
+            setCurrentStep(2);
+          }}
           t={t} 
         />;
       case 4:
@@ -826,6 +858,7 @@ const App: React.FC = () => {
       return (
         <QuickTryOnLite
           t={t}
+          onBusyChange={setIsQuickProcessing}
           onResult={(sessionId: string, imageUrl: string) => {
             setState(prev => {
               const history = prev.auth?.lookHistory || [];
