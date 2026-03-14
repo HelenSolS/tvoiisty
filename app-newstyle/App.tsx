@@ -174,10 +174,12 @@ const App: React.FC = () => {
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [resultVideo, setResultVideo] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isQuickProcessing, setIsQuickProcessing] = useState(false);
   const [tryonError, setTryonError] = useState<string | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [presets, setPresets] = useState<MagicPreset[]>(DEFAULT_PRESETS);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const isAnyProcessing = isProcessing || isQuickProcessing;
 
   const [backendUserId, setBackendUserId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -550,7 +552,7 @@ const App: React.FC = () => {
   };
 
   const handleTryOn = async (garment: string) => {
-    if (isProcessing) {
+    if (isAnyProcessing) {
       // Prevent parallel try-on/video operations from overlapping.
       return;
     }
@@ -763,7 +765,7 @@ const App: React.FC = () => {
             state={state}
             setState={setState}
             backendLooks={backendLooks}
-            disableTryOnActions={isProcessing}
+            disableTryOnActions={isAnyProcessing}
           />
         );
       case 3:
@@ -778,7 +780,7 @@ const App: React.FC = () => {
           error={tryonError}
           onRetry={handleRetryTryOn}
           onChooseAnother={() => {
-            if (isProcessing) return;
+            if (isAnyProcessing) return;
             setCurrentStep(2);
           }}
           t={t} 
@@ -856,6 +858,7 @@ const App: React.FC = () => {
       return (
         <QuickTryOnLite
           t={t}
+          onBusyChange={setIsQuickProcessing}
           onResult={(sessionId: string, imageUrl: string) => {
             setState(prev => {
               const history = prev.auth?.lookHistory || [];

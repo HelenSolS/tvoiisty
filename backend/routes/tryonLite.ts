@@ -5,6 +5,7 @@ import { uploadBuffer } from '../storage.js';
 import { tryOnWithFal } from '../falClient.js';
 import {
   createPendingTryon,
+  findActiveOwnerTryon,
   markTryonCompletedWithImageUrl,
   markTryonFailed,
   markTryonProcessing,
@@ -26,6 +27,14 @@ router.post(
     }).owner;
     if (!owner?.ownerKey) {
       res.status(400).json({ error: 'Не удалось определить владельца сессии.' });
+      return;
+    }
+    const active = await findActiveOwnerTryon(owner.ownerKey);
+    if (active) {
+      res.status(409).json({
+        error: 'Примерка уже выполняется. Дождитесь завершения текущей.',
+        active_tryon_id: active.id,
+      });
       return;
     }
     const session = await createPendingTryon({

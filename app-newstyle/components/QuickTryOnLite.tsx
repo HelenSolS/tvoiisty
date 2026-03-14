@@ -9,9 +9,10 @@ type VideoState = 'idle' | 'starting' | 'ready' | 'error';
 interface QuickTryOnLiteProps {
   t: any;
   onResult?: (sessionId: string, imageUrl: string) => void;
+  onBusyChange?: (busy: boolean) => void;
 }
 
-export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) => {
+export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onBusyChange }) => {
   const [personFile, setPersonFile] = useState<File | null>(null);
   const [garmentFile, setGarmentFile] = useState<File | null>(null);
 
@@ -70,6 +71,7 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
     }
 
     setIsBusy(true);
+    onBusyChange?.(true);
     setTryonState('running');
     setTryonError(null);
     setResultImage(null);
@@ -98,6 +100,7 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
       setTryonError('Не удалось создать примерку. Попробуйте ещё раз.');
     } finally {
       setIsBusy(false);
+      onBusyChange?.(false);
     }
   };
 
@@ -135,6 +138,8 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
     if (videoState === 'starting' || videoState === 'processing') return;
 
     setVideoState('starting');
+    setIsBusy(true);
+    onBusyChange?.(true);
     setVideoError(null);
 
     try {
@@ -151,6 +156,9 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult }) =
       console.error('Simple try-on video error', e);
       setVideoState('error');
       setVideoError('Не удалось создать видео. Попробуйте ещё раз.');
+    } finally {
+      setIsBusy(false);
+      onBusyChange?.(false);
     }
   };
 
