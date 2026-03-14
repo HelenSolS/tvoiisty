@@ -274,6 +274,11 @@ const App: React.FC = () => {
     return getOwnerHeaders(backendUserId, token);
   };
 
+  const isHttpStatusError = (err: unknown, status: number): boolean => {
+    const msg = err && typeof err === 'object' && 'message' in err ? String((err as any).message || '') : '';
+    return msg.includes(`-${status}`) || msg.includes(` ${status}`);
+  };
+
   useEffect(() => {
     let cancelled = false;
     const flushPendingHistory = async () => {
@@ -302,7 +307,12 @@ const App: React.FC = () => {
             }));
           }
           removePendingHistoryAction(action.id);
-        } catch {
+        } catch (err) {
+          if (action.kind === 'delete' && isHttpStatusError(err, 404)) {
+            // Server no longer has this item for current owner: treat as already synced.
+            removePendingHistoryAction(action.id);
+            continue;
+          }
           // keep queued for next reconnect
         }
       }
@@ -381,6 +391,11 @@ const App: React.FC = () => {
         const data = await res.json();
         if (!Array.isArray(data)) return;
         const items = normalizeHistoryRows(data);
+        const pendingDeleteIds = new Set(
+          getPendingHistoryActions()
+            .filter((x) => x.kind === 'delete')
+            .map((x) => x.sessionId),
+        );
         setState(prev => ({
           ...prev,
           auth: {
@@ -402,6 +417,7 @@ const App: React.FC = () => {
                 if (!aLiked && bLiked) return 1;
                 return Number(b.timestamp || 0) - Number(a.timestamp || 0);
               })
+              .filter((x: any) => !pendingDeleteIds.has(String(x.id)))
               .slice(0, 50),
           },
         }));
@@ -815,10 +831,24 @@ const App: React.FC = () => {
             }
           }}
           onDelete={async (sessionId) => {
+            const removeLocal = () => {
+              setState((prev) => ({
+                ...prev,
+                auth: {
+                  ...prev.auth,
+                  lookHistory: (prev.auth.lookHistory || []).filter((x) => x.id !== sessionId),
+                },
+              }));
+            };
             try {
               await deleteHistoryItem({ apiBase: API_BASE, headers: getApiHeaders() }, sessionId);
-            } catch {
+              removeLocal();
+            } catch (err) {
+              removeLocal();
+              if (isHttpStatusError(err, 404)) return;
               enqueueHistoryDelete(sessionId);
+              // Trigger a near-term retry even if network state did not toggle.
+              setSyncTick((v) => v + 1);
             }
           }}
           onReanimate={async (sessionId) => {

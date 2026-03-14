@@ -28,6 +28,7 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [stableOrderIds, setStableOrderIds] = useState<string[]>([]);
+  const [deletingIds, setDeletingIds] = useState<string[]>([]);
 
   const toggleLike = (sessionId: string, img: string) => {
     setState(prev => {
@@ -47,18 +48,14 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
     onLike?.(sessionId, nextLiked);
   };
 
-  const deleteLook = (id: string) => {
-    setState(prev => {
-      const lookHistory = prev.auth?.lookHistory || [];
-      return {
-        ...prev,
-        auth: {
-          ...prev.auth,
-          lookHistory: lookHistory.filter(item => item.id !== id)
-        }
-      };
-    });
-    onDelete?.(id);
+  const deleteLook = async (id: string) => {
+    if (!onDelete || deletingIds.includes(id)) return;
+    setDeletingIds((prev) => [...prev, id]);
+    try {
+      await onDelete(id);
+    } finally {
+      setDeletingIds((prev) => prev.filter((x) => x !== id));
+    }
   };
 
   const handleDownload = async (imgUrl: string) => {
@@ -195,8 +192,9 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
                       <span className="text-sm">{isLiked ? '❤️' : '🤍'}</span>
                     </button>
                     <button 
-                      onClick={(e) => { e.stopPropagation(); deleteLook(item.id); }}
-                      className="w-9 h-9 bg-red-500/80 backdrop-blur-xl rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                      onClick={(e) => { e.stopPropagation(); void deleteLook(item.id); }}
+                      disabled={deletingIds.includes(item.id)}
+                      className="w-9 h-9 bg-red-500/80 backdrop-blur-xl rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-lg disabled:opacity-60"
                     >
                       <span className="text-sm">✕</span>
                     </button>

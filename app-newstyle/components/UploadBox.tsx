@@ -3,6 +3,7 @@ import { Dropzone } from './Dropzone';
 import { FullscreenPreview } from './FullscreenPreview';
 import { AppState } from '../types';
 import { MOCK_SHOPS } from '../constants';
+import { IMAGE_VALIDATION_ERROR, isValidImageFile } from '../utils/fileValidation';
 
 interface UploadBoxProps {
   // Пропсы для режима "фото пользователя"
@@ -108,6 +109,11 @@ const UploadBox: React.FC<UploadBoxProps> = ({
           onChange={(e) => {
             const file = e.target.files?.[0];
             if (!file || !onUploadNew) return;
+            if (!isValidImageFile(file)) {
+              alert(IMAGE_VALIDATION_ERROR);
+              e.target.value = '';
+              return;
+            }
             const reader = new FileReader();
             reader.onloadend = () => {
               const result = reader.result;

@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { API_URL } from '../src/api/client';
 import { startTryOnLite, startVideoFromImage } from '../services/tryonService';
 import { getOrCreateOwnerClientId, getOwnerHeaders } from '../services/ownerService';
+import { IMAGE_VALIDATION_ERROR, isValidImageFile } from '../utils/fileValidation';
 
 type TryonState = 'idle' | 'running' | 'done' | 'error';
 type VideoState = 'idle' | 'starting' | 'ready' | 'error';
@@ -38,6 +39,11 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onB
   const handlePersonChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!isValidImageFile(file)) {
+      setTryonError(IMAGE_VALIDATION_ERROR);
+      e.target.value = '';
+      return;
+    }
     setPersonFile(file);
     setPersonPreview(URL.createObjectURL(file));
     setResultImage(null);
@@ -51,6 +57,11 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onB
   const handleGarmentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!isValidImageFile(file)) {
+      setTryonError(IMAGE_VALIDATION_ERROR);
+      e.target.value = '';
+      return;
+    }
     setGarmentFile(file);
     setGarmentPreview(URL.createObjectURL(file));
     setResultImage(null);

@@ -1,6 +1,7 @@
 import express from 'express';
 import type { Express } from 'express';
 import multer from 'multer';
+import { isProbablyImageUpload } from '../fileValidation.js';
 import { uploadBuffer } from '../storage.js';
 import { tryOnWithFal } from '../falClient.js';
 import {
@@ -59,6 +60,13 @@ router.post(
         res
           .status(400)
           .json({ error: 'Нужно два файла: person и garment' });
+        return;
+      }
+
+      if (!isProbablyImageUpload(person) || !isProbablyImageUpload(garment)) {
+        res.status(415).json({
+          error: 'Поддерживаются только изображения для person и garment (jpg/png/webp/heic/heif/avif).',
+        });
         return;
       }
 

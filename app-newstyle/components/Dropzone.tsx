@@ -1,4 +1,5 @@
 import React from 'react';
+import { IMAGE_VALIDATION_ERROR, isValidImageFile } from '../utils/fileValidation';
 
 interface DropzoneProps {
   image?: string | null;
@@ -10,6 +11,11 @@ export const Dropzone: React.FC<DropzoneProps> = ({ image = null, onImageUpload,
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (!isValidImageFile(file)) {
+        alert(IMAGE_VALIDATION_ERROR);
+        e.target.value = '';
+        return;
+      }
       const reader = new FileReader();
       reader.onloadend = () => {
         onImageUpload(reader.result as string);

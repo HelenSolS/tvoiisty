@@ -289,14 +289,93 @@ export async function setTryonLiked(ownerKey: string, sessionId: string, liked: 
   );
 }
 
-export async function deleteOwnerTryon(ownerKey: string, sessionId: string): Promise<void> {
-  await pool.query(
-    `
-    DELETE FROM tryon_sessions
-    WHERE id = $1 AND owner_key = $2
-    `,
-    [sessionId, ownerKey],
-  );
+export async function deleteOwnerTryon(ownerKey: string, sessionId: string): Promise<{
+  deleted: boolean;
+  removedAssets: Array<{ id: string; storageKey: string; originalUrl: string }>;
+}> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const deletedSession = await client.query<{
+      result_image_asset_id: string | null;
+      result_video_asset_id: string | null;
+    }>(
+      `
+      DELETE FROM tryon_sessions
+      WHERE id = $1 AND owner_key = $2
+      RETURNING result_image_asset_id, result_video_asset_id
+      `,
+      [sessionId, ownerKey],
+    );
+
+    if ((deletedSession.rowCount ?? 0) === 0) {
+      await client.query('ROLLBACK');
+      return { deleted: false, removedAssets: [] };
+    }
+
+    const row = deletedSession.rows[0];
+    const assetIds = Array.from(
+      new Set([row?.result_image_asset_id, row?.result_video_asset_id].filter(Boolean) as string[]),
+    );
+
+    let removedAssets: Array<{ id: string; storageKey: string; originalUrl: string }> = [];
+
+    if (assetIds.length > 0) {
+      const removable = await client.query<{
+        id: string;
+        storage_key: string;
+        original_url: string;
+      }>(
+        `
+        SELECT m.id, m.storage_key, m.original_url
+        FROM media_assets m
+        WHERE m.id = ANY($1::uuid[])
+          AND NOT EXISTS (
+            SELECT 1
+            FROM tryon_sessions ts
+            WHERE ts.person_asset_id = m.id
+               OR ts.result_image_asset_id = m.id
+               OR ts.result_video_asset_id = m.id
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM user_photos up
+            WHERE up.asset_id = m.id
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM looks l
+            WHERE l.main_asset_id = m.id
+          )
+        FOR UPDATE
+        `,
+        [assetIds],
+      );
+
+      if (removable.rows.length > 0) {
+        const removableIds = removable.rows.map((x) => x.id);
+        await client.query(`DELETE FROM media_assets WHERE id = ANY($1::uuid[])`, [removableIds]);
+        removedAssets = removable.rows.map((x) => ({
+          id: x.id,
+          storageKey: x.storage_key,
+          originalUrl: x.original_url,
+        }));
+      }
+    }
+
+    await client.query('COMMIT');
+    return { deleted: true, removedAssets };
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      // ignore rollback error
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export async function markOwnerTryonsViewed(ownerKey: string, sessionIds: string[]): Promise<void> {

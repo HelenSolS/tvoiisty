@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import type { Request, Response } from 'express';
 import type { MediaType } from '../media.js';
+import { isProbablyImageUpload } from '../fileValidation.js';
 import { findAssetByHash, findOrCreateAssetByHash } from '../media.js';
 import { enqueuePhotoAnalysis } from '../aiPhotoPipeline.js';
 import { uploadBuffer } from '../storage.js';
@@ -20,6 +21,11 @@ export async function uploadMediaHandler(req: Request, res: Response): Promise<v
 
   if (!ALLOWED_TYPES.includes(typeRaw as MediaType)) {
     res.status(400).json({ error: 'Некорректный тип изображения.' });
+    return;
+  }
+
+  if (!isProbablyImageUpload(file)) {
+    res.status(415).json({ error: 'Поддерживаются только изображения (jpg/png/webp/heic/heif/avif).' });
     return;
   }
 
@@ -55,16 +61,26 @@ export async function uploadMediaHandler(req: Request, res: Response): Promise<v
     });
 
     // Асинхронный LLM-пайплайн: модерация + описание + метаданные.
-    enqueuePhotoAnalysis({
-      assetId: asset.id,
-      type,
-      analysisType: 'photo_llm_v1',
-    });
+    // Ошибка фонового анализа не должна ломать загрузку файла.
+    try {
+      enqueuePhotoAnalysis({
+        assetId: asset.id,
+        type,
+        analysisType: 'photo_llm_v1',
+      });
+    } catch (analysisErr) {
+      console.warn('[uploadMedia] enqueuePhotoAnalysis failed', analysisErr);
+    }
 
     // Для "Моих фото" ведём отдельный список владельца с лимитом 10.
     if (type === 'person' && owner?.ownerKey) {
-      await upsertUserPhoto(owner.ownerKey, asset.id);
-      await trimUserPhotos(owner.ownerKey, 10);
+      // Если таблица user_photos временно недоступна, не роняем upload.
+      try {
+        await upsertUserPhoto(owner.ownerKey, asset.id);
+        await trimUserPhotos(owner.ownerKey, 10);
+      } catch (photosErr) {
+        console.warn('[uploadMedia] user_photos write failed', photosErr);
+      }
     }
 
     res.status(201).json({

@@ -21,7 +21,7 @@ import {
 } from '../services/tryonService.js';
 import { generateVideoFromImage } from '../kieClient.js';
 import { getSetting } from '../settings.js';
-import { mirrorFromUrl } from '../storage.js';
+import { deleteStoredObject, mirrorFromUrl } from '../storage.js';
 import { createMediaAsset } from '../media.js';
 
 export async function createTryonHandler(req: Request, res: Response): Promise<void> {
@@ -211,7 +211,22 @@ export async function deleteHistoryItemHandler(req: Request, res: Response): Pro
     res.status(400).json({ error: 'Не удалось определить владельца/сессию.' });
     return;
   }
-  await deleteOwnerTryon(owner.ownerKey, sessionId);
+  const result = await deleteOwnerTryon(owner.ownerKey, sessionId);
+  if (!result.deleted) {
+    res.status(404).json({ error: 'Сессия истории не найдена.' });
+    return;
+  }
+  for (const asset of result.removedAssets) {
+    try {
+      await deleteStoredObject({ storageKey: asset.storageKey, url: asset.originalUrl });
+    } catch (err) {
+      console.warn('[history-delete] failed to delete object from storage', {
+        assetId: asset.id,
+        storageKey: asset.storageKey,
+        err,
+      });
+    }
+  }
   res.json({ ok: true });
 }
 
