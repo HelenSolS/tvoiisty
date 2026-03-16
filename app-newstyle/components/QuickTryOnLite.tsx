@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { API_URL } from '../src/api/client';
-import { startTryOnLite, startVideoFromImage } from '../services/tryonService';
+import { startTryOnLite, startAnimationLite } from '../services/tryonService';
 import { getOrCreateOwnerClientId, getOwnerHeaders } from '../services/ownerService';
 import { IMAGE_VALIDATION_ERROR, isValidImageFile } from '../utils/fileValidation';
 
@@ -146,7 +146,7 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onB
 
   const handleAnimate = async () => {
     if (!resultImage || !API_URL) return;
-    if (videoState === 'starting' || videoState === 'processing') return;
+    if (videoState === 'starting') return;
 
     setVideoState('starting');
     setIsBusy(true);
@@ -156,7 +156,7 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onB
     try {
       const ownerClientId = getOrCreateOwnerClientId();
       const token = localStorage.getItem('tvoiisty_token');
-      const { videoUrl: createdVideoUrl } = await startVideoFromImage({
+      const { videoUrl: createdVideoUrl } = await startAnimationLite({
         apiBase: API_URL,
         imageUrl: resultImage,
         headers: getOwnerHeaders(ownerClientId, token),

@@ -106,9 +106,16 @@ const VIDEO_MODEL_GROK = 'grok-imagine/image-to-video';
 const VIDEO_MODEL_KLING = 'kling/v2-1-standard';
 const VIDEO_MODEL_VEO = 'veo-3-1';
 
-/** Промпт для видео по фото примерки: персонаж и одежда сохранены, киношно и динамично, подиумные движения, без жёстких теней, красивые текстуры и окружение, правило третей, гиперреализм. */
+/** Базовый промпт для видео по фото примерки: сохраняем персонажа и одежду, киношный вертикальный fashion-ролик. */
 const DEFAULT_VIDEO_PROMPT =
-  'Cinematic fashion film, dynamic and smooth. The person from the image moves with catwalk-like grace so the outfit is clearly visible at all times. Soft diffused lighting, no harsh shadows. Beautiful textures and a refined, fitting location. Rule of thirds, hyperrealistic cinematography, film look. One beautiful environment that suits the look—e.g. minimal atelier, sunlit terrace, or urban backdrop.';
+  'Use the same person and the same outfit from the image. ' +
+  'Preserve the face exactly. Preserve the outfit exactly: color, design, fabric and fit. Do not modify the clothing or the person. ' +
+  'Cinematic fashion film. Smooth natural movement so the outfit remains clearly visible. ' +
+  'The person moves with relaxed catwalk-like confidence. ' +
+  'Soft diffused lighting, no harsh shadows. Hyperrealistic cinematography, film look. ' +
+  'Rule of thirds composition. Shallow depth of field. ' +
+  'Beautiful location that complements the outfit, such as a minimal atelier, sunlit terrace, modern architecture space, or elegant urban backdrop. ' +
+  'Subtle cinematic camera movement, gentle motion, no fast actions.';
 
 function normalizeVideoModel(model?: string): string {
   const value = (model || '').trim();

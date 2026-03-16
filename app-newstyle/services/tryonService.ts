@@ -106,6 +106,36 @@ export async function startVideoFromImage({ apiBase, imageUrl, headers }: StartV
   return { videoUrl };
 }
 
+type StartAnimationLiteParams = {
+  apiBase: string;
+  imageUrl: string;
+  headers?: Record<string, string>;
+};
+
+export async function startAnimationLite({
+  apiBase,
+  imageUrl,
+  headers,
+}: StartAnimationLiteParams): Promise<{ videoUrl: string }> {
+  const res = await fetch(`${apiBase}/api/animate-lite`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(headers || {}) },
+    body: JSON.stringify({ imageUrl }),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as any)?.error || `animate-lite-failed-${res.status}`);
+  }
+
+  const data = await res.json().catch(() => ({}));
+  const videoUrl = (data?.videoUrl ?? '').toString();
+  if (!videoUrl) {
+    throw new Error('no-video-url');
+  }
+  return { videoUrl };
+}
+
 type TryonStatusParams = {
   apiBase: string;
   sessionId: string;
