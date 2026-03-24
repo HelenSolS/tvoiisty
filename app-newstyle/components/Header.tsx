@@ -153,16 +153,26 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {state.auth?.isLoggedIn && (
-            <div className="pt-8 border-t border-slate-100">
+          <div className="pt-6 border-t border-slate-100 flex items-center justify-between">
+            {state.auth?.isLoggedIn ? (
               <button
                 onClick={() => setState(prev => ({ ...prev, auth: { ...prev.auth, isLoggedIn: false } }))}
                 className="text-sm font-bold text-red-500 uppercase tracking-widest"
               >
                 Выйти
               </button>
-            </div>
-          )}
+            ) : (
+              <span />
+            )}
+            {/* Скрытая кнопка диагностики — не бросается в глаза, но всегда доступна */}
+            <button
+              onClick={() => { setView('adminTest'); setIsMenuOpen(false); }}
+              className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-slate-500 transition-colors"
+              title="Диагностика"
+            >
+              <span className="text-sm">⚙</span>
+            </button>
+          </div>
         </div>
       </div>
     </>
