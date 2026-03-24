@@ -375,14 +375,14 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onV
 
                 {/* Секция видео — появляется после анимации */}
                 {videoState === 'ready' && videoUrl && (
-                  <div className="relative aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-2xl border-4 border-white bg-[var(--bg-card)]">
+                  <div className="relative aspect-[9/16] rounded-[2.5rem] overflow-hidden shadow-2xl border-4 border-white bg-black">
                     <video
                       src={videoUrl}
                       autoPlay
                       loop
                       playsInline
                       muted
-                      className="w-full h-full object-contain rounded-[2.2rem]"
+                      className="w-full h-full object-cover rounded-[2.2rem]"
                     />
                     {/* Кнопки на видео */}
                     <div className="absolute top-4 right-4 flex flex-col gap-2.5">

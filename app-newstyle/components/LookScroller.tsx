@@ -239,11 +239,11 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
                 {showVideo && item.videoUrl ? (
                   /* ── СЛОЙ ВИДЕО ── */
                   <>
-                    <div className="aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-xl border-4 border-white relative bg-[var(--bg-card)]">
+                    <div className="aspect-[9/16] rounded-[2.5rem] overflow-hidden shadow-xl border-4 border-white relative bg-black">
                       <video
                         src={item.videoUrl}
                         autoPlay loop playsInline muted
-                        className="w-full h-full object-contain rounded-[2.2rem]"
+                        className="w-full h-full object-cover rounded-[2.2rem]"
                       />
                       {/* Кнопки на видео */}
                       <div className="absolute top-4 right-4 flex flex-col gap-2.5">
