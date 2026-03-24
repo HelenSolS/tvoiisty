@@ -3,7 +3,7 @@
  */
 
 import type { GenerateImagePayload, GenerateImageResult } from '../provider-abstraction.js';
-import { DEFAULT_IMAGE_PROMPT } from '../provider-abstraction.js';
+import { buildRandomTryOnPrompt } from '../provider-abstraction.js';
 
 const DEFAULT_KIE_BASE = 'https://api.kie.ai/api/v1';
 const POLL_INTERVAL_MS = 2000;
@@ -38,13 +38,13 @@ export async function runKieTryOn(
   const inputPayload = isGptImage15
     ? {
         input_urls: [personUrl, clothingUrl],
-        prompt: prompt || DEFAULT_IMAGE_PROMPT,
+        prompt: prompt || buildRandomTryOnPrompt(),
         aspect_ratio: '2:3' as const,
         quality: 'medium' as const,
       }
     : {
         aspect_ratio: '9:16' as const,
-        prompt: prompt || DEFAULT_IMAGE_PROMPT,
+        prompt: prompt || buildRandomTryOnPrompt(),
         resolution: '1K' as const,
         input_urls: [personUrl, clothingUrl],
       };

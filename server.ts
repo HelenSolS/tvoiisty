@@ -31,6 +31,7 @@ import { ensureTokenTables } from './backend/tokens.js';
 import { ensureUserPreferencesColumn } from './backend/userSettings.js';
 import { generateImageHandler } from './backend/routes/generateImage.js';
 import { generateVideoHandler } from './backend/routes/generateVideo.js';
+import { animateLiteHandler } from './backend/routes/animateLite.js';
 import {
   signupHandler,
   loginHandler,
@@ -214,6 +215,8 @@ async function main() {
   // Core API
   app.post('/api/generate-image', generateImageHandler);
   app.post('/api/generate-video', generateVideoHandler);
+  // Лёгкая анимация по imageUrl без сессий/истории
+  app.post('/api/animate-lite', animateLiteHandler);
 
   // Обработчик ошибок (multer, неожиданные throw) — чтобы всегда отдавать JSON и не ронять соединение (иначе Nginx даёт 502).
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

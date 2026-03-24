@@ -31,6 +31,12 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
   const [stableOrderIds, setStableOrderIds] = useState<string[]>([]);
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
   const [onlyLiked, setOnlyLiked] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const confirmTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Какой элемент сейчас показывает видео-слой
+  const [videoLayerId, setVideoLayerId] = useState<string | null>(null);
+  // Какой элемент сейчас анимируется
+  const [animatingId, setAnimatingId] = useState<string | null>(null);
 
   const toggleLike = (sessionId: string, img: string) => {
     setState(prev => {
@@ -60,21 +66,28 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
     }
   };
 
-  const handleDownload = async (imgUrl: string) => {
-    try {
-      const response = await fetch(imgUrl);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `look-${Date.now()}.jpg`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("Download failed", err);
-      alert("Не удалось скачать изображение");
+  const handleDownload = (imgUrl: string) => {
+    // Открываем в новой вкладке — работает на мобильном и десктопе.
+    // На iOS пользователь сохраняет через долгое нажатие.
+    window.open(imgUrl, '_blank', 'noopener');
+  };
+
+  const handleShare = (imgUrl: string) => {
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(imgUrl)}`;
+    window.open(shareUrl, '_blank', 'noopener');
+  };
+
+  const handleDeleteClick = (id: string) => {
+    if (confirmDeleteId === id) {
+      // Второй тап — подтверждаем удаление
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+      setConfirmDeleteId(null);
+      void deleteLook(id);
+    } else {
+      // Первый тап — показываем подтверждение, сбрасываем через 3 сек
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+      setConfirmDeleteId(id);
+      confirmTimerRef.current = setTimeout(() => setConfirmDeleteId(null), 3000);
     }
   };
 
@@ -210,71 +223,155 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
         <div className="space-y-10 pb-6">
           {visibleItems.map((item, idx) => {
             const isLiked = !!item.liked;
+            const hasVideo = !!item.videoUrl;
+            const showVideo = videoLayerId === item.id && hasVideo;
+            const isAnimating = animatingId === item.id;
+
+            const handleAnimate = async () => {
+              if (isAnimating || !onReanimate) return;
+              setAnimatingId(item.id);
+              setVideoLayerId(null);
+              try { await onReanimate(item.id); } finally { setAnimatingId(null); }
+            };
+
             return (
               <div key={item.id} className="max-w-md mx-auto w-full">
-                {/* Image card */}
-                <div className="aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-xl border-4 border-white relative bg-slate-50 flex items-center justify-center">
-                  <img
-                    src={item.imageUrl}
-                    alt={`Look ${idx}`}
-                    className="w-full h-full object-contain rounded-[2.5rem]"
-                  />
-                  {/* Top-right: like + delete — always visible */}
-                  <div className="absolute top-4 right-4 flex flex-col gap-2.5">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); toggleLike(item.id, item.imageUrl); }}
-                      className={`w-11 h-11 rounded-full bg-white/90 backdrop-blur-sm shadow-md flex items-center justify-center transition-all active:scale-90 ${isLiked ? 'text-red-500' : 'text-slate-400'}`}
-                    >
-                      <span className="text-lg leading-none">{isLiked ? '♥' : '♡'}</span>
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); void deleteLook(item.id); }}
-                      disabled={deletingIds.includes(item.id)}
-                      className="w-11 h-11 rounded-full bg-white/90 backdrop-blur-sm shadow-md flex items-center justify-center text-red-400 transition-all active:scale-90 disabled:opacity-40"
-                    >
-                      <span className="text-xl font-light leading-none">×</span>
-                    </button>
-                  </div>
-                  {/* New indicator */}
-                  {item.isNew && (
-                    <span className="absolute top-4 left-4 w-3 h-3 rounded-full bg-[var(--primary)] shadow-md" />
-                  )}
-                </div>
 
-                {/* Action bar below image — always visible */}
-                <div className="mt-4 px-2 flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">
-                    {item.isNew ? 'НОВОЕ' : isLiked ? 'ИЗБРАННОЕ' : `#${items.length - idx}`}
-                  </span>
-                  <div className="flex gap-2">
-                    {/* Animate / Re-animate */}
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onReanimate?.(item.id); }}
-                      className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-500 transition-all active:scale-90 hover:shadow-lg"
-                      title={item.videoUrl ? 'Переанимировать' : 'Анимировать'}
-                    >
-                      <span className="text-base leading-none">{item.videoUrl ? '↺' : '▷'}</span>
-                    </button>
-                    {/* Play video */}
-                    {item.videoUrl && (
+                {showVideo && item.videoUrl ? (
+                  /* ── СЛОЙ ВИДЕО ── */
+                  <>
+                    <div className="aspect-[9/16] rounded-[2.5rem] overflow-hidden shadow-xl border-4 border-white relative bg-black">
+                      <video
+                        src={item.videoUrl}
+                        autoPlay loop playsInline muted
+                        className="w-full h-full object-cover rounded-[2.2rem]"
+                      />
+                      {/* Кнопки на видео */}
+                      <div className="absolute top-4 right-4 flex flex-col gap-2.5">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); toggleLike(item.id, item.imageUrl); }}
+                          className={`w-11 h-11 rounded-full bg-white/90 backdrop-blur-sm shadow-md flex items-center justify-center transition-all active:scale-90 ${isLiked ? 'text-red-500' : 'text-slate-400'}`}
+                        >
+                          <span className="text-lg leading-none">{isLiked ? '♥' : '♡'}</span>
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteClick(item.id); }}
+                          disabled={deletingIds.includes(item.id)}
+                          className={`w-11 h-11 rounded-full bg-white/90 backdrop-blur-sm shadow-md flex items-center justify-center transition-all active:scale-90 disabled:opacity-40 ${confirmDeleteId === item.id ? 'bg-red-500 text-white' : 'text-slate-300'}`}
+                          title={confirmDeleteId === item.id ? 'Нажмите ещё раз — удалить' : 'Удалить'}
+                        >
+                          {confirmDeleteId === item.id
+                            ? <span className="text-[9px] font-black uppercase leading-none">Удалить?</span>
+                            : <span className="text-xl font-light leading-none">×</span>}
+                        </button>
+                      </div>
+                    </div>
+                    {/* Действия под видео */}
+                    <div className="mt-4 px-2 flex items-center justify-between">
                       <button
-                        onClick={(e) => { e.stopPropagation(); setPreviewVideo(item.videoUrl || null); }}
-                        className="w-11 h-11 rounded-full bg-[var(--primary)] shadow-md flex items-center justify-center text-white transition-all active:scale-90 hover:shadow-lg"
-                        title="Смотреть видео"
+                        onClick={() => setVideoLayerId(null)}
+                        className="h-9 px-3 rounded-full bg-slate-100 flex items-center gap-1.5 text-slate-500 text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all"
                       >
-                        <span className="text-base leading-none">▶</span>
+                        <span>←</span><span>Фото</span>
                       </button>
-                    )}
-                    {/* Download */}
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleDownload(item.imageUrl); }}
-                      className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-500 transition-all active:scale-90 hover:shadow-lg"
-                      title="Скачать"
-                    >
-                      <span className="text-base leading-none">↓</span>
-                    </button>
-                  </div>
-                </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleAnimate(); }}
+                          disabled={isAnimating}
+                          className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-500 transition-all active:scale-90 disabled:opacity-40"
+                          title="Переанимировать (старая удалится)"
+                        >
+                          {isAnimating
+                            ? <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin" />
+                            : <span className="text-base leading-none">▷</span>}
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDownload(item.videoUrl!); }}
+                          className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-500 transition-all active:scale-90"
+                          title="Скачать видео"
+                        ><span className="text-base leading-none">↓</span></button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleShare(item.videoUrl!); }}
+                          className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-500 transition-all active:scale-90"
+                          title="Поделиться видео"
+                        ><span className="text-base leading-none">↗</span></button>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  /* ── СЛОЙ ФОТО ── */
+                  <>
+                    <div className="aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-xl border-4 border-white relative bg-slate-50 flex items-center justify-center">
+                      <img
+                        src={item.imageUrl}
+                        alt={`Look ${idx}`}
+                        className="w-full h-full object-contain rounded-[2.5rem]"
+                      />
+                      <div className="absolute top-4 right-4 flex flex-col gap-2.5">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); toggleLike(item.id, item.imageUrl); }}
+                          className={`w-11 h-11 rounded-full bg-white/90 backdrop-blur-sm shadow-md flex items-center justify-center transition-all active:scale-90 ${isLiked ? 'text-red-500' : 'text-slate-400'}`}
+                        ><span className="text-lg leading-none">{isLiked ? '♥' : '♡'}</span></button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteClick(item.id); }}
+                          disabled={deletingIds.includes(item.id)}
+                          className={`w-11 h-11 rounded-full bg-white/90 backdrop-blur-sm shadow-md flex items-center justify-center transition-all active:scale-90 disabled:opacity-40 ${confirmDeleteId === item.id ? 'bg-red-500 text-white shadow-lg' : 'text-slate-300'}`}
+                          title={confirmDeleteId === item.id ? 'Нажмите ещё раз — удалить' : 'Удалить'}
+                        >
+                          {confirmDeleteId === item.id
+                            ? <span className="text-[9px] font-black uppercase leading-none">Удалить?</span>
+                            : <span className="text-xl font-light leading-none">×</span>}
+                        </button>
+                      </div>
+                      {item.isNew && <span className="absolute top-4 left-4 w-3 h-3 rounded-full bg-[var(--primary)] shadow-md" />}
+                    </div>
+
+                    {/* Вкладка анимации / статус */}
+                    {isAnimating ? (
+                      <div className="mt-2 w-full h-10 rounded-[1.5rem] bg-slate-50 border border-slate-100 flex items-center justify-center gap-2 text-slate-400 text-[10px] font-black uppercase tracking-widest">
+                        <div className="w-3.5 h-3.5 border-2 border-slate-200 border-t-[var(--primary)] rounded-full animate-spin" />
+                        <span>Создаём анимацию…</span>
+                      </div>
+                    ) : hasVideo ? (
+                      <button
+                        onClick={() => setVideoLayerId(item.id)}
+                        className="mt-2 w-full h-10 rounded-[1.5rem] bg-[var(--primary)]/10 border border-[var(--primary)]/20 flex items-center justify-center gap-2 text-[var(--primary)] text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 hover:bg-[var(--primary)]/20"
+                      >
+                        <span className="text-sm">▶</span>
+                        <span>Посмотреть анимацию</span>
+                      </button>
+                    ) : null}
+
+                    {/* Action bar */}
+                    <div className="mt-3 px-2 flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">
+                        {item.isNew ? 'НОВОЕ' : isLiked ? 'ИЗБРАННОЕ' : `#${items.length - idx}`}
+                      </span>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleAnimate(); }}
+                          disabled={isAnimating}
+                          className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-500 transition-all active:scale-90 disabled:opacity-40"
+                          title={hasVideo ? 'Переанимировать (старая удалится)' : 'Анимировать'}
+                        >
+                          {isAnimating
+                            ? <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin" />
+                            : <span className="text-base leading-none">▷</span>}
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDownload(item.imageUrl); }}
+                          className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-500 transition-all active:scale-90"
+                          title="Скачать фото"
+                        ><span className="text-base leading-none">↓</span></button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleShare(item.imageUrl); }}
+                          className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-500 transition-all active:scale-90"
+                          title="Поделиться фото"
+                        ><span className="text-base leading-none">↗</span></button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             );
           })}
@@ -303,36 +400,47 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
                   {item.isNew && (
                     <span className="absolute top-2.5 left-2.5 w-2.5 h-2.5 rounded-full bg-[var(--primary)]" />
                   )}
-                  {/* Video indicator */}
+                  {/* Индикатор — есть видео (кликабельный) */}
                   {item.videoUrl && (
-                    <div className="absolute bottom-2.5 left-2.5 w-8 h-8 bg-[var(--primary)]/85 backdrop-blur-sm rounded-full flex items-center justify-center text-white shadow-sm">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setPreviewVideo(item.videoUrl!); }}
+                      className="absolute bottom-2.5 left-2.5 w-8 h-8 bg-[var(--primary)] backdrop-blur-sm rounded-full flex items-center justify-center text-white shadow-md active:scale-90 transition-all"
+                      title="Смотреть анимацию"
+                    >
                       <span className="text-[10px] leading-none">▶</span>
-                    </div>
+                    </button>
                   )}
                 </div>
                 {/* Mini action row */}
                 <div className="mt-2 flex gap-1.5 justify-end px-1">
                   <button
-                    onClick={(e) => { e.stopPropagation(); void deleteLook(item.id); }}
+                    onClick={(e) => { e.stopPropagation(); handleDeleteClick(item.id); }}
                     disabled={deletingIds.includes(item.id)}
-                    className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-red-400 text-sm active:scale-90 transition-all disabled:opacity-40"
-                    title="Удалить"
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm active:scale-90 transition-all disabled:opacity-40 ${confirmDeleteId === item.id ? 'bg-red-500 text-white' : 'bg-slate-100 text-slate-300'}`}
+                    title={confirmDeleteId === item.id ? 'Нажмите ещё раз — удалить' : 'Удалить'}
                   >
                     <span className="leading-none font-light">×</span>
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); handleDownload(item.imageUrl); }}
                     className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-sm active:scale-90 transition-all"
-                    title="Скачать"
+                    title="Открыть / сохранить"
                   >
                     <span className="leading-none">↓</span>
                   </button>
                   <button
+                    onClick={(e) => { e.stopPropagation(); handleShare(item.imageUrl); }}
+                    className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-sm active:scale-90 transition-all"
+                    title="Поделиться в Telegram"
+                  >
+                    <span className="leading-none">↗</span>
+                  </button>
+                  <button
                     onClick={(e) => { e.stopPropagation(); onReanimate?.(item.id); }}
                     className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-sm active:scale-90 transition-all"
-                    title={item.videoUrl ? 'Переанимировать' : 'Анимировать'}
+                    title={item.videoUrl ? 'Переанимировать (старая удалится)' : 'Анимировать'}
                   >
-                    <span className="leading-none">{item.videoUrl ? '↺' : '▷'}</span>
+                    <span className="leading-none">▷</span>
                   </button>
                 </div>
               </div>
@@ -342,7 +450,29 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
       )}
 
       <FullscreenPreview image={previewImage} onClose={() => setPreviewImage(null)} />
-      <FullscreenPreview image={null} video={previewVideo} onClose={() => setPreviewVideo(null)} />
+
+      {/* Fullscreen video preview (grid mode) */}
+      {previewVideo && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
+          onClick={() => setPreviewVideo(null)}
+        >
+          <div className="relative w-full max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
+            <video
+              src={previewVideo}
+              autoPlay loop playsInline muted
+              className="w-full rounded-[2rem] object-cover"
+              style={{ aspectRatio: '9/16' }}
+            />
+            <button
+              onClick={() => setPreviewVideo(null)}
+              className="absolute top-3 right-3 w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-white text-xl"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

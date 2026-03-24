@@ -3,6 +3,7 @@ import { API_URL } from '../src/api/client';
 import { startTryOnLite, startAnimationLite } from '../services/tryonService';
 import { getOrCreateOwnerClientId, getOwnerHeaders } from '../services/ownerService';
 import { IMAGE_VALIDATION_ERROR, isValidImageFile } from '../utils/fileValidation';
+import { compressImageFile, compressImageUrl } from '../utils/imageCompression';
 
 type TryonState = 'idle' | 'running' | 'done' | 'error';
 type VideoState = 'idle' | 'starting' | 'ready' | 'error';
@@ -10,10 +11,11 @@ type VideoState = 'idle' | 'starting' | 'ready' | 'error';
 interface QuickTryOnLiteProps {
   t: any;
   onResult?: (sessionId: string, imageUrl: string) => void;
+  onVideoResult?: (sessionId: string, videoUrl: string) => void;
   onBusyChange?: (busy: boolean) => void;
 }
 
-export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onBusyChange }) => {
+export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onVideoResult, onBusyChange }) => {
   const [personFile, setPersonFile] = useState<File | null>(null);
   const [garmentFile, setGarmentFile] = useState<File | null>(null);
 
@@ -29,6 +31,9 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onB
   const [videoError, setVideoError] = useState<string | null>(null);
 
   const [isBusy, setIsBusy] = useState(false);
+  const [resultSessionId, setResultSessionId] = useState<string | null>(null);
+  // Оригинальный URL с сервера (для анимации) — blob: нельзя слать на сервер
+  const [resultImageServerUrl, setResultImageServerUrl] = useState<string | null>(null);
 
   const personInputRef = useRef<HTMLInputElement | null>(null);
   const garmentInputRef = useRef<HTMLInputElement | null>(null);
@@ -47,6 +52,7 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onB
     setPersonFile(file);
     setPersonPreview(URL.createObjectURL(file));
     setResultImage(null);
+    setResultImageServerUrl(null);
     setVideoUrl(null);
     setVideoState('idle');
     setVideoError(null);
@@ -93,17 +99,34 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onB
     try {
       const ownerClientId = getOrCreateOwnerClientId();
       const token = localStorage.getItem('tvoiisty_token');
+
+      // Сжимаем фото перед отправкой (макс 1536px, JPEG 82%)
+      const [personCompressed, garmentCompressed] = await Promise.all([
+        compressImageFile(personFile),
+        compressImageFile(garmentFile),
+      ]);
+
       const { imageUrl, sessionId } = await startTryOnLite({
         apiBase: API_URL,
-        person: personFile,
-        garment: garmentFile,
+        person: personCompressed,
+        garment: garmentCompressed,
         headers: getOwnerHeaders(ownerClientId, token),
       });
 
-      setResultImage(imageUrl);
+      const itemId = sessionId || `tryon-lite-${Date.now()}`;
+
+      // Сохраняем оригинальный URL для анимации (blob: нельзя слать на сервер)
+      setResultImageServerUrl(imageUrl);
+
+      // Сжимаем для отображения
+      const compressedBlob = await compressImageUrl(imageUrl);
+      const displayUrl = compressedBlob ? URL.createObjectURL(compressedBlob) : imageUrl;
+
+      setResultImage(displayUrl);
+      setResultSessionId(itemId);
       setTryonState('done');
       if (onResult) {
-        onResult(sessionId || 'tryon-lite', imageUrl);
+        onResult(itemId, displayUrl);
       }
     } catch (err: any) {
       console.error('Simple try-on error (adapted)', err);
@@ -145,7 +168,7 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onB
   };
 
   const handleAnimate = async () => {
-    if (!resultImage || !API_URL) return;
+    if (!resultImageServerUrl || !API_URL) return;
     if (videoState === 'starting') return;
 
     setVideoState('starting');
@@ -158,11 +181,14 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onB
       const token = localStorage.getItem('tvoiisty_token');
       const { videoUrl: createdVideoUrl } = await startAnimationLite({
         apiBase: API_URL,
-        imageUrl: resultImage,
+        imageUrl: resultImageServerUrl,
         headers: getOwnerHeaders(ownerClientId, token),
       });
       setVideoUrl(createdVideoUrl);
       setVideoState('ready');
+      if (onVideoResult && resultSessionId) {
+        onVideoResult(resultSessionId, createdVideoUrl);
+      }
     } catch (e) {
       console.error('Simple try-on video error', e);
       setVideoState('error');
@@ -349,14 +375,14 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onB
 
                 {/* Секция видео — появляется после анимации */}
                 {videoState === 'ready' && videoUrl && (
-                  <div className="relative aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-2xl border-4 border-white bg-slate-900">
+                  <div className="relative aspect-[9/16] rounded-[2.5rem] overflow-hidden shadow-2xl border-4 border-white bg-black">
                     <video
                       src={videoUrl}
                       autoPlay
                       loop
                       playsInline
                       muted
-                      className="w-full h-full object-contain rounded-[2.2rem]"
+                      className="w-full h-full object-cover rounded-[2.2rem]"
                     />
                     {/* Кнопки на видео */}
                     <div className="absolute top-4 right-4 flex flex-col gap-2.5">

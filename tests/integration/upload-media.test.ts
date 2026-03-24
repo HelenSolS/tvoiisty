@@ -7,10 +7,11 @@ import { describe, it, beforeAll, expect, vi, afterEach } from 'vitest';
 import { uploadMediaHandler } from '../../backend/routes/uploadMedia.js';
 import { requireAuth } from '../../backend/auth.js';
 
-const { putMock, findOrCreateAssetByHashMock, enqueuePhotoAnalysisMock } = vi.hoisted(() => ({
+const { putMock, findAssetByHashMock, findOrCreateAssetByHashMock, enqueuePhotoAnalysisMock } = vi.hoisted(() => ({
   putMock: vi.fn().mockResolvedValue({
     url: 'https://blob.example.com/media/person/test.png',
   }),
+  findAssetByHashMock: vi.fn().mockResolvedValue(null),
   findOrCreateAssetByHashMock: vi.fn().mockResolvedValue({
     id: 'asset-1',
     type: 'person',
@@ -31,6 +32,7 @@ vi.mock('../../backend/media.js', async (orig) => {
   const actual = await orig<typeof import('../../backend/media.js')>();
   return {
     ...actual,
+    findAssetByHash: findAssetByHashMock,
     findOrCreateAssetByHash: findOrCreateAssetByHashMock,
   };
 });
@@ -114,6 +116,17 @@ describe('Issue 39 – Unified Upload API + LLM Photo Pipeline', () => {
       .expect(400);
 
     expect(res.body.error).toMatch(/Некорректный тип изображения/i);
+  });
+
+  it('rejects video upload with 415', async () => {
+    const res = await request(app)
+      .post('/api/media/upload')
+      .set('Authorization', authHeader)
+      .attach('file', Buffer.from('fake-video-binary'), 'clip.mp4')
+      .field('type', 'person')
+      .expect(415);
+
+    expect(res.body.error).toMatch(/только изображения/i);
   });
 
   it('stores file via blob, registers media asset and enqueues AI analysis on happy path', async () => {

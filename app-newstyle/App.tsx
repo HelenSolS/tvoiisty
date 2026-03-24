@@ -228,6 +228,7 @@ const App: React.FC = () => {
     return () => window.removeEventListener('online', onOnline);
   }, []);
 
+
   useEffect(() => {
     let cancelled = false;
     const syncPendingPersonUploads = async () => {
@@ -280,6 +281,27 @@ const App: React.FC = () => {
     const msg = err && typeof err === 'object' && 'message' in err ? String((err as any).message || '') : '';
     return msg.includes(`-${status}`) || msg.includes(` ${status}`);
   };
+
+  // GET /api/looks — загружаем вещи из галереи с сервера
+  useEffect(() => {
+    const fetchLooks = async () => {
+      try {
+        const token = localStorage.getItem('tvoiisty_token');
+        const res = await fetch(`${API_BASE}/api/looks`, {
+          headers: getOwnerHeaders(backendUserId, token),
+        });
+        updateBackendUserIdFromHeaders(res);
+        if (!res.ok) throw new Error(`GET /api/looks ${res.status}`);
+        const data = await res.json();
+        const list = Array.isArray(data?.looks) ? data.looks : Array.isArray(data) ? data : [];
+        setBackendLooks(list.map((x: any) => ({ id: String(x.id), imageUrl: String(x.imageUrl || '') })));
+      } catch (err) {
+        console.error('Looks load error', err);
+        logError('LOOKS', err);
+      }
+    };
+    fetchLooks();
+  }, [backendUserId, syncTick]);
 
   useEffect(() => {
     let cancelled = false;
@@ -890,6 +912,16 @@ const App: React.FC = () => {
             }
           }}
           onReanimate={async (sessionId) => {
+            // Сразу очищаем старое видео — пользователь видит что идёт новая анимация
+            setState((prev) => ({
+              ...prev,
+              auth: {
+                ...prev.auth,
+                lookHistory: (prev.auth.lookHistory || []).map((x) =>
+                  x.id === sessionId ? { ...x, videoUrl: undefined } : x,
+                ),
+              },
+            }));
             try {
               const { videoUrl } = await reanimateHistoryItem(
                 { apiBase: API_BASE, headers: getApiHeaders() },
@@ -930,19 +962,29 @@ const App: React.FC = () => {
           onResult={(sessionId: string, imageUrl: string) => {
             setState(prev => {
               const history = prev.auth?.lookHistory || [];
-              const itemId = sessionId && sessionId !== 'tryon-lite' ? sessionId : `tryon-lite-${Date.now()}`;
               return {
                 ...prev,
                 auth: {
                   ...prev.auth,
                   lookHistory: [
-                    { id: itemId, imageUrl, timestamp: Date.now(), isNew: true },
-                    ...history.slice(0, 49),
+                    { id: sessionId, imageUrl, timestamp: Date.now(), isNew: true },
+                    ...history.filter(h => h.id !== sessionId).slice(0, 49),
                   ],
                 },
               };
             });
             setHasNewHistoryFromQuick(true);
+          }}
+          onVideoResult={(sessionId: string, videoUrl: string) => {
+            setState(prev => ({
+              ...prev,
+              auth: {
+                ...prev.auth,
+                lookHistory: (prev.auth?.lookHistory || []).map(item =>
+                  item.id === sessionId ? { ...item, videoUrl } : item
+                ),
+              },
+            }));
           }}
         />
       );

@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React from 'react';
+import { FullscreenPreview } from './FullscreenPreview';
 
 interface Step4VideoProps {
   video: string | null;
@@ -8,12 +9,21 @@ interface Step4VideoProps {
 }
 
 export const Step4Video: React.FC<Step4VideoProps> = ({ video, onReset, onVideoCreated, t }) => {
+  const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
+
   return (
     <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
       <div className="w-full max-w-md bg-white rounded-[3rem] p-8 shadow-2xl border border-slate-100 overflow-hidden">
         <div className="relative aspect-[3/4] w-full bg-slate-50 rounded-[2.5rem] overflow-hidden mb-8">
           {video ? (
-            <video src={video} controls autoPlay loop className="w-full h-full object-contain rounded-[2.5rem] animate-in zoom-in duration-1000" />
+            <video
+              src={video}
+              controls
+              autoPlay
+              loop
+              onClick={() => setIsPreviewOpen(true)}
+              className="w-full h-full object-contain rounded-[2.5rem] animate-in zoom-in duration-1000 cursor-pointer"
+            />
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-slate-300">
               <div className="w-12 h-12 border-4 border-slate-100 border-t-[var(--primary)] rounded-full animate-spin mb-6"></div>
@@ -51,6 +61,7 @@ export const Step4Video: React.FC<Step4VideoProps> = ({ video, onReset, onVideoC
           </div>
         )}
       </div>
+      <FullscreenPreview image={null} video={isPreviewOpen ? video : null} onClose={() => setIsPreviewOpen(false)} />
     </div>
   );
 };

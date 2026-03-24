@@ -3,7 +3,7 @@
  */
 
 import type { GenerateImagePayload, GenerateImageResult } from '../provider-abstraction.js';
-import { DEFAULT_IMAGE_PROMPT } from '../provider-abstraction.js';
+import { buildRandomTryOnPrompt } from '../provider-abstraction.js';
 
 /** Ждём очередь Fal. При maxDuration=120 на API даём до 115s, чтобы уложиться в лимит. */
 const FAL_POLL_TIMEOUT_MS = 115_000;
@@ -50,7 +50,7 @@ export async function runFalTryOn(
   const isNanoBanana = model === 'fal-ai/nano-banana-pro/edit';
   const falInput = isNanoBanana
     ? {
-        prompt: prompt || DEFAULT_IMAGE_PROMPT,
+        prompt: prompt || buildRandomTryOnPrompt(),
         image_urls: [personUrl, clothingUrl],
         num_images: 1,
         aspect_ratio: '9:16' as const,

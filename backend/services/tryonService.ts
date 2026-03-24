@@ -5,6 +5,7 @@ import { TRYON_USER_FACING_ERROR } from './tryonTypes.js';
 import { createMediaAsset } from '../media.js';
 import { mirrorFromUrl } from '../storage.js';
 import { incrementTryonCount } from '../looks.js';
+import { buildTryOnPrompt } from './tryonPromptBuilder.js';
 import {
   createPendingTryon,
   findExistingTryonByClientRequest,
@@ -122,7 +123,15 @@ export async function createTryonSession(input: CreateTryonInput): Promise<Creat
             ? String(rawModel).trim()
             : 'fal-ai/nano-banana-pro/edit';
 
-      const tryonRequest = { personUrl, clothingUrl, modelName: effectiveModel };
+      const prompt = await buildTryOnPrompt({
+        db,
+        sessionId: session.id,
+        personAssetId,
+        lookId: lookId || null,
+        clothingUrl,
+      });
+
+      const tryonRequest = { personUrl, clothingUrl, prompt, modelName: effectiveModel };
       const result = await execute(tryonRequest);
 
       if (!result.success) {

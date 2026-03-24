@@ -100,84 +100,119 @@ export async function generateImageTryOn(
   return pollImageTask(taskId);
 }
 
-/** Reels/Shorts: только вертикальное видео 9:16. Без переключателей и 16:9. */
-const VIDEO_ASPECT_RATIO = '9:16' as const;
-
-/** Промпт для видео по фото примерки: персонаж и одежда сохранены, киношно и динамично, подиумные движения, без жёстких теней, красивые текстуры и окружение, правило третей, гиперреализм. */
 const DEFAULT_VIDEO_PROMPT =
-  'Cinematic fashion film, dynamic and smooth. The person from the image moves with catwalk-like grace so the outfit is clearly visible at all times. Soft diffused lighting, no harsh shadows. Beautiful textures and a refined, fitting location. Rule of thirds, hyperrealistic cinematography, film look. One beautiful environment that suits the look—e.g. minimal atelier, sunlit terrace, or urban backdrop.';
+  'The same person and same outfit in the same environment from the image. ' +
+  'Preserve face identity exactly. Preserve outfit exactly. ' +
+  'Subtle cinematic motion. Natural body movement, relaxed and confident. ' +
+  'Light wind moving fabric slightly. Slow cinematic camera movement. ' +
+  'Shallow depth of field. Cinematic lighting. Premium fashion film style. Natural colors.';
 
-/** Создать задачу на видео (Veo 3.1): POST veo/generate. В KIE — veo3_fast. */
-export async function createVideoTask(params: { imageUrl: string; prompt?: string; model?: string }): Promise<string> {
-  const payload = {
-    prompt: params.prompt || DEFAULT_VIDEO_PROMPT,
-    imageUrls: [params.imageUrl],
-    model: 'veo3_fast',
-    aspect_ratio: VIDEO_ASPECT_RATIO,
-    generationType: 'FIRST_AND_LAST_FRAMES_2_VIDEO',
-  };
-  console.log('VIDEO PAYLOAD:', JSON.stringify(payload, null, 2));
-
-  const res = await fetch(`${base()}/veo/generate`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify(payload),
-  });
-  const data = (await res.json()) as KieTaskCreateResponse & { data?: { taskId?: string } };
-  if (!res.ok) throw new Error((data as { message?: string }).message || 'Ошибка KIE при создании видео');
-  const taskId = data?.data?.taskId;
-  if (!taskId) throw new Error('KIE не вернул taskId для видео');
-  return taskId;
+/**
+ * Grok и Kling используют jobs/createTask (не veo/generate).
+ * Формат input у каждой модели свой.
+ */
+function buildVideoInput(model: string, imageUrl: string, prompt: string): Record<string, unknown> {
+  switch (model) {
+    case 'kling/v2-1-standard':
+      return { prompt, image_url: imageUrl, duration: '5' };
+    case 'grok-imagine/image-to-video':
+    default:
+      return { image_urls: [imageUrl], prompt, mode: 'normal', duration: '6', resolution: '480p' };
+  }
 }
 
-/** Извлечь videoUrl из ответа Veo3: data.output.video.url | data.result.videos[0].url | data.result.video_url | data.response. */
-function extractVideoUrl(data: unknown): string | undefined {
+function extractVideoUrlFromResultJson(data: unknown): string | undefined {
   if (!data || typeof data !== 'object') return undefined;
   const d = data as Record<string, unknown>;
-  const inner = d.data as Record<string, unknown> | undefined;
-  const target = (inner && typeof inner === 'object' ? inner : d) as Record<string, unknown>;
-
-  const output = target.output as Record<string, unknown> | undefined;
-  if (output?.video && typeof (output.video as { url?: string }).url === 'string') {
-    return (output.video as { url: string }).url;
-  }
-  const result = target.result as Record<string, unknown> | undefined;
-  if (result?.video_url && typeof result.video_url === 'string') return result.video_url as string;
+  const result = d.result as Record<string, unknown> | undefined;
+  if (result?.video_url && typeof result.video_url === 'string') return result.video_url;
   const videos = result?.videos as Array<{ url?: string }> | undefined;
   if (Array.isArray(videos) && videos[0]?.url) return videos[0].url;
-  const response = target.response as { result_urls?: string[]; video_url?: string } | undefined;
-  if (Array.isArray(response?.result_urls) && response.result_urls[0]) return response.result_urls[0];
-  if (response?.video_url) return response.video_url;
+  const response = d.response as Record<string, unknown> | undefined;
+  if (response) {
+    const rUrls = (response.result_urls ?? response.resultUrls) as string[] | undefined;
+    if (Array.isArray(rUrls) && rUrls[0]) return rUrls[0];
+    if (typeof response.video_url === 'string') return response.video_url;
+  }
+  const resultUrls = (d.result_urls ?? d.resultUrls) as string[] | undefined;
+  if (Array.isArray(resultUrls) && resultUrls[0]) return resultUrls[0];
   return undefined;
 }
 
-/** Опрос результата видео: GET veo/record-info?taskId= (successFlag + response). */
+/** Создать задачу видео через jobs/createTask (Grok / Kling). */
+async function createVideoTask(params: { imageUrl: string; prompt?: string; model: string }): Promise<string> {
+  const prompt = params.prompt || DEFAULT_VIDEO_PROMPT;
+  const input = buildVideoInput(params.model, params.imageUrl, prompt);
+  console.log('[KIE VIDEO] createTask model:', params.model, 'input keys:', Object.keys(input));
+  const res = await fetch(`${base()}/jobs/createTask`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ model: params.model, input }),
+  });
+  const data = (await res.json()) as Record<string, unknown>;
+  console.log('[KIE VIDEO] response status:', res.status, 'body:', JSON.stringify(data).slice(0, 300));
+  if (!res.ok) throw new Error((data?.message as string) || 'Ошибка KIE при создании видео');
+  // Пробуем все возможные пути к taskId
+  const inner = data?.data as Record<string, unknown> | undefined;
+  const taskId =
+    (inner?.taskId as string | undefined) ??
+    (inner?.task_id as string | undefined) ??
+    (data?.taskId as string | undefined) ??
+    (data?.task_id as string | undefined) ??
+    (data?.id as string | undefined);
+  if (!taskId) {
+    console.error('[KIE VIDEO] no taskId in response:', JSON.stringify(data));
+    throw new Error('KIE не вернул taskId для видео');
+  }
+  return taskId;
+}
+
+/** Опрос jobs/recordInfo (state: success/fail, resultJson с URL). */
 async function pollVideoTask(taskId: string): Promise<string> {
-  const url = `${base()}/veo/record-info?taskId=${encodeURIComponent(taskId)}`;
+  const url = `${base()}/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`;
   for (let i = 0; i < POLL_MAX_VIDEO; i++) {
     const res = await fetch(url, { headers: { Authorization: `Bearer ${kieApiKey}` } });
-    const job = (await res.json()) as { data?: unknown; message?: string };
+    const job = (await res.json()) as { data?: { state?: string; resultJson?: string; failMsg?: string }; message?: string };
     if (!res.ok) throw new Error(job?.message || 'Ошибка при получении видео');
-
-    const flag = (job?.data as { successFlag?: number | string })?.successFlag;
-    if (flag === 1 || flag === '1') {
-      const videoUrl = extractVideoUrl(job?.data);
-      if (videoUrl) return videoUrl;
+    const state = job?.data?.state;
+    if (state === 'success') {
+      const resultJson = job?.data?.resultJson;
+      if (typeof resultJson === 'string') {
+        try {
+          const parsed = JSON.parse(resultJson) as Record<string, unknown>;
+          const videoUrl = extractVideoUrlFromResultJson(parsed);
+          if (videoUrl) return videoUrl;
+          const urls = (parsed?.result_urls ?? parsed?.resultUrls) as string[] | undefined;
+          if (Array.isArray(urls) && urls[0]) return urls[0];
+        } catch { /* ignore */ }
+      }
       throw new Error('Результат без URL видео');
     }
-    if (flag === 2 || flag === 3 || flag === '2' || flag === '3') {
-      throw new Error('Генерация видео не удалась. Попробуйте снова.');
+    if (state === 'fail') {
+      throw new Error(job?.data?.failMsg || 'Генерация видео не удалась. Попробуйте снова.');
     }
-
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
   throw new Error('Превышено время ожидания для видео. Попробуйте ещё раз.');
 }
 
+const VIDEO_MODELS = ['grok-imagine/image-to-video', 'kling/v2-1-standard'] as const;
+
 /**
- * Видео по URL картинки: один createTask (Veo) + polling. model передаётся в createVideoTask (для Veo подставляется в запрос).
+ * Видео по URL картинки: Grok первым, при ошибке — Kling.
+ * model-параметр позволяет задать конкретную модель (например, в animateLite).
  */
 export async function generateVideoFromImage(imageUrl: string, prompt?: string, model?: string): Promise<string> {
-  const taskId = await createVideoTask({ imageUrl, prompt, model });
-  return pollVideoTask(taskId);
+  const models = model ? [model] : [...VIDEO_MODELS];
+  let lastError: Error = new Error('video-generation-failed');
+  for (const m of models) {
+    try {
+      const taskId = await createVideoTask({ imageUrl, prompt, model: m });
+      return await pollVideoTask(taskId);
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+      console.warn(`[KIE video] ${m} failed:`, lastError.message);
+    }
+  }
+  throw lastError;
 }

@@ -1,4 +1,6 @@
 import React from 'react';
+import { IMAGE_VALIDATION_ERROR, isValidImageFile } from '../utils/fileValidation';
+import { compressImageToBase64 } from '../utils/imageCompression';
 
 interface DropzoneProps {
   image?: string | null;
@@ -7,13 +9,21 @@ interface DropzoneProps {
 }
 
 export const Dropzone: React.FC<DropzoneProps> = ({ image = null, onImageUpload, placeholder }) => {
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (!file) return;
+    if (!isValidImageFile(file)) {
+      alert(IMAGE_VALIDATION_ERROR);
+      e.target.value = '';
+      return;
+    }
+    e.target.value = '';
+    try {
+      const compressed = await compressImageToBase64(file);
+      onImageUpload(compressed);
+    } catch {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        onImageUpload(reader.result as string);
-      };
+      reader.onloadend = () => { onImageUpload(reader.result as string); };
       reader.readAsDataURL(file);
     }
   };

@@ -1,10 +1,13 @@
 import express from 'express';
 import type { Express } from 'express';
 import multer from 'multer';
+import { isProbablyImageUpload } from '../fileValidation.js';
 import { uploadBuffer } from '../storage.js';
 import { tryOnWithFal } from '../falClient.js';
+import { buildLiteTryOnPrompt } from '../services/tryonPromptBuilder.js';
 import {
   createPendingTryon,
+  findActiveOwnerTryon,
   markTryonCompletedWithImageUrl,
   markTryonFailed,
   markTryonProcessing,
@@ -26,6 +29,14 @@ router.post(
     }).owner;
     if (!owner?.ownerKey) {
       res.status(400).json({ error: 'Не удалось определить владельца сессии.' });
+      return;
+    }
+    const active = await findActiveOwnerTryon(owner.ownerKey);
+    if (active) {
+      res.status(409).json({
+        error: 'Примерка уже выполняется. Дождитесь завершения текущей.',
+        active_tryon_id: active.id,
+      });
       return;
     }
     const session = await createPendingTryon({
@@ -53,6 +64,13 @@ router.post(
         return;
       }
 
+      if (!isProbablyImageUpload(person) || !isProbablyImageUpload(garment)) {
+        res.status(415).json({
+          error: 'Поддерживаются только изображения для person и garment (jpg/png/webp/heic/heif/avif).',
+        });
+        return;
+      }
+
       // Сохраняем изображения в хранилище (без БД/сессий) и получаем стабильные URL.
       const personStored = await uploadBuffer({
         type: 'person',
@@ -65,10 +83,15 @@ router.post(
         filename: garment.originalname || 'garment.jpg',
       });
 
-      // Один прямой вызов Fal через канонический клиент.
+      // Генерируем разнообразный промпт с рандомной локацией и атмосферой.
+      const prompt = buildLiteTryOnPrompt();
+      console.log('[tryon-lite] prompt:', prompt.slice(0, 120) + '…');
+
       const imageUrl = await tryOnWithFal(
         personStored.url,
         garmentStored.url,
+        undefined,
+        prompt,
       );
       await markTryonCompletedWithImageUrl({
         id: session.id,

@@ -32,9 +32,72 @@ export type GenerateImagePayload = {
   model: string;
 };
 
-/** Единый промпт для всех провайдеров (KIE, Fal). */
-export const DEFAULT_IMAGE_PROMPT =
-  'Put the garment from the second image onto the person in the first image. Preserve character consistency, garment consistency, and body shape. Dress naturally, beautifully and stylishly this outfit from the photo. Background: soft beige-gray or light concrete, clean and distraction-free. Style: hyper-realistic high-end fashion photography. Lighting: soft directional side light with subtle rim light. Mood: premium, confident, modern. Composition: rule of thirds, subject centered, vertical frame. Camera: Sony A7R V, 85mm f/1.8. Format: vertical.';
+const _CORE = `You are doing a virtual fashion try-on.
+
+The FIRST image is the PERSON (identity reference).
+The SECOND image is the OUTFIT (clothing reference only).
+
+Dress the person from the FIRST image in the outfit from the SECOND image.
+Remove or ignore the original clothing from the person image.
+
+Preserve the person's identity: same face, age, gender expression, hairstyle and overall build.
+Preserve the outfit design from the second image: color, fabric, cut, silhouette and key details.
+Adapt the outfit naturally to the person's body, pose and camera angle.
+
+Do not stylize or redraw the face.
+The final result must look like a real photo of this person wearing this outfit.
+
+Full body visible. Natural posture. Premium fashion photography style.`;
+
+const _SCENE_POOL = [
+  'modern gym with dramatic lighting',
+  'sunrise mountain trail with fresh air',
+  'sunset ocean shore with golden light',
+  'luxury yacht deck',
+  'coastal promenade',
+  'clean white gallery interior',
+  'luxury minimalist penthouse',
+  'high-end showroom interior',
+  'modern downtown street',
+  'glass skyscraper district',
+  'evening city lights boulevard',
+  'forest clearing with sun rays',
+  'mountain valley landscape',
+  'luxury fashion boutique interior',
+  'rooftop terrace with city view',
+  'modern architectural concrete space',
+];
+
+const _LIGHTING_POOL = [
+  'golden hour sunset light',
+  'soft morning diffused light',
+  'bright clean studio lighting',
+  'warm evening ambient light',
+  'dramatic cinematic side light',
+  'soft natural window light',
+];
+
+const _CAMERA_POOL = [
+  'full body fashion shot, Canon EOS R5, 85mm f/1.8',
+  'editorial standing pose, Sony A7R V, 85mm f/1.4',
+  'wide cinematic shot, Hasselblad X2D, 80mm',
+  'walking lifestyle shot, Canon EOS R5, 50mm f/1.2',
+];
+
+export function buildRandomTryOnPrompt(): string {
+  const scene = _SCENE_POOL[Math.floor(Math.random() * _SCENE_POOL.length)];
+  const lighting = _LIGHTING_POOL[Math.floor(Math.random() * _LIGHTING_POOL.length)];
+  const camera = _CAMERA_POOL[Math.floor(Math.random() * _CAMERA_POOL.length)];
+  return [
+    _CORE,
+    `Environment: ${scene}.`,
+    `Lighting: ${lighting}.`,
+    `Camera: ${camera}.`,
+    'cinematic lighting, natural skin texture, premium editorial fashion photography, soft depth of field, high detail, photorealistic.',
+  ].join('\n\n');
+}
+
+export const DEFAULT_IMAGE_PROMPT = buildRandomTryOnPrompt();
 
 export function getImageProvider(model: string): 'fal' | 'kie' {
   if (model.startsWith('fal-ai/')) return 'fal';

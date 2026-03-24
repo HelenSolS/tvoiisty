@@ -21,7 +21,7 @@ import {
 } from '../services/tryonService.js';
 import { generateVideoFromImage } from '../kieClient.js';
 import { getSetting } from '../settings.js';
-import { mirrorFromUrl } from '../storage.js';
+import { deleteStoredObject, mirrorFromUrl } from '../storage.js';
 import { createMediaAsset } from '../media.js';
 
 export async function createTryonHandler(req: Request, res: Response): Promise<void> {
@@ -211,7 +211,22 @@ export async function deleteHistoryItemHandler(req: Request, res: Response): Pro
     res.status(400).json({ error: 'Не удалось определить владельца/сессию.' });
     return;
   }
-  await deleteOwnerTryon(owner.ownerKey, sessionId);
+  const result = await deleteOwnerTryon(owner.ownerKey, sessionId);
+  if (!result.deleted) {
+    res.status(404).json({ error: 'Сессия истории не найдена.' });
+    return;
+  }
+  for (const asset of result.removedAssets) {
+    try {
+      await deleteStoredObject({ storageKey: asset.storageKey, url: asset.originalUrl });
+    } catch (err) {
+      console.warn('[history-delete] failed to delete object from storage', {
+        assetId: asset.id,
+        storageKey: asset.storageKey,
+        err,
+      });
+    }
+  }
   res.json({ ok: true });
 }
 
@@ -220,14 +235,26 @@ async function resolveVideoModel(bodyModel: unknown): Promise<string> {
     'grok-imagine/image-to-video',
     'kling/v2-1-standard',
     'veo-3-1',
-    'runway/gen-3-alpha-turbo',
-    'hailuo/2-3-image-to-video-standard',
-    'wan/2-2-a14b-image-to-video-turbo',
   ]);
   if (typeof bodyModel === 'string' && ALLOWED.has(bodyModel)) return bodyModel;
   const fromSettings = await getSetting<string>('DEFAULT_VIDEO_MODEL');
   if (typeof fromSettings === 'string' && fromSettings.trim()) return fromSettings.trim();
   return process.env.KIE_VIDEO_MODEL || 'grok-imagine/image-to-video';
+}
+
+function mapVideoErrorToStatus(message: string): number {
+  const m = message.toLowerCase();
+  if (m.includes('время ожидания') || m.includes('timeout')) return 408;
+  if (m.includes('не удалась') || m.includes('генерация') || m.includes('failed')) return 422;
+  if (
+    m.includes('supabase') ||
+    m.includes('blob') ||
+    m.includes('storage') ||
+    m.includes('не удалось сохранить')
+  ) {
+    return 503;
+  }
+  return 500;
 }
 
 export async function reanimateHistoryItemHandler(req: Request, res: Response): Promise<void> {
@@ -264,23 +291,40 @@ export async function reanimateHistoryItemHandler(req: Request, res: Response): 
 
   const body = req.body as { prompt?: string; model?: string };
   const model = await resolveVideoModel(body?.model);
-  const providerVideoUrl = await generateVideoFromImage(imageUrl, body?.prompt, model);
+  try {
+    let providerVideoUrl: string;
+    try {
+      providerVideoUrl = await generateVideoFromImage(imageUrl, body?.prompt, model);
+    } catch (primaryErr) {
+      if (model !== 'grok-imagine/image-to-video') throw primaryErr;
+      providerVideoUrl = await generateVideoFromImage(imageUrl, body?.prompt, 'kling/v2-1-standard');
+    }
 
-  // Сохраняем видео в нашем хранилище и обновляем существующую history-сессию (overwrite pointer).
-  const stored = await mirrorFromUrl(providerVideoUrl, {
-    type: 'tryon_result_video',
-    filename: 'tryon-video.mp4',
-  });
-  const hash = Buffer.from(stored.storageKey).toString('hex').slice(0, 64);
-  const videoAsset = await createMediaAsset({
-    type: 'tryon_result_video',
-    originalUrl: stored.url,
-    storageKey: stored.storageKey,
-    hash,
-  });
-  await updateOwnerTryonVideoAsset(owner.ownerKey, sessionId, videoAsset.id);
+    // Сохраняем видео в нашем хранилище и обновляем существующую history-сессию (overwrite pointer).
+    const stored = await mirrorFromUrl(providerVideoUrl, {
+      type: 'tryon_result_video',
+      filename: 'tryon-video.mp4',
+    });
+    const hash = Buffer.from(stored.storageKey).toString('hex').slice(0, 64);
+    const videoAsset = await createMediaAsset({
+      type: 'tryon_result_video',
+      originalUrl: stored.url,
+      storageKey: stored.storageKey,
+      hash,
+    });
+    await updateOwnerTryonVideoAsset(owner.ownerKey, sessionId, videoAsset.id);
 
-  res.json({ ok: true, videoUrl: stored.url });
+    res.json({ ok: true, videoUrl: stored.url });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Не удалось создать видео. Попробуйте ещё раз.';
+    console.error('[history-reanimate] failed', {
+      ownerKey: owner.ownerKey,
+      sessionId,
+      model,
+      message,
+    });
+    res.status(mapVideoErrorToStatus(message)).json({ error: message });
+  }
 }
 
 export async function markHistoryViewedHandler(req: Request, res: Response): Promise<void> {

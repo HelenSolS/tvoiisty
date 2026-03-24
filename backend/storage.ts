@@ -1,4 +1,4 @@
-import { put as vercelPut } from '@vercel/blob';
+import { del as vercelDel, put as vercelPut } from '@vercel/blob';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
@@ -106,5 +106,54 @@ export async function mirrorFromUrl(
     buffer,
     filename: params.filename,
   });
+}
+
+async function deleteFromSupabase(storageKey: string): Promise<void> {
+  const res = await fetch(
+    `${SUPABASE_URL.replace(/\/$/, '')}/storage/v1/object/${SUPABASE_BUCKET}/${storageKey}`,
+    {
+      method: 'DELETE',
+      headers: {
+        apikey: SUPABASE_SERVICE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+      },
+    },
+  );
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`supabase-delete-failed-${res.status}:${text}`);
+  }
+}
+
+async function deleteFromVercelBlob(url: string): Promise<void> {
+  if (!process.env.BLOB_READ_WRITE_TOKEN) return;
+  await vercelDel(url, { token: process.env.BLOB_READ_WRITE_TOKEN });
+}
+
+export async function deleteStoredObject(params: {
+  storageKey?: string | null;
+  url?: string | null;
+}): Promise<void> {
+  const storageKey = params.storageKey?.trim();
+  const url = params.url?.trim();
+
+  // Best-effort cleanup: never throw for "not found" cases.
+  try {
+    if (useSupabase && storageKey) {
+      await deleteFromSupabase(storageKey);
+      return;
+    }
+  } catch (err) {
+    console.warn('[storage] supabase delete failed, fallback to blob if possible', err);
+  }
+
+  if (!url) return;
+  try {
+    await deleteFromVercelBlob(url);
+  } catch (err: any) {
+    const message = err && typeof err === 'object' && 'message' in err ? String(err.message) : '';
+    if (message.includes('404')) return;
+    console.warn('[storage] vercel blob delete failed', err);
+  }
 }
 
