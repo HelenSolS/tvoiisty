@@ -121,18 +121,12 @@ export const Header: React.FC<HeaderProps> = ({
                   <span className="absolute -top-1 -right-3 w-2 h-2 rounded-full bg-[var(--primary)]"></span>
                 )}
               </button>
-              <button 
-                onClick={() => { setView('adminTest'); setIsMenuOpen(false); }}
-                className="text-2xl font-black tracking-tight text-left text-red-500 hover:text-red-600 transition-colors"
-              >
-                !тест админ
-              </button>
               {state.role === UserRole.ADMIN && (
-                <button 
+                <button
                   onClick={() => { setView('settings'); setIsMenuOpen(false); }}
-                  className="text-2xl font-black tracking-tight text-left text-red-500 transition-colors"
+                  className="text-2xl font-black tracking-tight text-left hover:text-[var(--primary)] transition-colors"
                 >
-                  Админ
+                  Настройки
                 </button>
               )}
             </nav>
@@ -159,12 +153,24 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          <div className="pt-8 border-t border-slate-100">
-            <button 
-              onClick={() => setState(prev => ({ ...prev, auth: { ...prev.auth, isLoggedIn: false } }))}
-              className="text-sm font-bold text-red-500 uppercase tracking-widest"
+          <div className="pt-6 border-t border-slate-100 flex items-center justify-between">
+            {state.auth?.isLoggedIn ? (
+              <button
+                onClick={() => setState(prev => ({ ...prev, auth: { ...prev.auth, isLoggedIn: false } }))}
+                className="text-sm font-bold text-red-500 uppercase tracking-widest"
+              >
+                Выйти
+              </button>
+            ) : (
+              <span />
+            )}
+            {/* Скрытая кнопка диагностики — не бросается в глаза, но всегда доступна */}
+            <button
+              onClick={() => { setView('adminTest'); setIsMenuOpen(false); }}
+              className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-slate-500 transition-colors"
+              title="Диагностика"
             >
-              Выйти
+              <span className="text-sm">⚙</span>
             </button>
           </div>
         </div>

@@ -170,14 +170,18 @@ const App: React.FC = () => {
   
   const [userPhoto, setUserPhoto] = useState<string | null>(null);
   const [garmentPhoto, setGarmentPhoto] = useState<string | null>(null);
+  // Образ, который пользователь хотел примерить до того как выбрал фото.
+  const [pendingGarment, setPendingGarment] = useState<string | null>(null);
   const [resultId, setResultId] = useState<string | null>(null);
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [resultVideo, setResultVideo] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isQuickProcessing, setIsQuickProcessing] = useState(false);
   const [tryonError, setTryonError] = useState<string | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [presets, setPresets] = useState<MagicPreset[]>(DEFAULT_PRESETS);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const isAnyProcessing = isProcessing || isQuickProcessing;
 
   const [backendUserId, setBackendUserId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -272,6 +276,11 @@ const App: React.FC = () => {
     return getOwnerHeaders(backendUserId, token);
   };
 
+  const isHttpStatusError = (err: unknown, status: number): boolean => {
+    const msg = err && typeof err === 'object' && 'message' in err ? String((err as any).message || '') : '';
+    return msg.includes(`-${status}`) || msg.includes(` ${status}`);
+  };
+
   useEffect(() => {
     let cancelled = false;
     const flushPendingHistory = async () => {
@@ -300,7 +309,12 @@ const App: React.FC = () => {
             }));
           }
           removePendingHistoryAction(action.id);
-        } catch {
+        } catch (err) {
+          if (action.kind === 'delete' && isHttpStatusError(err, 404)) {
+            // Server no longer has this item for current owner: treat as already synced.
+            removePendingHistoryAction(action.id);
+            continue;
+          }
           // keep queued for next reconnect
         }
       }
@@ -349,7 +363,8 @@ const App: React.FC = () => {
           : [];
         setState(prev => {
           const existing = prev.auth?.userPhotos || [];
-          const merged = Array.from(new Set([...urls, ...existing])).slice(0, 10);
+          // Сначала оставляем уже видимые в UI фото (в т.ч. только что загруженные), потом дополняем сервером.
+          const merged = Array.from(new Set([...existing, ...urls])).slice(0, 10);
           return {
             ...prev,
             auth: { ...prev.auth, userPhotos: merged },
@@ -378,6 +393,11 @@ const App: React.FC = () => {
         const data = await res.json();
         if (!Array.isArray(data)) return;
         const items = normalizeHistoryRows(data);
+        const pendingDeleteIds = new Set(
+          getPendingHistoryActions()
+            .filter((x) => x.kind === 'delete')
+            .map((x) => x.sessionId),
+        );
         setState(prev => ({
           ...prev,
           auth: {
@@ -399,6 +419,7 @@ const App: React.FC = () => {
                 if (!aLiked && bLiked) return 1;
                 return Number(b.timestamp || 0) - Number(a.timestamp || 0);
               })
+              .filter((x: any) => !pendingDeleteIds.has(String(x.id)))
               .slice(0, 50),
           },
         }));
@@ -411,7 +432,28 @@ const App: React.FC = () => {
   }, [backendUserId, setState, syncTick]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    try {
+      // Не сохраняем heavy data: URL в localStorage — это может выбивать quota (особенно в Telegram WebView).
+      const persistableState: AppState = {
+        ...state,
+        auth: {
+          ...state.auth,
+          userPhotos: (state.auth?.userPhotos || []).filter(
+            (u) => typeof u === 'string' && !u.startsWith('data:'),
+          ),
+          garmentMemory: (state.auth?.garmentMemory || []).filter(
+            (u) => typeof u === 'string' && !u.startsWith('data:'),
+          ),
+          lookHistory: (state.auth?.lookHistory || [])
+            .filter((h: any) => h && typeof h.imageUrl === 'string' && !h.imageUrl.startsWith('data:'))
+            .slice(0, 50),
+        },
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(persistableState));
+    } catch (err) {
+      // Мягко игнорируем ошибки персистентности, чтобы не ронять интерфейс.
+      logError('PERSISTENCE', err);
+    }
     document.body.className = `theme-${state.theme} transition-colors duration-500 antialiased overflow-x-hidden`;
   }, [state]);
 
@@ -527,13 +569,27 @@ const App: React.FC = () => {
     });
   };
 
-  const handleTryOn = async (garment: string) => {
-    if (!userPhoto || !garment) return;
-    
+  const handleTryOn = async (garment: string, photoOverride?: string) => {
+    if (isAnyProcessing) {
+      // Prevent parallel try-on/video operations from overlapping.
+      return;
+    }
+
+    const effectivePhoto = photoOverride ?? userPhoto;
+
+    if (!effectivePhoto) {
+      // Нет фото — запоминаем образ и отправляем на шаг "Мои фото"
+      setPendingGarment(garment);
+      setCurrentStep(1);
+      return;
+    }
+
+    if (!garment) return;
+
     // запоминаем активное фото пользователя для последующих заходов
     setState(prev => ({
       ...prev,
-      auth: { ...prev.auth, selectedUserPhoto: userPhoto },
+      auth: { ...prev.auth, selectedUserPhoto: effectivePhoto },
     }));
 
     setGarmentPhoto(garment);
@@ -552,7 +608,7 @@ const App: React.FC = () => {
       const tryonController = new AbortController();
       tryonAbortRef.current = tryonController;
 
-      const personBlob = await imageToBlob(userPhoto);
+      const personBlob = await imageToBlob(effectivePhoto);
       const garmentBlob = await imageToBlob(garment);
       if (tryonController.signal.aborted) return;
 
@@ -714,29 +770,56 @@ const App: React.FC = () => {
         );
       case 1:
         return (
-          <UploadBox
-            onUploadNew={handleUserPhotoUpload}
-            onSelectPhoto={(url) => {
-              setUserPhoto(url);
-              setState(prev => ({
-                ...prev,
-                auth: { ...prev.auth, selectedUserPhoto: url },
-              }));
-              setCurrentStep(2);
-            }}
-            t={t}
-            state={state}
-            setState={setState}
-          />
+          <>
+            {pendingGarment && (
+              <div className="fixed top-[72px] inset-x-0 z-50 flex justify-center px-6 pointer-events-none">
+                <div className="bg-slate-900 text-white text-[11px] font-bold uppercase tracking-widest px-5 py-3 rounded-full shadow-2xl flex items-center gap-2">
+                  <span className="text-[var(--primary)]">◎</span>
+                  Выберите своё фото — примерка запустится автоматически
+                </div>
+              </div>
+            )}
+            <UploadBox
+              key="step1-user"
+              onUploadNew={(img) => {
+                handleUserPhotoUpload(img);
+                if (pendingGarment) {
+                  const garment = pendingGarment;
+                  setPendingGarment(null);
+                  // Небольшая задержка чтобы state успел обновиться
+                  setTimeout(() => handleTryOn(garment, img), 50);
+                }
+              }}
+              onSelectPhoto={(url) => {
+                setUserPhoto(url);
+                setState(prev => ({
+                  ...prev,
+                  auth: { ...prev.auth, selectedUserPhoto: url },
+                }));
+                if (pendingGarment) {
+                  const garment = pendingGarment;
+                  setPendingGarment(null);
+                  handleTryOn(garment, url);
+                } else {
+                  setCurrentStep(2);
+                }
+              }}
+              t={t}
+              state={state}
+              setState={setState}
+            />
+          </>
         );
       case 2:
         return (
-          <UploadBox 
+          <UploadBox
+            key="step2-gallery"
             onUpload={handleTryOn} 
             t={t} 
             state={state}
             setState={setState}
             backendLooks={backendLooks}
+            disableTryOnActions={isAnyProcessing}
           />
         );
       case 3:
@@ -750,7 +833,10 @@ const App: React.FC = () => {
           onReset={() => setCurrentStep(5)}
           error={tryonError}
           onRetry={handleRetryTryOn}
-          onChooseAnother={() => setCurrentStep(2)}
+          onChooseAnother={() => {
+            if (isAnyProcessing) return;
+            setCurrentStep(2);
+          }}
           t={t} 
         />;
       case 4:
@@ -783,10 +869,24 @@ const App: React.FC = () => {
             }
           }}
           onDelete={async (sessionId) => {
+            const removeLocal = () => {
+              setState((prev) => ({
+                ...prev,
+                auth: {
+                  ...prev.auth,
+                  lookHistory: (prev.auth.lookHistory || []).filter((x) => x.id !== sessionId),
+                },
+              }));
+            };
             try {
               await deleteHistoryItem({ apiBase: API_BASE, headers: getApiHeaders() }, sessionId);
-            } catch {
+              removeLocal();
+            } catch (err) {
+              removeLocal();
+              if (isHttpStatusError(err, 404)) return;
               enqueueHistoryDelete(sessionId);
+              // Trigger a near-term retry even if network state did not toggle.
+              setSyncTick((v) => v + 1);
             }
           }}
           onReanimate={async (sessionId) => {
@@ -826,6 +926,7 @@ const App: React.FC = () => {
       return (
         <QuickTryOnLite
           t={t}
+          onBusyChange={setIsQuickProcessing}
           onResult={(sessionId: string, imageUrl: string) => {
             setState(prev => {
               const history = prev.auth?.lookHistory || [];

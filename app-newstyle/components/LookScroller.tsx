@@ -26,8 +26,11 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
   onViewed,
 }) => {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewVideo, setPreviewVideo] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [stableOrderIds, setStableOrderIds] = useState<string[]>([]);
+  const [deletingIds, setDeletingIds] = useState<string[]>([]);
+  const [onlyLiked, setOnlyLiked] = useState(false);
 
   const toggleLike = (sessionId: string, img: string) => {
     setState(prev => {
@@ -47,18 +50,14 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
     onLike?.(sessionId, nextLiked);
   };
 
-  const deleteLook = (id: string) => {
-    setState(prev => {
-      const lookHistory = prev.auth?.lookHistory || [];
-      return {
-        ...prev,
-        auth: {
-          ...prev.auth,
-          lookHistory: lookHistory.filter(item => item.id !== id)
-        }
-      };
-    });
-    onDelete?.(id);
+  const deleteLook = async (id: string) => {
+    if (!onDelete || deletingIds.includes(id)) return;
+    setDeletingIds((prev) => [...prev, id]);
+    try {
+      await onDelete(id);
+    } finally {
+      setDeletingIds((prev) => prev.filter((x) => x !== id));
+    }
   };
 
   const handleDownload = async (imgUrl: string) => {
@@ -93,11 +92,26 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
     });
   }, [items]);
 
+  // Строка-ключ из liked-статусов — меняется только когда лайкают/снимают.
+  const likedKey = useMemo(
+    () => items.map((x) => `${x.id}:${x.liked ? 1 : 0}`).join(','),
+    [items],
+  );
+
+  // При первой загрузке — фиксируем порядок.
   useEffect(() => {
     if (stableOrderIds.length === 0 && sortedForInitialOrder.length > 0) {
       setStableOrderIds(sortedForInitialOrder.map((x) => x.id));
     }
   }, [sortedForInitialOrder, stableOrderIds.length]);
+
+  // При изменении лайков — пересортируем (лайкнутые всплывают вверх).
+  useEffect(() => {
+    if (stableOrderIds.length > 0) {
+      setStableOrderIds(sortedForInitialOrder.map((x) => x.id));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [likedKey]);
 
   useEffect(() => {
     const unseenIds = items.filter((x) => x.isNew).map((x) => x.id);
@@ -149,14 +163,28 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
     );
   }
 
+  const likedCount = items.filter((x) => !!x.liked).length;
+  const visibleItems = onlyLiked ? displayItems.filter((x) => !!x.liked) : displayItems;
+
   return (
     <div className="px-6 animate-in fade-in duration-700">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-3xl font-black tracking-tighter uppercase">{t.history}</h2>
           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">{displayItems?.length || 0} ОБРАЗОВ</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {/* Фильтр "только избранное" */}
+          <button
+            onClick={() => setOnlyLiked((v) => !v)}
+            className={`h-9 px-3 rounded-full flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest transition-all ${
+              onlyLiked ? 'bg-red-500 text-white shadow-md' : 'bg-slate-100 text-slate-400'
+            }`}
+            title="Только избранное"
+          >
+            <span className="text-sm leading-none">{onlyLiked ? '♥' : '♡'}</span>
+            {likedCount > 0 && <span>{likedCount}</span>}
+          </button>
           <button 
             onClick={() => setViewMode('grid')}
             className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${viewMode === 'grid' ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-100 text-slate-400'}`}
@@ -172,65 +200,79 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
         </div>
       </div>
 
+      {onlyLiked && likedCount === 0 && (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <span className="text-4xl mb-4">♡</span>
+          <p className="text-sm font-bold uppercase tracking-widest text-slate-300">Нет избранных образов</p>
+        </div>
+      )}
       {viewMode === 'list' ? (
-        <div className="space-y-16">
-          {displayItems.map((item, idx) => {
+        <div className="space-y-10 pb-6">
+          {visibleItems.map((item, idx) => {
             const isLiked = !!item.liked;
             return (
-              <div key={item.id} className="group relative max-w-md mx-auto w-full">
-                <div className="aspect-[3/4] rounded-[3.5rem] overflow-hidden shadow-2xl border-8 border-white relative bg-slate-50 flex items-center justify-center">
-                  <img 
-                    src={item.imageUrl} 
-                    alt={`Look ${idx}`} 
-                    className="w-full h-full object-contain rounded-[3.5rem] group-hover:scale-105 transition-transform duration-1000 cursor-pointer"
-                    onClick={() => setPreviewImage(item.imageUrl)}
+              <div key={item.id} className="max-w-md mx-auto w-full">
+                {/* Image card */}
+                <div className="aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-xl border-4 border-white relative bg-slate-50 flex items-center justify-center">
+                  <img
+                    src={item.imageUrl}
+                    alt={`Look ${idx}`}
+                    className="w-full h-full object-contain rounded-[2.5rem]"
                   />
-                  <div className="absolute top-8 right-8 flex flex-col gap-4">
-                    <button 
+                  {/* Top-right: like + delete — always visible */}
+                  <div className="absolute top-4 right-4 flex flex-col gap-2.5">
+                    <button
                       onClick={(e) => { e.stopPropagation(); toggleLike(item.id, item.imageUrl); }}
-                      className={`w-9 h-9 rounded-full flex items-center justify-center backdrop-blur-xl transition-all shadow-xl ${
-                        isLiked ? 'bg-red-500 text-white opacity-100' : 'bg-white/20 text-white opacity-0 group-hover:opacity-100 hover:bg-white/40'
-                      }`}
+                      className={`w-11 h-11 rounded-full bg-white/90 backdrop-blur-sm shadow-md flex items-center justify-center transition-all active:scale-90 ${isLiked ? 'text-red-500' : 'text-slate-400'}`}
                     >
-                      <span className="text-sm">{isLiked ? '❤️' : '🤍'}</span>
+                      <span className="text-lg leading-none">{isLiked ? '♥' : '♡'}</span>
                     </button>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); deleteLook(item.id); }}
-                      className="w-9 h-9 bg-red-500/80 backdrop-blur-xl rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                    <button
+                      onClick={(e) => { e.stopPropagation(); void deleteLook(item.id); }}
+                      disabled={deletingIds.includes(item.id)}
+                      className="w-11 h-11 rounded-full bg-white/90 backdrop-blur-sm shadow-md flex items-center justify-center text-red-400 transition-all active:scale-90 disabled:opacity-40"
                     >
-                      <span className="text-sm">✕</span>
+                      <span className="text-xl font-light leading-none">×</span>
                     </button>
                   </div>
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-transparent to-transparent p-10 flex items-end justify-between opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="flex gap-4">
-                       <button 
-                         onClick={(e) => { e.stopPropagation(); onReanimate?.(item.id); }}
-                         className="w-12 h-12 bg-white/20 backdrop-blur-xl rounded-full flex items-center justify-center text-white shadow-lg active:scale-90 transition-transform"
-                       >
-                          <span className="text-xl">🎞</span>
-                       </button>
-                       {item.videoUrl && (
-                         <button 
-                           onClick={(e) => { e.stopPropagation(); window.open(item.videoUrl, '_blank'); }}
-                           className="w-12 h-12 bg-white/20 backdrop-blur-xl rounded-full flex items-center justify-center text-white shadow-lg active:scale-90 transition-transform"
-                         >
-                            <span className="text-xl">🎬</span>
-                         </button>
-                       )}
-                       <button 
-                         onClick={(e) => { e.stopPropagation(); handleDownload(item.imageUrl); }}
-                         className="w-12 h-12 bg-white/20 backdrop-blur-xl rounded-full flex items-center justify-center text-white shadow-lg active:scale-90 transition-transform"
-                       >
-                          <span className="text-xl">📥</span>
-                       </button>
-                    </div>
-                  </div>
+                  {/* New indicator */}
+                  {item.isNew && (
+                    <span className="absolute top-4 left-4 w-3 h-3 rounded-full bg-[var(--primary)] shadow-md" />
+                  )}
                 </div>
-                <div className="mt-8 flex items-center justify-between px-6">
-                  <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">ОБРАЗ #{items.length - idx}</span>
-                  <div className="flex items-center gap-2">
-                    {item.isNew && <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" title="Новое" />}
-                    {isLiked && <span className="text-[10px] font-black text-red-400 uppercase tracking-widest">ИЗБРАННОЕ</span>}
+
+                {/* Action bar below image — always visible */}
+                <div className="mt-4 px-2 flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">
+                    {item.isNew ? 'НОВОЕ' : isLiked ? 'ИЗБРАННОЕ' : `#${items.length - idx}`}
+                  </span>
+                  <div className="flex gap-2">
+                    {/* Animate / Re-animate */}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onReanimate?.(item.id); }}
+                      className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-500 transition-all active:scale-90 hover:shadow-lg"
+                      title={item.videoUrl ? 'Переанимировать' : 'Анимировать'}
+                    >
+                      <span className="text-base leading-none">{item.videoUrl ? '↺' : '▷'}</span>
+                    </button>
+                    {/* Play video */}
+                    {item.videoUrl && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setPreviewVideo(item.videoUrl || null); }}
+                        className="w-11 h-11 rounded-full bg-[var(--primary)] shadow-md flex items-center justify-center text-white transition-all active:scale-90 hover:shadow-lg"
+                        title="Смотреть видео"
+                      >
+                        <span className="text-base leading-none">▶</span>
+                      </button>
+                    )}
+                    {/* Download */}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDownload(item.imageUrl); }}
+                      className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-500 transition-all active:scale-90 hover:shadow-lg"
+                      title="Скачать"
+                    >
+                      <span className="text-base leading-none">↓</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -238,31 +280,61 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
           })}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-6">
-          {displayItems.map((item, idx) => {
+        <div className="grid grid-cols-2 gap-4 pb-6">
+          {visibleItems.map((item, idx) => {
             const isLiked = !!item.liked;
             return (
-              <div key={item.id} className="group relative aspect-[3/4] rounded-[2rem] overflow-hidden shadow-lg border-4 border-white bg-slate-50 flex items-center justify-center">
-                <img 
-                  src={item.imageUrl} 
-                  alt={`Look ${idx}`} 
-                  className="w-full h-full object-contain rounded-[2rem] cursor-pointer"
-                  onClick={() => setPreviewImage(item.imageUrl)}
-                />
-                <button 
-                  onClick={(e) => { e.stopPropagation(); toggleLike(item.id, item.imageUrl); }}
-                  className={`absolute top-3 right-3 w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-md transition-all ${isLiked ? 'bg-red-500 text-white' : 'bg-white/20 text-white'}`}
-                >
-                  <span className="text-[10px]">{isLiked ? '❤️' : '🤍'}</span>
-                </button>
-                {item.isNew && (
-                  <span className="absolute top-3 left-3 w-2.5 h-2.5 rounded-full bg-red-500" title="Новое" />
-                )}
-                {item.videoUrl && (
-                  <div className="absolute bottom-3 left-3 w-7 h-7 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white">
-                    <span className="text-[10px]">🎬</span>
-                  </div>
-                )}
+              <div key={item.id} className="flex flex-col">
+                {/* Card */}
+                <div className="relative aspect-[3/4] rounded-[2rem] overflow-hidden shadow-md border-2 border-white bg-slate-50 flex items-center justify-center">
+                  <img
+                    src={item.imageUrl}
+                    alt={`Look ${idx}`}
+                    className="w-full h-full object-contain rounded-[2rem]"
+                  />
+                  {/* Like — top right, always visible */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleLike(item.id, item.imageUrl); }}
+                    className={`absolute top-2.5 right-2.5 w-9 h-9 rounded-full bg-white/90 backdrop-blur-sm shadow-sm flex items-center justify-center transition-all active:scale-90 ${isLiked ? 'text-red-500' : 'text-slate-300'}`}
+                  >
+                    <span className="text-sm leading-none">{isLiked ? '♥' : '♡'}</span>
+                  </button>
+                  {/* New dot */}
+                  {item.isNew && (
+                    <span className="absolute top-2.5 left-2.5 w-2.5 h-2.5 rounded-full bg-[var(--primary)]" />
+                  )}
+                  {/* Video indicator */}
+                  {item.videoUrl && (
+                    <div className="absolute bottom-2.5 left-2.5 w-8 h-8 bg-[var(--primary)]/85 backdrop-blur-sm rounded-full flex items-center justify-center text-white shadow-sm">
+                      <span className="text-[10px] leading-none">▶</span>
+                    </div>
+                  )}
+                </div>
+                {/* Mini action row */}
+                <div className="mt-2 flex gap-1.5 justify-end px-1">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); void deleteLook(item.id); }}
+                    disabled={deletingIds.includes(item.id)}
+                    className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-red-400 text-sm active:scale-90 transition-all disabled:opacity-40"
+                    title="Удалить"
+                  >
+                    <span className="leading-none font-light">×</span>
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDownload(item.imageUrl); }}
+                    className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-sm active:scale-90 transition-all"
+                    title="Скачать"
+                  >
+                    <span className="leading-none">↓</span>
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onReanimate?.(item.id); }}
+                    className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-sm active:scale-90 transition-all"
+                    title={item.videoUrl ? 'Переанимировать' : 'Анимировать'}
+                  >
+                    <span className="leading-none">{item.videoUrl ? '↺' : '▷'}</span>
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -270,6 +342,7 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
       )}
 
       <FullscreenPreview image={previewImage} onClose={() => setPreviewImage(null)} />
+      <FullscreenPreview image={null} video={previewVideo} onClose={() => setPreviewVideo(null)} />
     </div>
   );
 };
