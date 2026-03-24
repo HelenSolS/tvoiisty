@@ -424,10 +424,11 @@ const UploadBox: React.FC<UploadBoxProps> = ({
                         <button
                           onClick={(e) => { e.stopPropagation(); if (!disableTryOnActions) onUpload(item.imageUrl); }}
                           disabled={disableTryOnActions}
-                          className={`w-11 h-11 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-700 shadow-md transition-all active:scale-90 ${disableTryOnActions ? 'opacity-40 cursor-not-allowed' : ''}`}
+                          className={`h-11 px-4 bg-[var(--primary)] rounded-full flex items-center gap-1.5 text-white shadow-md transition-all active:scale-90 ${disableTryOnActions ? 'opacity-40 cursor-not-allowed' : 'hover:shadow-lg'}`}
                           title="Примерить"
                         >
                           <span className="text-base leading-none">◎</span>
+                          <span className="text-[10px] font-black uppercase tracking-wider leading-none">Примерить</span>
                         </button>
                       )}
                       {item.isUserUploaded && (
@@ -472,16 +473,17 @@ const UploadBox: React.FC<UploadBoxProps> = ({
                       >
                         <span className="text-sm leading-none">{isLiked ? '♥' : '♡'}</span>
                       </button>
-                      {onUpload && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); if (!disableTryOnActions) onUpload(item.imageUrl); }}
-                          disabled={disableTryOnActions}
-                          className={`w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-600 shadow-sm transition-all active:scale-90 ${disableTryOnActions ? 'opacity-40 cursor-not-allowed' : ''}`}
-                          title="Примерить"
-                        >
-                          <span className="text-sm leading-none">◎</span>
-                        </button>
-                      )}
+                    {onUpload && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); if (!disableTryOnActions) onUpload(item.imageUrl); }}
+                        disabled={disableTryOnActions}
+                        className={`h-8 px-2.5 bg-[var(--primary)] rounded-full flex items-center gap-1 text-white shadow-sm transition-all active:scale-90 ${disableTryOnActions ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        title="Примерить"
+                      >
+                        <span className="text-xs leading-none">◎</span>
+                        <span className="text-[9px] font-black uppercase tracking-wide leading-none">Примерить</span>
+                      </button>
+                    )}
                       {item.isUserUploaded && (
                         <button
                           onClick={(e) => { e.stopPropagation(); deleteGarment(item.imageUrl); }}

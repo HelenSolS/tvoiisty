@@ -30,6 +30,7 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [stableOrderIds, setStableOrderIds] = useState<string[]>([]);
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
+  const [onlyLiked, setOnlyLiked] = useState(false);
 
   const toggleLike = (sessionId: string, img: string) => {
     setState(prev => {
@@ -91,11 +92,26 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
     });
   }, [items]);
 
+  // Строка-ключ из liked-статусов — меняется только когда лайкают/снимают.
+  const likedKey = useMemo(
+    () => items.map((x) => `${x.id}:${x.liked ? 1 : 0}`).join(','),
+    [items],
+  );
+
+  // При первой загрузке — фиксируем порядок.
   useEffect(() => {
     if (stableOrderIds.length === 0 && sortedForInitialOrder.length > 0) {
       setStableOrderIds(sortedForInitialOrder.map((x) => x.id));
     }
   }, [sortedForInitialOrder, stableOrderIds.length]);
+
+  // При изменении лайков — пересортируем (лайкнутые всплывают вверх).
+  useEffect(() => {
+    if (stableOrderIds.length > 0) {
+      setStableOrderIds(sortedForInitialOrder.map((x) => x.id));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [likedKey]);
 
   useEffect(() => {
     const unseenIds = items.filter((x) => x.isNew).map((x) => x.id);
@@ -147,14 +163,28 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
     );
   }
 
+  const likedCount = items.filter((x) => !!x.liked).length;
+  const visibleItems = onlyLiked ? displayItems.filter((x) => !!x.liked) : displayItems;
+
   return (
     <div className="px-6 animate-in fade-in duration-700">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-3xl font-black tracking-tighter uppercase">{t.history}</h2>
           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">{displayItems?.length || 0} ОБРАЗОВ</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {/* Фильтр "только избранное" */}
+          <button
+            onClick={() => setOnlyLiked((v) => !v)}
+            className={`h-9 px-3 rounded-full flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest transition-all ${
+              onlyLiked ? 'bg-red-500 text-white shadow-md' : 'bg-slate-100 text-slate-400'
+            }`}
+            title="Только избранное"
+          >
+            <span className="text-sm leading-none">{onlyLiked ? '♥' : '♡'}</span>
+            {likedCount > 0 && <span>{likedCount}</span>}
+          </button>
           <button 
             onClick={() => setViewMode('grid')}
             className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${viewMode === 'grid' ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-100 text-slate-400'}`}
@@ -170,9 +200,15 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
         </div>
       </div>
 
+      {onlyLiked && likedCount === 0 && (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <span className="text-4xl mb-4">♡</span>
+          <p className="text-sm font-bold uppercase tracking-widest text-slate-300">Нет избранных образов</p>
+        </div>
+      )}
       {viewMode === 'list' ? (
         <div className="space-y-10 pb-6">
-          {displayItems.map((item, idx) => {
+          {visibleItems.map((item, idx) => {
             const isLiked = !!item.liked;
             return (
               <div key={item.id} className="max-w-md mx-auto w-full">
@@ -245,7 +281,7 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4 pb-6">
-          {displayItems.map((item, idx) => {
+          {visibleItems.map((item, idx) => {
             const isLiked = !!item.liked;
             return (
               <div key={item.id} className="flex flex-col">

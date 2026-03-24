@@ -170,6 +170,8 @@ const App: React.FC = () => {
   
   const [userPhoto, setUserPhoto] = useState<string | null>(null);
   const [garmentPhoto, setGarmentPhoto] = useState<string | null>(null);
+  // Образ, который пользователь хотел примерить до того как выбрал фото.
+  const [pendingGarment, setPendingGarment] = useState<string | null>(null);
   const [resultId, setResultId] = useState<string | null>(null);
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [resultVideo, setResultVideo] = useState<string | null>(null);
@@ -567,17 +569,27 @@ const App: React.FC = () => {
     });
   };
 
-  const handleTryOn = async (garment: string) => {
+  const handleTryOn = async (garment: string, photoOverride?: string) => {
     if (isAnyProcessing) {
       // Prevent parallel try-on/video operations from overlapping.
       return;
     }
-    if (!userPhoto || !garment) return;
-    
+
+    const effectivePhoto = photoOverride ?? userPhoto;
+
+    if (!effectivePhoto) {
+      // Нет фото — запоминаем образ и отправляем на шаг "Мои фото"
+      setPendingGarment(garment);
+      setCurrentStep(1);
+      return;
+    }
+
+    if (!garment) return;
+
     // запоминаем активное фото пользователя для последующих заходов
     setState(prev => ({
       ...prev,
-      auth: { ...prev.auth, selectedUserPhoto: userPhoto },
+      auth: { ...prev.auth, selectedUserPhoto: effectivePhoto },
     }));
 
     setGarmentPhoto(garment);
@@ -596,7 +608,7 @@ const App: React.FC = () => {
       const tryonController = new AbortController();
       tryonAbortRef.current = tryonController;
 
-      const personBlob = await imageToBlob(userPhoto);
+      const personBlob = await imageToBlob(effectivePhoto);
       const garmentBlob = await imageToBlob(garment);
       if (tryonController.signal.aborted) return;
 
@@ -758,24 +770,50 @@ const App: React.FC = () => {
         );
       case 1:
         return (
-          <UploadBox
-            onUploadNew={handleUserPhotoUpload}
-            onSelectPhoto={(url) => {
-              setUserPhoto(url);
-              setState(prev => ({
-                ...prev,
-                auth: { ...prev.auth, selectedUserPhoto: url },
-              }));
-              setCurrentStep(2);
-            }}
-            t={t}
-            state={state}
-            setState={setState}
-          />
+          <>
+            {pendingGarment && (
+              <div className="fixed top-[72px] inset-x-0 z-50 flex justify-center px-6 pointer-events-none">
+                <div className="bg-slate-900 text-white text-[11px] font-bold uppercase tracking-widest px-5 py-3 rounded-full shadow-2xl flex items-center gap-2">
+                  <span className="text-[var(--primary)]">◎</span>
+                  Выберите своё фото — примерка запустится автоматически
+                </div>
+              </div>
+            )}
+            <UploadBox
+              key="step1-user"
+              onUploadNew={(img) => {
+                handleUserPhotoUpload(img);
+                if (pendingGarment) {
+                  const garment = pendingGarment;
+                  setPendingGarment(null);
+                  // Небольшая задержка чтобы state успел обновиться
+                  setTimeout(() => handleTryOn(garment, img), 50);
+                }
+              }}
+              onSelectPhoto={(url) => {
+                setUserPhoto(url);
+                setState(prev => ({
+                  ...prev,
+                  auth: { ...prev.auth, selectedUserPhoto: url },
+                }));
+                if (pendingGarment) {
+                  const garment = pendingGarment;
+                  setPendingGarment(null);
+                  handleTryOn(garment, url);
+                } else {
+                  setCurrentStep(2);
+                }
+              }}
+              t={t}
+              state={state}
+              setState={setState}
+            />
+          </>
         );
       case 2:
         return (
-          <UploadBox 
+          <UploadBox
+            key="step2-gallery"
             onUpload={handleTryOn} 
             t={t} 
             state={state}
