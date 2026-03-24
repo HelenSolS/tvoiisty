@@ -126,7 +126,8 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onV
       setResultSessionId(itemId);
       setTryonState('done');
       if (onResult) {
-        onResult(itemId, displayUrl);
+        // Передаём оригинальный URL с сервера — blob: протухает после перезагрузки
+        onResult(itemId, imageUrl);
       }
     } catch (err: any) {
       console.error('Simple try-on error (adapted)', err);
