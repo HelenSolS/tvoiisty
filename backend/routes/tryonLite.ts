@@ -4,6 +4,7 @@ import multer from 'multer';
 import { isProbablyImageUpload } from '../fileValidation.js';
 import { uploadBuffer } from '../storage.js';
 import { tryOnWithFal } from '../falClient.js';
+import { buildLiteTryOnPrompt } from '../services/tryonPromptBuilder.js';
 import {
   createPendingTryon,
   findActiveOwnerTryon,
@@ -82,10 +83,15 @@ router.post(
         filename: garment.originalname || 'garment.jpg',
       });
 
-      // Один прямой вызов Fal через канонический клиент.
+      // Генерируем разнообразный промпт с рандомной локацией и атмосферой.
+      const prompt = buildLiteTryOnPrompt();
+      console.log('[tryon-lite] prompt:', prompt.slice(0, 120) + '…');
+
       const imageUrl = await tryOnWithFal(
         personStored.url,
         garmentStored.url,
+        undefined,
+        prompt,
       );
       await markTryonCompletedWithImageUrl({
         id: session.id,

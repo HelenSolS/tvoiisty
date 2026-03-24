@@ -32,9 +32,23 @@ export type GenerateImagePayload = {
   model: string;
 };
 
-/** Единый промпт для всех провайдеров (KIE, Fal). */
+/**
+ * Базовый промпт для всех провайдеров (KIE, Fal).
+ * Используется как fallback когда randomizer не задействован.
+ * Явно разделяет роли двух изображений и задаёт красивый фон.
+ */
 export const DEFAULT_IMAGE_PROMPT =
-  'Put the garment from the second image onto the person in the first image. Preserve character consistency, garment consistency, and body shape. Dress naturally, beautifully and stylishly this outfit from the photo. Background: soft beige-gray or light concrete, clean and distraction-free. Style: hyper-realistic high-end fashion photography. Lighting: soft directional side light with subtle rim light. Mood: premium, confident, modern. Composition: rule of thirds, subject centered, vertical frame. Camera: Sony A7R V, 85mm f/1.8. Format: vertical.';
+  'Virtual try-on fashion editorial. ' +
+  'The person from IMAGE 1 is wearing the exact outfit shown in IMAGE 2. ' +
+  'PRESERVE from IMAGE 1: exact face, skin tone, hair, body shape, and natural pose — do not alter the person. ' +
+  'PRESERVE from IMAGE 2: exact garment silhouette, color, print, fabric texture, and every design detail — do not change the outfit. ' +
+  'Do not use the background from either input image. ' +
+  'Scene: elegant sunlit terrace with soft garden bokeh. ' +
+  'Style: Vogue editorial fashion photography, premium campaign quality. ' +
+  'Lighting: soft diffused natural light, subtle rim light on the subject. ' +
+  'Camera: Sony A7R V, 85mm f/1.8, shallow depth of field, subject sharp. ' +
+  'Composition: vertical 9:16, rule of thirds, full or 3/4 figure. ' +
+  'Output: hyper-realistic, pin-sharp subject, beautiful background bokeh.';
 
 export function getImageProvider(model: string): 'fal' | 'kie' {
   if (model.startsWith('fal-ai/')) return 'fal';
