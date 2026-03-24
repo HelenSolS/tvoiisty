@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Dropzone } from './Dropzone';
 import { AppState } from '../types';
 import { FullscreenPreview } from './FullscreenPreview';
+import { IMAGE_VALIDATION_ERROR, isValidImageFile } from '../utils/fileValidation';
 
 interface Step1UploadUserProps {
   // Загрузка НОВОГО фото (из файла / Dropzone)
@@ -100,6 +101,11 @@ export const Step1UploadUser: React.FC<Step1UploadUserProps> = ({ onUploadNew, o
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (!file) return;
+          if (!isValidImageFile(file)) {
+            alert(IMAGE_VALIDATION_ERROR);
+            e.target.value = '';
+            return;
+          }
           const reader = new FileReader();
           reader.onloadend = () => {
             const result = reader.result;
@@ -108,7 +114,6 @@ export const Step1UploadUser: React.FC<Step1UploadUserProps> = ({ onUploadNew, o
             }
           };
           reader.readAsDataURL(file);
-          // Сбрасываем значение, чтобы повторный выбор того же файла тоже срабатывал
           e.target.value = '';
         }}
       />
