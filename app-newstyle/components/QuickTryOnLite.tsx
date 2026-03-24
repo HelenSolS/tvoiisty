@@ -308,24 +308,99 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onB
             )}
             {resultImage ? (
               <div className="w-full max-w-md space-y-6">
-                <div className="relative group aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-2xl border border-white bg-slate-100 flex items-center justify-center p-2">
+                {/* Результат примерки */}
+                <div className="relative aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-2xl border-4 border-white bg-slate-100 flex items-center justify-center">
                   <img
                     src={resultImage}
                     alt="Результат примерки"
-                    className="max-w-full max-h-full object-contain rounded-[2.2rem]"
+                    className="w-full h-full object-contain rounded-[2.2rem]"
                   />
-                  <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                    <button onClick={handleAnimate} className="w-10 h-10 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title="Анимация">
-                      <span className="text-base">🎬</span>
+                  {/* Кнопки всегда видны */}
+                  <div className="absolute top-4 right-4 flex flex-col gap-2.5">
+                    <button
+                      onClick={handleAnimate}
+                      disabled={videoState === 'starting' || isBusy}
+                      className={`w-11 h-11 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-md transition-all active:scale-90 ${
+                        videoState === 'starting' ? 'text-slate-300 cursor-wait' : 'text-slate-600 hover:shadow-lg'
+                      }`}
+                      title="Анимировать"
+                    >
+                      {videoState === 'starting'
+                        ? <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin" />
+                        : <span className="text-base leading-none">{videoUrl ? '↺' : '▷'}</span>
+                      }
                     </button>
-                    <button onClick={handleDownload} className="w-10 h-10 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title="Скачать">
-                      <span className="text-base">📥</span>
+                    <button
+                      onClick={handleDownload}
+                      className="w-11 h-11 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-600 shadow-md transition-all active:scale-90 hover:shadow-lg"
+                      title="Скачать"
+                    >
+                      <span className="text-base leading-none">↓</span>
                     </button>
-                    <button onClick={handleShareTelegram} className="w-10 h-10 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title="Поделиться">
-                      <span className="text-base">↗</span>
+                    <button
+                      onClick={handleShareTelegram}
+                      className="w-11 h-11 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-600 shadow-md transition-all active:scale-90 hover:shadow-lg"
+                      title="Поделиться"
+                    >
+                      <span className="text-base leading-none">↗</span>
                     </button>
                   </div>
                 </div>
+
+                {/* Секция видео — появляется после анимации */}
+                {videoState === 'ready' && videoUrl && (
+                  <div className="relative aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-2xl border-4 border-white bg-slate-900">
+                    <video
+                      src={videoUrl}
+                      autoPlay
+                      loop
+                      playsInline
+                      muted
+                      className="w-full h-full object-contain rounded-[2.2rem]"
+                    />
+                    {/* Кнопки на видео */}
+                    <div className="absolute top-4 right-4 flex flex-col gap-2.5">
+                      <button
+                        onClick={handleAnimate}
+                        disabled={isBusy}
+                        className="w-11 h-11 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-600 shadow-md transition-all active:scale-90 hover:shadow-lg disabled:opacity-40"
+                        title="Переанимировать"
+                      >
+                        <span className="text-base leading-none">↺</span>
+                      </button>
+                      <a
+                        href={videoUrl}
+                        download={`animation-${Date.now()}.mp4`}
+                        className="w-11 h-11 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-600 shadow-md transition-all active:scale-90 hover:shadow-lg"
+                        title="Скачать видео"
+                      >
+                        <span className="text-base leading-none">↓</span>
+                      </a>
+                      <button
+                        onClick={() => { if (videoUrl) window.open(`https://t.me/share/url?url=${encodeURIComponent(videoUrl)}`, '_blank'); }}
+                        className="w-11 h-11 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-600 shadow-md transition-all active:scale-90 hover:shadow-lg"
+                        title="Поделиться"
+                      >
+                        <span className="text-base leading-none">↗</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Статус анимации */}
+                {videoState === 'starting' && (
+                  <div className="w-full rounded-[2rem] bg-slate-50 border-2 border-slate-100 p-8 flex flex-col items-center gap-3 text-center">
+                    <div className="w-8 h-8 border-2 border-slate-200 border-t-[var(--primary)] rounded-full animate-spin" />
+                    <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Создаём анимацию…</p>
+                    <p className="text-[10px] text-slate-300 uppercase tracking-widest">Займёт 1–2 минуты</p>
+                  </div>
+                )}
+                {videoState === 'error' && videoError && (
+                  <div className="w-full rounded-[2rem] bg-red-50 border-2 border-red-100 p-6 text-center">
+                    <p className="text-sm font-semibold text-red-500 mb-1">Не удалось создать анимацию</p>
+                    <p className="text-xs text-red-400">{videoError}</p>
+                  </div>
+                )}
               </div>
             ) : tryonState === 'running' ? (
               <div className="w-full max-w-md h-64 rounded-[2.5rem] bg-slate-100 flex flex-col items-center justify-center text-[11px] font-medium tracking-[0.06em] text-slate-500">

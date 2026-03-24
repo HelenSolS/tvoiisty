@@ -154,34 +154,33 @@ const UploadBox: React.FC<UploadBoxProps> = ({
         <div className="w-full max-w-md">
           {userPhotos.length > 0 ? (
             viewMode === 'list' ? (
-              <div className="flex gap-4 overflow-x-auto no-scrollbar pb-6 -mx-6 px-6 snap-x snap-mandatory">
+              /* Вертикальный слайдер — крупные карточки на всю ширину */
+              <div className="space-y-6 pb-6">
                 {userPhotos.map((img, idx) => (
-                  <div key={idx} className={`flex-shrink-0 w-40 snap-start group relative ${userPhotos.length === 1 ? 'mx-auto' : ''}`}>
-                    <div className="aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-xl bg-slate-50 border-4 border-white group-hover:shadow-2xl transition-all duration-700 flex items-center justify-center">
+                  <div key={idx} className="relative w-full">
+                    <div className="aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-xl bg-slate-50 border-4 border-white flex items-center justify-center">
                       <img
                         src={img}
                         alt={`User ${idx}`}
-                        className="w-full h-full object-contain rounded-[2.5rem] cursor-pointer group-hover:scale-110 transition-transform duration-1000"
-                        onClick={() => setPreviewImage(img)}
+                        className="w-full h-full object-contain rounded-[2.5rem]"
                       />
-                      <div className="absolute top-3 right-3 flex flex-col gap-2">
+                      {/* Кнопки всегда видны */}
+                      <div className="absolute top-4 right-4 flex flex-col gap-2.5">
+                        {onSelectPhoto && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onSelectPhoto(img); }}
+                            className="w-11 h-11 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-700 shadow-md transition-all active:scale-90"
+                            title="Выбрать для примерки"
+                          >
+                            <span className="text-base leading-none">◎</span>
+                          </button>
+                        )}
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onSelectPhoto && onSelectPhoto(img);
-                          }}
-                          className="w-8 h-8 bg-white/80 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={(e) => { e.stopPropagation(); deletePhoto(img); }}
+                          className="w-11 h-11 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-red-400 shadow-md transition-all active:scale-90"
+                          title="Удалить"
                         >
-                          <span className="text-xs">◎</span>
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deletePhoto(img);
-                          }}
-                          className="w-8 h-8 bg-red-500/80 backdrop-blur-md rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
-                        >
-                          <span className="text-sm">✕</span>
+                          <span className="text-xl font-light leading-none">×</span>
                         </button>
                       </div>
                     </div>
@@ -189,34 +188,33 @@ const UploadBox: React.FC<UploadBoxProps> = ({
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-6 px-2 pb-6">
+              /* Сетка 2 колонки */
+              <div className="grid grid-cols-2 gap-4 px-2 pb-6">
                 {userPhotos.map((img, idx) => (
-                  <div key={idx} className="group relative">
-                    <div className="relative aspect-[3/4] rounded-[2rem] overflow-hidden shadow-md bg-slate-50 border-2 border-white mb-3 flex items-center justify-center">
+                  <div key={idx} className="relative">
+                    <div className="relative aspect-[3/4] rounded-[2rem] overflow-hidden shadow-md bg-slate-50 border-2 border-white flex items-center justify-center">
                       <img
                         src={img}
                         alt={`User ${idx}`}
-                        className="w-full h-full object-contain rounded-[2rem] cursor-pointer group-hover:scale-110 transition-transform duration-500"
-                        onClick={() => setPreviewImage(img)}
+                        className="w-full h-full object-contain rounded-[2rem]"
                       />
-                      <div className="absolute top-3 right-3 flex flex-col gap-2">
+                      {/* Кнопки всегда видны */}
+                      <div className="absolute top-2.5 right-2.5 flex flex-col gap-2">
+                        {onSelectPhoto && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onSelectPhoto(img); }}
+                            className="w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-700 shadow-sm transition-all active:scale-90"
+                            title="Выбрать для примерки"
+                          >
+                            <span className="text-sm leading-none">◎</span>
+                          </button>
+                        )}
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onSelectPhoto && onSelectPhoto(img);
-                          }}
-                          className="w-8 h-8 bg-white/80 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={(e) => { e.stopPropagation(); deletePhoto(img); }}
+                          className="w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-red-400 shadow-sm transition-all active:scale-90"
+                          title="Удалить"
                         >
-                          <span className="text-xs">◎</span>
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deletePhoto(img);
-                          }}
-                          className="w-8 h-8 bg-red-500/80 backdrop-blur-md rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
-                        >
-                          <span className="text-sm">✕</span>
+                          <span className="text-lg font-light leading-none">×</span>
                         </button>
                       </div>
                     </div>
@@ -230,8 +228,6 @@ const UploadBox: React.FC<UploadBoxProps> = ({
             </p>
           )}
         </div>
-
-        <FullscreenPreview image={previewImage} onClose={() => setPreviewImage(null)} />
       </div>
     );
   }
@@ -402,133 +398,106 @@ const UploadBox: React.FC<UploadBoxProps> = ({
 
       <div className="w-full max-w-md">
         {galleryMode === 'scroll' ? (
-          <div className="flex gap-6 overflow-x-auto no-scrollbar pb-10 -mx-6 px-6 snap-x snap-mandatory">
-            {sortedItems.map((item) => (
-              <div
-                key={item.id}
-                className={`flex-shrink-0 w-56 sm:w-64 snap-center group ${sortedItems.length === 1 ? 'mx-auto' : ''}`}
-              >
-                <div className="relative aspect-[3/4] rounded-[3rem] overflow-hidden shadow-xl group-hover:shadow-2xl transition-all duration-700 mb-6 bg-slate-50 border-4 border-white flex items-center justify-center">
-                  <img
-                    src={item.imageUrl}
-                    alt={item.title}
-                    className="w-full h-full object-contain rounded-[3rem] group-hover:scale-105 transition-transform duration-1000 cursor-pointer"
-                    onClick={() => setPreviewImage(item.imageUrl)}
-                  />
-                  <div className="absolute top-6 right-6 flex flex-col gap-3">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleLike(item.imageUrl);
-                      }}
-                      className={`w-10 h-10 backdrop-blur-xl rounded-full flex items-center justify-center shadow-xl transition-opacity ${
-                        likedLooks.includes(item.imageUrl)
-                          ? 'bg-red-500/90 text-white opacity-100'
-                          : 'bg-white/80 text-slate-900 opacity-0 group-hover:opacity-100'
-                      }`}
-                    >
-                      <span className="text-base">{likedLooks.includes(item.imageUrl) ? '❤️' : '🤍'}</span>
-                    </button>
-                    {onUpload && (
+          /* Вертикальный слайдер — крупные карточки */
+          <div className="space-y-8 pb-10">
+            {sortedItems.map((item) => {
+              const isLiked = likedLooks.includes(item.imageUrl);
+              return (
+                <div key={item.id} className="relative w-full">
+                  <div className="relative aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-xl bg-slate-50 border-4 border-white flex items-center justify-center">
+                    <img
+                      src={item.imageUrl}
+                      alt={item.title}
+                      className="w-full h-full object-contain rounded-[2.5rem]"
+                      onClick={() => setPreviewImage(item.imageUrl)}
+                    />
+                    {/* Кнопки всегда видны */}
+                    <div className="absolute top-4 right-4 flex flex-col gap-2.5">
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (disableTryOnActions) return;
-                          onUpload(item.imageUrl);
-                        }}
-                        disabled={disableTryOnActions}
-                        className={`w-12 h-12 bg-white/80 backdrop-blur-xl rounded-full flex items-center justify-center text-slate-900 shadow-xl opacity-0 group-hover:opacity-100 transition-opacity ${
-                          disableTryOnActions ? 'cursor-not-allowed opacity-40 group-hover:opacity-40' : ''
-                        }`}
+                        onClick={(e) => { e.stopPropagation(); toggleLike(item.imageUrl); }}
+                        className={`w-11 h-11 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-md transition-all active:scale-90 ${isLiked ? 'text-red-500' : 'text-slate-400'}`}
+                        title="Лайк"
                       >
-                        <span className="text-xl">◎</span>
+                        <span className="text-lg leading-none">{isLiked ? '♥' : '♡'}</span>
                       </button>
-                    )}
-                    {item.isUserUploaded && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteGarment(item.imageUrl);
-                        }}
-                        className="w-12 h-12 bg-red-500/80 backdrop-blur-xl rounded-full flex items-center justify-center text-white shadow-xl opacity-100 transition-opacity"
-                      >
-                        <span className="text-xl">✕</span>
-                      </button>
-                    )}
+                      {onUpload && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); if (!disableTryOnActions) onUpload(item.imageUrl); }}
+                          disabled={disableTryOnActions}
+                          className={`w-11 h-11 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-700 shadow-md transition-all active:scale-90 ${disableTryOnActions ? 'opacity-40 cursor-not-allowed' : ''}`}
+                          title="Примерить"
+                        >
+                          <span className="text-base leading-none">◎</span>
+                        </button>
+                      )}
+                      {item.isUserUploaded && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); deleteGarment(item.imageUrl); }}
+                          className="w-11 h-11 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-red-400 shadow-md transition-all active:scale-90"
+                          title="Удалить"
+                        >
+                          <span className="text-xl font-light leading-none">×</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-3 px-2">
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-900 truncate">{item.title}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 truncate mt-0.5">{item.shopName}</p>
                   </div>
                 </div>
-                <div className="px-4">
-                  <p className="text-xs font-black uppercase tracking-widest text-slate-900 truncate">
-                    {item.title}
-                  </p>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 truncate mt-1">
-                    {item.shopName}
-                  </p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-6 px-2">
-            {sortedItems.map((item) => (
-              <div key={item.id} className="group">
-                <div className="relative aspect-[3/4] rounded-[2rem] overflow-hidden shadow-md bg-slate-50 border-2 border-white mb-3 flex items-center justify-center">
-                  <img
-                    src={item.imageUrl}
-                    alt={item.title}
-                    className="w-full h-full object-contain rounded-[2rem] cursor-pointer group-hover:scale-110 transition-transform duration-500"
-                    onClick={() => setPreviewImage(item.imageUrl)}
-                  />
-                  <div className="absolute top-3 right-3 flex flex-col gap-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleLike(item.imageUrl);
-                      }}
-                      className={`w-8 h-8 backdrop-blur-md rounded-full flex items-center justify-center shadow-sm transition-opacity ${
-                        likedLooks.includes(item.imageUrl)
-                          ? 'bg-red-500/90 text-white opacity-100'
-                          : 'bg-white/80 text-slate-900 opacity-0 group-hover:opacity-100'
-                      }`}
-                    >
-                      <span className="text-xs">{likedLooks.includes(item.imageUrl) ? '❤️' : '🤍'}</span>
-                    </button>
-                    {onUpload && (
+          /* Сетка 2 колонки */
+          <div className="grid grid-cols-2 gap-4 px-2 pb-10">
+            {sortedItems.map((item) => {
+              const isLiked = likedLooks.includes(item.imageUrl);
+              return (
+                <div key={item.id} className="flex flex-col">
+                  <div className="relative aspect-[3/4] rounded-[2rem] overflow-hidden shadow-md bg-slate-50 border-2 border-white mb-2 flex items-center justify-center">
+                    <img
+                      src={item.imageUrl}
+                      alt={item.title}
+                      className="w-full h-full object-contain rounded-[2rem]"
+                      onClick={() => setPreviewImage(item.imageUrl)}
+                    />
+                    {/* Кнопки всегда видны */}
+                    <div className="absolute top-2.5 right-2.5 flex flex-col gap-2">
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (disableTryOnActions) return;
-                          onUpload(item.imageUrl);
-                        }}
-                        disabled={disableTryOnActions}
-                        className={`w-8 h-8 bg-white/80 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity ${
-                          disableTryOnActions ? 'cursor-not-allowed opacity-40 group-hover:opacity-40' : ''
-                        }`}
+                        onClick={(e) => { e.stopPropagation(); toggleLike(item.imageUrl); }}
+                        className={`w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm transition-all active:scale-90 ${isLiked ? 'text-red-500' : 'text-slate-300'}`}
+                        title="Лайк"
                       >
-                        <span className="text-sm">◎</span>
+                        <span className="text-sm leading-none">{isLiked ? '♥' : '♡'}</span>
                       </button>
-                    )}
-                    {item.isUserUploaded && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteGarment(item.imageUrl);
-                        }}
-                        className="w-8 h-8 bg-red-500/80 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-sm opacity-100 transition-opacity"
-                      >
-                        <span className="text-sm">✕</span>
-                      </button>
-                    )}
+                      {onUpload && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); if (!disableTryOnActions) onUpload(item.imageUrl); }}
+                          disabled={disableTryOnActions}
+                          className={`w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-600 shadow-sm transition-all active:scale-90 ${disableTryOnActions ? 'opacity-40 cursor-not-allowed' : ''}`}
+                          title="Примерить"
+                        >
+                          <span className="text-sm leading-none">◎</span>
+                        </button>
+                      )}
+                      {item.isUserUploaded && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); deleteGarment(item.imageUrl); }}
+                          className="w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-red-400 shadow-sm transition-all active:scale-90"
+                          title="Удалить"
+                        >
+                          <span className="text-lg font-light leading-none">×</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-900 truncate px-1">{item.title}</p>
+                  <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 truncate px-1 mt-0.5">{item.shopName}</p>
                 </div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-900 truncate px-2">
-                  {item.title}
-                </p>
-                <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 truncate px-2">
-                  {item.shopName}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
