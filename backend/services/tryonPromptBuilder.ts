@@ -9,33 +9,31 @@ type BuildTryOnPromptInput = {
 };
 
 const ATMOSPHERES = [
-  'Vogue editorial fashion photography, luxury campaign quality',
-  "Harper's Bazaar — premium, confident, modern",
-  'high-end fashion lookbook, aspirational lifestyle editorial',
-  'contemporary street style editorial, bold and sophisticated',
-  'premium brand campaign, clean elegance',
+  'Vogue fashion editorial',
+  "Harper's Bazaar campaign",
+  'high-end fashion lookbook',
+  'contemporary fashion magazine spread',
+  'luxury brand campaign',
 ];
 
 const LOCATIONS = [
-  'sunlit Mediterranean terrace with flowering plants, soft warm bokeh',
-  'elegant marble hotel lobby, high ceilings, natural light streaming in',
-  'cobblestone street in Paris at golden hour, soft blurred background',
-  'modern penthouse interior, floor-to-ceiling windows, city skyline view',
-  'lush botanical greenhouse, diffused light through glass ceiling',
-  'rooftop at sunset, urban skyline softly out of focus',
-  'contemporary art gallery interior, white walls, polished concrete floor',
-  'luxury fashion atelier, cream tones, natural light from tall arched windows',
-  'Japanese zen garden, soft morning mist, clean minimal lines',
-  'Scandinavian forest path, overcast diffused light, clean natural tones',
-  'modern museum exterior steps, architectural columns, bright natural light',
-  'beach promenade at golden hour, turquoise sea softly blurred in distance',
+  'clean white editorial studio, professional softbox lighting, seamless backdrop',
+  'modern rooftop, open sky, crisp natural daylight',
+  'Mediterranean waterfront, calm sea visible in background, diffused overcast light',
+  'sleek contemporary office lobby, glass and steel, cool natural light',
+  'fashion showroom interior, white walls, soft window light',
+  'outdoor urban plaza, modern glass architecture backdrop, even daylight',
+  'minimal luxury apartment, large panoramic windows, neutral interior tones',
+  'coastal cliff path, sea panorama, soft overcast diffused light',
+  'city business district exterior, clean architectural lines, natural light',
+  'contemporary art space, neutral walls, balanced studio lighting',
 ];
 
 const CAMERA_STYLES = [
-  'Canon EOS R5, 85mm f/1.8 portrait lens, shallow depth of field, subject tack sharp',
-  'Sony A7R V, 85mm f/1.4 G Master, beautiful background roll-off bokeh',
-  'Hasselblad X2D, 80mm, medium format detail, crisp editorial quality',
-  'Leica SL3, 75mm Summilux, cinematic background separation',
+  'Canon EOS R5, 85mm f/1.8, tack sharp subject, soft background separation',
+  'Sony A7R V, 85mm f/1.4 G Master, professional editorial framing',
+  'Hasselblad X2D, 80mm, medium format, crisp fashion editorial quality',
+  'Leica SL3, 75mm Summilux, clean professional portrait framing',
 ];
 
 function pickSeeded<T>(items: T[], seed: string, salt: number): T {
@@ -138,13 +136,11 @@ async function resolveClothingContext(
 }
 
 const FALLBACK_PROMPT =
-  'Virtual try-on fashion editorial. ' +
-  'The person from IMAGE 1 is wearing the exact outfit from IMAGE 2. ' +
-  'Preserve exact face, skin tone, hair, body shape from IMAGE 1. ' +
-  'Preserve exact garment color, print, cut, fabric texture from IMAGE 2. ' +
-  'Scene: elegant sunlit terrace, soft garden bokeh. ' +
-  'Style: Vogue premium editorial. Camera: Sony A7R V, 85mm f/1.8. ' +
-  'Vertical 9:16, hyper-realistic, pin-sharp subject.';
+  'Virtual try-on. Person from IMAGE 1 wearing the outfit from IMAGE 2. ' +
+  'Preserve face, skin tone, body shape exactly from IMAGE 1. ' +
+  'Preserve garment color, cut, texture exactly from IMAGE 2. ' +
+  'Background: clean white editorial studio, professional soft light. ' +
+  'Vogue fashion editorial. Canon EOS R5, 85mm f/1.8. Vertical 9:16. Hyper-realistic.';
 
 export async function buildTryOnPrompt(input: BuildTryOnPromptInput): Promise<string> {
   const { db, sessionId, personAssetId, lookId, clothingUrl } = input;
@@ -162,24 +158,22 @@ export async function buildTryOnPrompt(input: BuildTryOnPromptInput): Promise<st
     const camera = pickSeeded(CAMERA_STYLES, sessionId, 37);
 
     const parts: string[] = [
-      'Virtual try-on fashion editorial photograph.',
-      'The person from IMAGE 1 is wearing the exact outfit shown in IMAGE 2.',
-      'PRESERVE from IMAGE 1: exact face features, skin tone, hair, body shape and proportions, natural pose — do not alter the person.',
-      'PRESERVE from IMAGE 2: exact garment silhouette, color, print/pattern, fabric texture, and every design detail — do not change the outfit.',
-      'Do not use backgrounds from either input image.',
-      `Scene: ${location}.`,
-      `Style: ${atmosphere}.`,
-      `Photography: ${camera}, vertical 9:16, rule of thirds, full or 3/4 figure frame.`,
-      'Output: hyper-realistic, pin-sharp subject, beautiful background bokeh, premium quality.',
+      'Virtual try-on.',
+      'Person from IMAGE 1 wearing the outfit from IMAGE 2.',
+      'Preserve face, skin tone, hair, body shape exactly from IMAGE 1.',
+      'Preserve garment color, cut, print, fabric texture exactly from IMAGE 2.',
+      `Background: ${location}.`,
+      `${atmosphere}.`,
+      `${camera}. Vertical 9:16. Hyper-realistic, sharp subject.`,
     ];
 
     if (personDesc) {
-      parts.push(`Person reference: ${personDesc}.`);
+      parts.push(`Person: ${personDesc}.`);
     }
 
     const clothingHints = [clothingCtx.title, clothingCtx.description, clothingAiDesc].filter(Boolean).join('. ');
     if (clothingHints) {
-      parts.push(`Garment reference: ${clothingHints}.`);
+      parts.push(`Outfit: ${clothingHints}.`);
     }
 
     const prompt = parts.join(' ');
@@ -201,15 +195,13 @@ export function buildLiteTryOnPrompt(): string {
   const camera = pickSeeded(CAMERA_STYLES, seed, 31);
 
   return [
-    'Virtual try-on fashion editorial photograph.',
-    'The person from IMAGE 1 is wearing the exact outfit shown in IMAGE 2.',
-    'PRESERVE from IMAGE 1: exact face features, skin tone, hair, body shape and proportions, natural pose — do not alter the person.',
-    'PRESERVE from IMAGE 2: exact garment silhouette, color, print/pattern, fabric texture, and every design detail — do not change the outfit.',
-    'Do not use backgrounds from either input image.',
-    `Scene: ${location}.`,
-    `Style: ${atmosphere}.`,
-    `Photography: ${camera}, vertical 9:16, rule of thirds, full or 3/4 figure frame.`,
-    'Output: hyper-realistic, pin-sharp subject, beautiful background bokeh, premium fashion magazine quality.',
+    'Virtual try-on.',
+    'Person from IMAGE 1 wearing the outfit from IMAGE 2.',
+    'Preserve face, skin tone, hair, body shape exactly from IMAGE 1.',
+    'Preserve garment color, cut, print, fabric texture exactly from IMAGE 2.',
+    `Background: ${location}.`,
+    `${atmosphere}.`,
+    `${camera}. Vertical 9:16. Hyper-realistic, sharp subject.`,
   ].join(' ');
 }
 

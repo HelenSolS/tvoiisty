@@ -34,21 +34,15 @@ export type GenerateImagePayload = {
 
 /**
  * Базовый промпт для всех провайдеров (KIE, Fal).
- * Используется как fallback когда randomizer не задействован.
- * Явно разделяет роли двух изображений и задаёт красивый фон.
+ * Лаконичный — явно разделяет роли двух изображений.
  */
 export const DEFAULT_IMAGE_PROMPT =
-  'Virtual try-on fashion editorial. ' +
-  'The person from IMAGE 1 is wearing the exact outfit shown in IMAGE 2. ' +
-  'PRESERVE from IMAGE 1: exact face, skin tone, hair, body shape, and natural pose — do not alter the person. ' +
-  'PRESERVE from IMAGE 2: exact garment silhouette, color, print, fabric texture, and every design detail — do not change the outfit. ' +
-  'Do not use the background from either input image. ' +
-  'Scene: elegant sunlit terrace with soft garden bokeh. ' +
-  'Style: Vogue editorial fashion photography, premium campaign quality. ' +
-  'Lighting: soft diffused natural light, subtle rim light on the subject. ' +
-  'Camera: Sony A7R V, 85mm f/1.8, shallow depth of field, subject sharp. ' +
-  'Composition: vertical 9:16, rule of thirds, full or 3/4 figure. ' +
-  'Output: hyper-realistic, pin-sharp subject, beautiful background bokeh.';
+  'Virtual try-on. ' +
+  'Person from IMAGE 1 wearing the outfit from IMAGE 2. ' +
+  'Preserve face, skin tone, hair, body shape exactly from IMAGE 1. ' +
+  'Preserve garment color, cut, print, fabric texture exactly from IMAGE 2. ' +
+  'Background: clean white editorial studio, professional soft light. ' +
+  'Vogue fashion editorial. Canon EOS R5, 85mm f/1.8. Vertical 9:16. Hyper-realistic.';
 
 export function getImageProvider(model: string): 'fal' | 'kie' {
   if (model.startsWith('fal-ai/')) return 'fal';
