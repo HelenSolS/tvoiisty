@@ -890,6 +890,16 @@ const App: React.FC = () => {
             }
           }}
           onReanimate={async (sessionId) => {
+            // Сразу очищаем старое видео — пользователь видит что идёт новая анимация
+            setState((prev) => ({
+              ...prev,
+              auth: {
+                ...prev.auth,
+                lookHistory: (prev.auth.lookHistory || []).map((x) =>
+                  x.id === sessionId ? { ...x, videoUrl: undefined } : x,
+                ),
+              },
+            }));
             try {
               const { videoUrl } = await reanimateHistoryItem(
                 { apiBase: API_BASE, headers: getApiHeaders() },
