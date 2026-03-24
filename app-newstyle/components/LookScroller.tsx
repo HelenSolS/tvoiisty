@@ -240,7 +240,7 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
                 {showVideo && item.videoUrl ? (
                   /* ── СЛОЙ ВИДЕО ── */
                   <>
-                    <div className="aspect-[9/16] rounded-[2.5rem] overflow-hidden shadow-xl border-4 border-white relative bg-black">
+                    <div className="aspect-[9/16] rounded-[2.5rem] overflow-hidden shadow-xl border-4 border-white relative bg-slate-50">
                       <video
                         src={item.videoUrl}
                         autoPlay loop playsInline muted
@@ -270,9 +270,9 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
                     <div className="mt-4 px-2 flex items-center justify-between">
                       <button
                         onClick={() => setVideoLayerId(null)}
-                        className="h-9 px-3 rounded-full bg-slate-100 flex items-center gap-1.5 text-slate-500 text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all"
+                        className="h-10 px-4 rounded-full bg-white shadow-md border border-slate-100 flex items-center gap-2 text-slate-600 text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all"
                       >
-                        <span>←</span><span>Фото</span>
+                        <span className="text-sm">←</span><span>К фото</span>
                       </button>
                       <div className="flex gap-2">
                         <button
@@ -404,10 +404,10 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
                   {item.videoUrl && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setPreviewVideo(item.videoUrl!); }}
-                      className="absolute bottom-2.5 left-2.5 w-8 h-8 bg-[var(--primary)] backdrop-blur-sm rounded-full flex items-center justify-center text-white shadow-md active:scale-90 transition-all"
+                      className="absolute bottom-2.5 left-2.5 w-9 h-9 bg-white/95 rounded-full flex items-center justify-center text-slate-600 shadow-md border border-slate-100 active:scale-90 transition-all"
                       title="Смотреть анимацию"
                     >
-                      <span className="text-[10px] leading-none">▶</span>
+                      <span className="text-[11px] leading-none">▶</span>
                     </button>
                   )}
                 </div>
@@ -467,9 +467,9 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
           </div>
           <button
             onClick={() => setPreviewVideo(null)}
-            className="mt-6 px-8 py-3 bg-white rounded-full text-slate-900 font-black text-[11px] uppercase tracking-widest shadow-lg active:scale-95 transition-all"
+            className="mt-6 h-11 px-6 bg-white/15 backdrop-blur-sm border border-white/30 rounded-full text-white font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all"
           >
-            ← Назад
+            ← К фото
           </button>
         </div>
       )}
