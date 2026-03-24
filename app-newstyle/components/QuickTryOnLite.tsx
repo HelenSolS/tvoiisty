@@ -32,6 +32,8 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onV
 
   const [isBusy, setIsBusy] = useState(false);
   const [resultSessionId, setResultSessionId] = useState<string | null>(null);
+  // Оригинальный URL с сервера (для анимации) — blob: нельзя слать на сервер
+  const [resultImageServerUrl, setResultImageServerUrl] = useState<string | null>(null);
 
   const personInputRef = useRef<HTMLInputElement | null>(null);
   const garmentInputRef = useRef<HTMLInputElement | null>(null);
@@ -50,6 +52,7 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onV
     setPersonFile(file);
     setPersonPreview(URL.createObjectURL(file));
     setResultImage(null);
+    setResultImageServerUrl(null);
     setVideoUrl(null);
     setVideoState('idle');
     setVideoError(null);
@@ -112,17 +115,18 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onV
 
       const itemId = sessionId || `tryon-lite-${Date.now()}`;
 
-      // Сжимаем результат перед сохранением в историю
-      const compressedBlob = await compressImageUrl(imageUrl);
-      const finalUrl = compressedBlob
-        ? URL.createObjectURL(compressedBlob)
-        : imageUrl;
+      // Сохраняем оригинальный URL для анимации (blob: нельзя слать на сервер)
+      setResultImageServerUrl(imageUrl);
 
-      setResultImage(finalUrl);
+      // Сжимаем для отображения
+      const compressedBlob = await compressImageUrl(imageUrl);
+      const displayUrl = compressedBlob ? URL.createObjectURL(compressedBlob) : imageUrl;
+
+      setResultImage(displayUrl);
       setResultSessionId(itemId);
       setTryonState('done');
       if (onResult) {
-        onResult(itemId, finalUrl);
+        onResult(itemId, displayUrl);
       }
     } catch (err: any) {
       console.error('Simple try-on error (adapted)', err);
@@ -164,7 +168,7 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onV
   };
 
   const handleAnimate = async () => {
-    if (!resultImage || !API_URL) return;
+    if (!resultImageServerUrl || !API_URL) return;
     if (videoState === 'starting') return;
 
     setVideoState('starting');
@@ -177,7 +181,7 @@ export const QuickTryOnLite: React.FC<QuickTryOnLiteProps> = ({ t, onResult, onV
       const token = localStorage.getItem('tvoiisty_token');
       const { videoUrl: createdVideoUrl } = await startAnimationLite({
         apiBase: API_URL,
-        imageUrl: resultImage,
+        imageUrl: resultImageServerUrl,
         headers: getOwnerHeaders(ownerClientId, token),
       });
       setVideoUrl(createdVideoUrl);

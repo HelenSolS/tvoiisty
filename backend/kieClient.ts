@@ -101,7 +101,11 @@ export async function generateImageTryOn(
 }
 
 const DEFAULT_VIDEO_PROMPT =
-  'Cinematic fashion film, dynamic and smooth. The person from the image moves with catwalk-like grace so the outfit is clearly visible at all times. Soft diffused lighting, no harsh shadows. Beautiful textures and a refined, fitting location. Rule of thirds, hyperrealistic cinematography, film look. One beautiful environment that suits the look—e.g. minimal atelier, sunlit terrace, or urban backdrop.';
+  'The same person and same outfit in the same environment from the image. ' +
+  'Preserve face identity exactly. Preserve outfit exactly. ' +
+  'Subtle cinematic motion. Natural body movement, relaxed and confident. ' +
+  'Light wind moving fabric slightly. Slow cinematic camera movement. ' +
+  'Shallow depth of field. Cinematic lighting. Premium fashion film style. Natural colors.';
 
 /**
  * Grok и Kling используют jobs/createTask (не veo/generate).
@@ -139,16 +143,27 @@ function extractVideoUrlFromResultJson(data: unknown): string | undefined {
 async function createVideoTask(params: { imageUrl: string; prompt?: string; model: string }): Promise<string> {
   const prompt = params.prompt || DEFAULT_VIDEO_PROMPT;
   const input = buildVideoInput(params.model, params.imageUrl, prompt);
-  console.log('[KIE VIDEO] createTask model:', params.model);
+  console.log('[KIE VIDEO] createTask model:', params.model, 'input keys:', Object.keys(input));
   const res = await fetch(`${base()}/jobs/createTask`, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({ model: params.model, input }),
   });
-  const data = (await res.json()) as { data?: { taskId?: string }; message?: string; code?: number };
-  if (!res.ok) throw new Error(data?.message || 'Ошибка KIE при создании видео');
-  const taskId = data?.data?.taskId;
-  if (!taskId) throw new Error('KIE не вернул taskId для видео');
+  const data = (await res.json()) as Record<string, unknown>;
+  console.log('[KIE VIDEO] response status:', res.status, 'body:', JSON.stringify(data).slice(0, 300));
+  if (!res.ok) throw new Error((data?.message as string) || 'Ошибка KIE при создании видео');
+  // Пробуем все возможные пути к taskId
+  const inner = data?.data as Record<string, unknown> | undefined;
+  const taskId =
+    (inner?.taskId as string | undefined) ??
+    (inner?.task_id as string | undefined) ??
+    (data?.taskId as string | undefined) ??
+    (data?.task_id as string | undefined) ??
+    (data?.id as string | undefined);
+  if (!taskId) {
+    console.error('[KIE VIDEO] no taskId in response:', JSON.stringify(data));
+    throw new Error('KIE не вернул taskId для видео');
+  }
   return taskId;
 }
 

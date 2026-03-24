@@ -34,6 +34,8 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
   const confirmTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   // Какой элемент сейчас показывает видео-слой
   const [videoLayerId, setVideoLayerId] = useState<string | null>(null);
+  // Какой элемент сейчас анимируется
+  const [animatingId, setAnimatingId] = useState<string | null>(null);
 
   const toggleLike = (sessionId: string, img: string) => {
     setState(prev => {
@@ -222,6 +224,14 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
             const isLiked = !!item.liked;
             const hasVideo = !!item.videoUrl;
             const showVideo = videoLayerId === item.id && hasVideo;
+            const isAnimating = animatingId === item.id;
+
+            const handleAnimate = async () => {
+              if (isAnimating || !onReanimate) return;
+              setAnimatingId(item.id);
+              setVideoLayerId(null);
+              try { await onReanimate(item.id); } finally { setAnimatingId(null); }
+            };
 
             return (
               <div key={item.id} className="max-w-md mx-auto w-full">
@@ -265,10 +275,15 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
                       </button>
                       <div className="flex gap-2">
                         <button
-                          onClick={(e) => { e.stopPropagation(); onReanimate?.(item.id); setVideoLayerId(null); }}
-                          className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-500 transition-all active:scale-90"
+                          onClick={(e) => { e.stopPropagation(); handleAnimate(); }}
+                          disabled={isAnimating}
+                          className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-500 transition-all active:scale-90 disabled:opacity-40"
                           title="Переанимировать (старая удалится)"
-                        ><span className="text-base leading-none">▷</span></button>
+                        >
+                          {isAnimating
+                            ? <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin" />
+                            : <span className="text-base leading-none">▷</span>}
+                        </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDownload(item.videoUrl!); }}
                           className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-500 transition-all active:scale-90"
@@ -310,8 +325,13 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
                       {item.isNew && <span className="absolute top-4 left-4 w-3 h-3 rounded-full bg-[var(--primary)] shadow-md" />}
                     </div>
 
-                    {/* Вкладка анимации — только если есть видео */}
-                    {hasVideo && (
+                    {/* Вкладка анимации / статус */}
+                    {isAnimating ? (
+                      <div className="mt-2 w-full h-10 rounded-[1.5rem] bg-slate-50 border border-slate-100 flex items-center justify-center gap-2 text-slate-400 text-[10px] font-black uppercase tracking-widest">
+                        <div className="w-3.5 h-3.5 border-2 border-slate-200 border-t-[var(--primary)] rounded-full animate-spin" />
+                        <span>Создаём анимацию…</span>
+                      </div>
+                    ) : hasVideo ? (
                       <button
                         onClick={() => setVideoLayerId(item.id)}
                         className="mt-2 w-full h-10 rounded-[1.5rem] bg-[var(--primary)]/10 border border-[var(--primary)]/20 flex items-center justify-center gap-2 text-[var(--primary)] text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 hover:bg-[var(--primary)]/20"
@@ -319,7 +339,7 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
                         <span className="text-sm">▶</span>
                         <span>Посмотреть анимацию</span>
                       </button>
-                    )}
+                    ) : null}
 
                     {/* Action bar */}
                     <div className="mt-3 px-2 flex items-center justify-between">
@@ -328,10 +348,15 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
                       </span>
                       <div className="flex gap-2">
                         <button
-                          onClick={(e) => { e.stopPropagation(); onReanimate?.(item.id); }}
-                          className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-500 transition-all active:scale-90"
+                          onClick={(e) => { e.stopPropagation(); handleAnimate(); }}
+                          disabled={isAnimating}
+                          className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-500 transition-all active:scale-90 disabled:opacity-40"
                           title={hasVideo ? 'Переанимировать (старая удалится)' : 'Анимировать'}
-                        ><span className="text-base leading-none">▷</span></button>
+                        >
+                          {isAnimating
+                            ? <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin" />
+                            : <span className="text-base leading-none">▷</span>}
+                        </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDownload(item.imageUrl); }}
                           className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-500 transition-all active:scale-90"
