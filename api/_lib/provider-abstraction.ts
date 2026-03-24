@@ -30,8 +30,51 @@ export type GenerateImagePayload = {
   model: string;
 };
 
-export const DEFAULT_IMAGE_PROMPT =
-  'Put the garment from the second image onto the person in the first image. Preserve character consistency, garment consistency, and body shape. Dress naturally, beautifully and stylishly this outfit from the photo. Background: soft beige-gray or light concrete, clean and distraction-free. Style: hyper-realistic high-end fashion photography. Lighting: soft directional side light with subtle rim light. Mood: premium, confident, modern. Composition: rule of thirds, subject centered, vertical frame. Camera: Sony A7R V, 85mm f/1.8. Format: vertical.';
+const LOCATIONS = [
+  'clean white editorial studio, professional softbox lighting',
+  'modern rooftop terrace, open sky, crisp natural daylight',
+  'Mediterranean waterfront, calm sea in background, soft overcast light',
+  'sleek contemporary office lobby, glass and steel, cool natural light',
+  'fashion showroom interior, white walls, soft window light',
+  'outdoor urban plaza, modern architecture backdrop, even daylight',
+  'coastal cliff path, sea panorama, soft diffused light',
+  'minimal luxury apartment, large panoramic windows, neutral tones',
+];
+
+const ATMOSPHERES = [
+  'Vogue fashion editorial',
+  "Harper's Bazaar campaign",
+  'high-end fashion lookbook',
+  'luxury brand campaign',
+  'contemporary fashion magazine spread',
+];
+
+const CAMERAS = [
+  'Canon EOS R5, 85mm f/1.8, tack sharp, soft background separation',
+  'Sony A7R V, 85mm f/1.4 G Master, professional editorial framing',
+  'Hasselblad X2D, 80mm, crisp fashion editorial quality',
+];
+
+function pickRandom<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+export function buildRandomTryOnPrompt(): string {
+  const location = pickRandom(LOCATIONS);
+  const atmosphere = pickRandom(ATMOSPHERES);
+  const camera = pickRandom(CAMERAS);
+  return (
+    'Virtual try-on. ' +
+    'Person from IMAGE 1 wearing the outfit from IMAGE 2. ' +
+    'Preserve face, skin tone, hair, body shape exactly from IMAGE 1. ' +
+    'Preserve garment color, cut, print, fabric texture exactly from IMAGE 2. ' +
+    `Background: ${location}. ` +
+    `${atmosphere}. ` +
+    `${camera}. Vertical 9:16. Hyper-realistic, sharp subject.`
+  );
+}
+
+export const DEFAULT_IMAGE_PROMPT = buildRandomTryOnPrompt();
 
 export function getImageProvider(model: string): 'fal' | 'kie' {
   if (model.startsWith('fal-ai/')) return 'fal';

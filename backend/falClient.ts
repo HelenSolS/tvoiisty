@@ -5,7 +5,7 @@
  * что и в общем Fal-провайдере (prompt + image_urls).
  */
 
-import { DEFAULT_IMAGE_PROMPT } from '../lib/provider-abstraction.js';
+import { buildRandomTryOnPrompt } from '../lib/provider-abstraction.js';
 
 const FAL_MODEL_DEFAULT = 'fal-ai/nano-banana-pro/edit';
 const FAL_POLL_TIMEOUT_MS = 70_000;
@@ -43,7 +43,7 @@ export async function tryOnWithFal(
   const falInput =
     effectiveModel === FAL_MODEL_DEFAULT
       ? {
-          prompt: prompt?.trim() || DEFAULT_IMAGE_PROMPT,
+          prompt: prompt?.trim() || buildRandomTryOnPrompt(),
           image_urls: [personImageUrl, clothingImageUrl],
           num_images: 1,
           aspect_ratio: '9:16' as const,

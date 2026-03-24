@@ -3,9 +3,8 @@
  * Только Fal (FAL_KEY): Fal chat → Fal proxy. OpenAI не вызываем. Иначе возвращаем единый стандартный промпт для всех моделей.
  */
 
-/** Единый стандартный промпт для всех моделей (KIE, Fal). Совпадает с api/generate-image.ts. OpenAI не вызываем. */
-const DEFAULT_IMAGE_PROMPT =
-  'Put the garment from the second image onto the person in the first image. Preserve character consistency, garment consistency, and body shape. Dress naturally, beautifully and stylishly this outfit from the photo. Background: soft beige-gray or light concrete, clean and distraction-free. Style: hyper-realistic high-end fashion photography. Lighting: soft directional side light with subtle rim light. Mood: premium, confident, modern. Composition: rule of thirds, subject centered, vertical frame. Camera: Sony A7R V, 85mm f/1.8. Format: vertical.';
+import { buildRandomTryOnPrompt } from './_lib/provider-abstraction.js';
+const DEFAULT_IMAGE_PROMPT = buildRandomTryOnPrompt();
 
 const FAL_CHAT_MODEL = 'fal-ai/Mixtral-8x7B-Instruct-v0.1';
 
