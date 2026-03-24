@@ -19,6 +19,5 @@ export function isValidImageFile(file: File | null | undefined): boolean {
   return ALLOWED_IMAGE_EXTENSIONS.some((ext) => name.endsWith(ext));
 }
 
-export const IMAGE_VALIDATION_ERROR =
-  'Пожалуйста, загрузите фото (jpg, png, webp, heic, avif). Видео и документы не поддерживаются.';
+export const IMAGE_VALIDATION_ERROR = 'Это не фото';
 
