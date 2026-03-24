@@ -228,6 +228,7 @@ const App: React.FC = () => {
     return () => window.removeEventListener('online', onOnline);
   }, []);
 
+
   useEffect(() => {
     let cancelled = false;
     const syncPendingPersonUploads = async () => {
@@ -280,6 +281,27 @@ const App: React.FC = () => {
     const msg = err && typeof err === 'object' && 'message' in err ? String((err as any).message || '') : '';
     return msg.includes(`-${status}`) || msg.includes(` ${status}`);
   };
+
+  // GET /api/looks — загружаем вещи из галереи с сервера
+  useEffect(() => {
+    const fetchLooks = async () => {
+      try {
+        const token = localStorage.getItem('tvoiisty_token');
+        const res = await fetch(`${API_BASE}/api/looks`, {
+          headers: getOwnerHeaders(backendUserId, token),
+        });
+        updateBackendUserIdFromHeaders(res);
+        if (!res.ok) throw new Error(`GET /api/looks ${res.status}`);
+        const data = await res.json();
+        const list = Array.isArray(data?.looks) ? data.looks : Array.isArray(data) ? data : [];
+        setBackendLooks(list.map((x: any) => ({ id: String(x.id), imageUrl: String(x.imageUrl || '') })));
+      } catch (err) {
+        console.error('Looks load error', err);
+        logError('LOOKS', err);
+      }
+    };
+    fetchLooks();
+  }, [backendUserId, syncTick]);
 
   useEffect(() => {
     let cancelled = false;
