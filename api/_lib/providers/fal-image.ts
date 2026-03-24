@@ -99,12 +99,17 @@ export async function runFalTryOn(
 
   if (!needPoll) {
     const duration_ms = Date.now() - startTs;
+    const isBadInput =
+      falRes.status === 422 &&
+      rawBody.toLowerCase().includes('validating');
     return {
       status: 'error',
       model,
       duration_ms,
-      httpStatus: 502,
-      error: 'Не удалось сгенерировать изображение. Попробуйте другую модель.',
+      httpStatus: isBadInput ? 422 : 502,
+      error: isBadInput
+        ? 'Не удалось обработать фото. Попробуйте загрузить другое.'
+        : 'Не удалось сгенерировать изображение. Попробуйте другую модель.',
     };
   }
 

@@ -85,6 +85,11 @@ export async function tryOnWithFal(
     throw new Error(msg);
   }
 
+  // 422 — модель не смогла обработать входные изображения (плохое фото, формат и т.д.)
+  if (res.status === 422 && raw.toLowerCase().includes('validating')) {
+    throw new Error('BAD_INPUT: Не удалось обработать фото. Попробуйте загрузить другое.');
+  }
+
   const needPoll =
     (res.status === 202 || (res.ok && data?.status === 'IN_QUEUE')) && data?.status_url;
   if (!needPoll) {
