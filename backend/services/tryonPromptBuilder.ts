@@ -8,32 +8,56 @@ type BuildTryOnPromptInput = {
   clothingUrl?: string | null;
 };
 
-const ATMOSPHERES = [
-  'Vogue fashion editorial',
-  "Harper's Bazaar campaign",
-  'high-end fashion lookbook',
-  'contemporary fashion magazine spread',
-  'luxury brand campaign',
+const PROMPT_CORE = `You are doing a virtual fashion try-on.
+
+The FIRST image is the PERSON (identity reference).
+The SECOND image is the OUTFIT (clothing reference only).
+
+Dress the person from the FIRST image in the outfit from the SECOND image.
+Remove or ignore the original clothing from the person image.
+
+Preserve the person's identity: same face, age, gender expression, hairstyle and overall build.
+Preserve the outfit design from the second image: color, fabric, cut, silhouette and key details.
+Adapt the outfit naturally to the person's body, pose and camera angle.
+
+Do not stylize or redraw the face.
+The final result must look like a real photo of this person wearing this outfit.
+
+Full body visible. Natural posture. Premium fashion photography style.`;
+
+const SCENE_POOL = [
+  'modern gym with dramatic lighting',
+  'sunrise mountain trail with fresh air',
+  'sunset ocean shore with golden light',
+  'luxury yacht deck',
+  'coastal promenade',
+  'clean white gallery interior',
+  'luxury minimalist penthouse',
+  'high-end showroom interior',
+  'modern downtown street',
+  'glass skyscraper district',
+  'evening city lights boulevard',
+  'forest clearing with sun rays',
+  'mountain valley landscape',
+  'luxury fashion boutique interior',
+  'rooftop terrace with city view',
+  'modern architectural concrete space',
 ];
 
-const LOCATIONS = [
-  'clean white editorial studio, professional softbox lighting, seamless backdrop',
-  'modern rooftop, open sky, crisp natural daylight',
-  'Mediterranean waterfront, calm sea visible in background, diffused overcast light',
-  'sleek contemporary office lobby, glass and steel, cool natural light',
-  'fashion showroom interior, white walls, soft window light',
-  'outdoor urban plaza, modern glass architecture backdrop, even daylight',
-  'minimal luxury apartment, large panoramic windows, neutral interior tones',
-  'coastal cliff path, sea panorama, soft overcast diffused light',
-  'city business district exterior, clean architectural lines, natural light',
-  'contemporary art space, neutral walls, balanced studio lighting',
+const LIGHTING_POOL = [
+  'golden hour sunset light',
+  'soft morning diffused light',
+  'bright clean studio lighting',
+  'warm evening ambient light',
+  'dramatic cinematic side light',
+  'soft natural window light',
 ];
 
 const CAMERA_STYLES = [
-  'Canon EOS R5, 85mm f/1.8, tack sharp subject, soft background separation',
-  'Sony A7R V, 85mm f/1.4 G Master, professional editorial framing',
-  'Hasselblad X2D, 80mm, medium format, crisp fashion editorial quality',
-  'Leica SL3, 75mm Summilux, clean professional portrait framing',
+  'full body fashion shot, Canon EOS R5, 85mm f/1.8',
+  'editorial standing pose, Sony A7R V, 85mm f/1.4',
+  'wide cinematic shot, Hasselblad X2D, 80mm',
+  'walking lifestyle shot, Canon EOS R5, 50mm f/1.2',
 ];
 
 function pickSeeded<T>(items: T[], seed: string, salt: number): T {
@@ -135,12 +159,13 @@ async function resolveClothingContext(
   return { title: '', description: '', assetId: null };
 }
 
-const FALLBACK_PROMPT =
-  'Virtual try-on. Person from IMAGE 1 wearing the outfit from IMAGE 2. ' +
-  'Preserve face, skin tone, body shape exactly from IMAGE 1. ' +
-  'Preserve garment color, cut, texture exactly from IMAGE 2. ' +
-  'Background: clean white editorial studio, professional soft light. ' +
-  'Vogue fashion editorial. Canon EOS R5, 85mm f/1.8. Vertical 9:16. Hyper-realistic.';
+const FALLBACK_PROMPT = [
+  PROMPT_CORE,
+  'Environment: high-end showroom interior.',
+  'Lighting: soft natural window light.',
+  'Camera: editorial standing pose, Sony A7R V, 85mm f/1.4.',
+  'cinematic lighting, natural skin texture, premium editorial fashion photography, photorealistic.',
+].join('\n\n');
 
 export async function buildTryOnPrompt(input: BuildTryOnPromptInput): Promise<string> {
   const { db, sessionId, personAssetId, lookId, clothingUrl } = input;
@@ -153,30 +178,28 @@ export async function buildTryOnPrompt(input: BuildTryOnPromptInput): Promise<st
 
     const clothingAiDesc = await getAssetAnalysisDescription(db, clothingCtx.assetId);
 
-    const atmosphere = pickSeeded(ATMOSPHERES, sessionId, 11);
-    const location = pickSeeded(LOCATIONS, sessionId, 23);
+    const scene = pickSeeded(SCENE_POOL, sessionId, 23);
+    const lighting = pickSeeded(LIGHTING_POOL, sessionId, 11);
     const camera = pickSeeded(CAMERA_STYLES, sessionId, 37);
 
     const parts: string[] = [
-      'Virtual try-on.',
-      'Person from IMAGE 1 wearing the outfit from IMAGE 2.',
-      'Preserve face, skin tone, hair, body shape exactly from IMAGE 1.',
-      'Preserve garment color, cut, print, fabric texture exactly from IMAGE 2.',
-      `Background: ${location}.`,
-      `${atmosphere}.`,
-      `${camera}. Vertical 9:16. Hyper-realistic, sharp subject.`,
+      PROMPT_CORE,
+      `Environment: ${scene}.`,
+      `Lighting: ${lighting}.`,
+      `Camera: ${camera}.`,
+      'cinematic lighting, natural skin texture, premium editorial fashion photography, soft depth of field, high detail, photorealistic.',
     ];
 
     if (personDesc) {
-      parts.push(`Person: ${personDesc}.`);
+      parts.push(`Person context: ${personDesc}.`);
     }
 
     const clothingHints = [clothingCtx.title, clothingCtx.description, clothingAiDesc].filter(Boolean).join('. ');
     if (clothingHints) {
-      parts.push(`Outfit: ${clothingHints}.`);
+      parts.push(`Outfit context: ${clothingHints}.`);
     }
 
-    const prompt = parts.join(' ');
+    const prompt = parts.join('\n\n');
     return prompt.trim() || FALLBACK_PROMPT;
   } catch (err) {
     console.warn('[tryon-prompt] fallback to default prompt', err);
@@ -190,18 +213,16 @@ export async function buildTryOnPrompt(input: BuildTryOnPromptInput): Promise<st
  */
 export function buildLiteTryOnPrompt(): string {
   const seed = String(Date.now());
-  const location = pickSeeded(LOCATIONS, seed, 7);
-  const atmosphere = pickSeeded(ATMOSPHERES, seed, 13);
+  const scene = pickSeeded(SCENE_POOL, seed, 7);
+  const lighting = pickSeeded(LIGHTING_POOL, seed, 13);
   const camera = pickSeeded(CAMERA_STYLES, seed, 31);
 
   return [
-    'Virtual try-on.',
-    'Person from IMAGE 1 wearing the outfit from IMAGE 2.',
-    'Preserve face, skin tone, hair, body shape exactly from IMAGE 1.',
-    'Preserve garment color, cut, print, fabric texture exactly from IMAGE 2.',
-    `Background: ${location}.`,
-    `${atmosphere}.`,
-    `${camera}. Vertical 9:16. Hyper-realistic, sharp subject.`,
-  ].join(' ');
+    PROMPT_CORE,
+    `Environment: ${scene}.`,
+    `Lighting: ${lighting}.`,
+    `Camera: ${camera}.`,
+    'cinematic lighting, natural skin texture, premium editorial fashion photography, soft depth of field, high detail, photorealistic.',
+  ].join('\n\n');
 }
 
