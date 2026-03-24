@@ -103,10 +103,12 @@ router.post(
       res.json({ image_url: imageUrl, session_id: session.id });
     } catch (e: any) {
       console.error('[tryon-lite] failed', e);
-      await markTryonFailed(session.id, 'Не удалось создать примерку. Попробуйте ещё раз.');
-      res.status(502).json({
-        error: 'Не удалось создать примерку. Попробуйте ещё раз.',
-      });
+      const isBadInput = typeof e?.message === 'string' && e.message.startsWith('BAD_INPUT:');
+      const userMessage = isBadInput
+        ? e.message.replace('BAD_INPUT: ', '')
+        : 'Не удалось создать примерку. Попробуйте ещё раз.';
+      await markTryonFailed(session.id, userMessage);
+      res.status(isBadInput ? 422 : 502).json({ error: userMessage });
     }
   },
 );
