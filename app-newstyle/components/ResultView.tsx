@@ -27,16 +27,7 @@ const ResultView: React.FC<ResultViewProps> = ({
 
   const handleDownload = () => {
     if (!image) return;
-    try {
-      const link = document.createElement('a');
-      link.href = image;
-      link.download = 'tryon-result.jpg';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch {
-      // silent fallback
-    }
+    window.open(image, '_blank');
   };
 
   const handleShareTelegram = () => {
@@ -64,25 +55,12 @@ const ResultView: React.FC<ResultViewProps> = ({
               </p>
             </div>
           ) : image ? (
-            <>
-              <img
+            <img
                 src={image}
                 alt="Result"
                 className="max-w-full max-h-full object-contain rounded-[2.2rem] animate-in zoom-in duration-1000 cursor-pointer"
                 onClick={() => setIsPreviewOpen(true)}
               />
-              <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                <button onClick={onCreateVideo} className="w-10 h-10 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title={t.createVideo}>
-                  <span className="text-base">🎬</span>
-                </button>
-                <button onClick={handleDownload} className="w-10 h-10 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title={t.download}>
-                  <span className="text-base">📥</span>
-                </button>
-                <button onClick={handleShareTelegram} className="w-10 h-10 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 shadow-md border border-slate-200 hover:shadow-lg active:scale-95 transition-all" title={t.share}>
-                  <span className="text-base">↗</span>
-                </button>
-              </div>
-            </>
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-slate-300">
               <span className="text-5xl mb-4">✨</span>
@@ -117,13 +95,39 @@ const ResultView: React.FC<ResultViewProps> = ({
         )}
 
         {image && !isProcessing && !error && (
-          <div className="space-y-4">
-            <button
-              onClick={onReset}
-              className="w-full py-4 text-slate-400 font-bold text-[10px] uppercase tracking-widest hover:text-slate-600 transition-colors"
-            >
-              {t.back}
-            </button>
+          <div className="space-y-3">
+            {/* Action bar — всегда видимые кнопки */}
+            <div className="flex items-center justify-between px-1">
+              <button
+                onClick={onReset}
+                className="text-slate-400 font-bold text-[10px] uppercase tracking-widest hover:text-slate-600 transition-colors"
+              >
+                {t.back}
+              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={onCreateVideo}
+                  className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-600 transition-all active:scale-90"
+                  title={t.createVideo}
+                >
+                  <span className="text-base leading-none">▷</span>
+                </button>
+                <button
+                  onClick={handleDownload}
+                  className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-600 transition-all active:scale-90"
+                  title={t.download}
+                >
+                  <span className="text-base leading-none">↓</span>
+                </button>
+                <button
+                  onClick={handleShareTelegram}
+                  className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-600 transition-all active:scale-90"
+                  title={t.share}
+                >
+                  <span className="text-base leading-none">↗</span>
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
