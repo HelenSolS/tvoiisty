@@ -31,6 +31,8 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
   const [stableOrderIds, setStableOrderIds] = useState<string[]>([]);
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
   const [onlyLiked, setOnlyLiked] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const confirmTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const toggleLike = (sessionId: string, img: string) => {
     setState(prev => {
@@ -60,21 +62,28 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
     }
   };
 
-  const handleDownload = async (imgUrl: string) => {
-    try {
-      const response = await fetch(imgUrl);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `look-${Date.now()}.jpg`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("Download failed", err);
-      alert("Не удалось скачать изображение");
+  const handleDownload = (imgUrl: string) => {
+    // Открываем в новой вкладке — работает на мобильном и десктопе.
+    // На iOS пользователь сохраняет через долгое нажатие.
+    window.open(imgUrl, '_blank', 'noopener');
+  };
+
+  const handleShare = (imgUrl: string) => {
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(imgUrl)}`;
+    window.open(shareUrl, '_blank', 'noopener');
+  };
+
+  const handleDeleteClick = (id: string) => {
+    if (confirmDeleteId === id) {
+      // Второй тап — подтверждаем удаление
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+      setConfirmDeleteId(null);
+      void deleteLook(id);
+    } else {
+      // Первый тап — показываем подтверждение, сбрасываем через 3 сек
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+      setConfirmDeleteId(id);
+      confirmTimerRef.current = setTimeout(() => setConfirmDeleteId(null), 3000);
     }
   };
 
@@ -219,7 +228,7 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
                     alt={`Look ${idx}`}
                     className="w-full h-full object-contain rounded-[2.5rem]"
                   />
-                  {/* Top-right: like + delete — always visible */}
+                  {/* Top-right: like + delete с подтверждением */}
                   <div className="absolute top-4 right-4 flex flex-col gap-2.5">
                     <button
                       onClick={(e) => { e.stopPropagation(); toggleLike(item.id, item.imageUrl); }}
@@ -228,11 +237,15 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
                       <span className="text-lg leading-none">{isLiked ? '♥' : '♡'}</span>
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); void deleteLook(item.id); }}
+                      onClick={(e) => { e.stopPropagation(); handleDeleteClick(item.id); }}
                       disabled={deletingIds.includes(item.id)}
-                      className="w-11 h-11 rounded-full bg-white/90 backdrop-blur-sm shadow-md flex items-center justify-center text-red-400 transition-all active:scale-90 disabled:opacity-40"
+                      className={`w-11 h-11 rounded-full bg-white/90 backdrop-blur-sm shadow-md flex items-center justify-center transition-all active:scale-90 disabled:opacity-40 ${confirmDeleteId === item.id ? 'bg-red-500 text-white shadow-lg' : 'text-slate-300'}`}
+                      title={confirmDeleteId === item.id ? 'Нажмите ещё раз — удалить' : 'Удалить'}
                     >
-                      <span className="text-xl font-light leading-none">×</span>
+                      {confirmDeleteId === item.id
+                        ? <span className="text-[9px] font-black uppercase leading-none">Удалить?</span>
+                        : <span className="text-xl font-light leading-none">×</span>
+                      }
                     </button>
                   </div>
                   {/* New indicator */}
@@ -269,9 +282,17 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDownload(item.imageUrl); }}
                       className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-500 transition-all active:scale-90 hover:shadow-lg"
-                      title="Скачать"
+                      title="Открыть / сохранить"
                     >
                       <span className="text-base leading-none">↓</span>
+                    </button>
+                    {/* Share Telegram */}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleShare(item.imageUrl); }}
+                      className="w-11 h-11 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center text-slate-500 transition-all active:scale-90 hover:shadow-lg"
+                      title="Поделиться в Telegram"
+                    >
+                      <span className="text-base leading-none">↗</span>
                     </button>
                   </div>
                 </div>
@@ -313,19 +334,26 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
                 {/* Mini action row */}
                 <div className="mt-2 flex gap-1.5 justify-end px-1">
                   <button
-                    onClick={(e) => { e.stopPropagation(); void deleteLook(item.id); }}
+                    onClick={(e) => { e.stopPropagation(); handleDeleteClick(item.id); }}
                     disabled={deletingIds.includes(item.id)}
-                    className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-red-400 text-sm active:scale-90 transition-all disabled:opacity-40"
-                    title="Удалить"
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm active:scale-90 transition-all disabled:opacity-40 ${confirmDeleteId === item.id ? 'bg-red-500 text-white' : 'bg-slate-100 text-slate-300'}`}
+                    title={confirmDeleteId === item.id ? 'Нажмите ещё раз — удалить' : 'Удалить'}
                   >
                     <span className="leading-none font-light">×</span>
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); handleDownload(item.imageUrl); }}
                     className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-sm active:scale-90 transition-all"
-                    title="Скачать"
+                    title="Открыть / сохранить"
                   >
                     <span className="leading-none">↓</span>
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleShare(item.imageUrl); }}
+                    className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-sm active:scale-90 transition-all"
+                    title="Поделиться в Telegram"
+                  >
+                    <span className="leading-none">↗</span>
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onReanimate?.(item.id); }}

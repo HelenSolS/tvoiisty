@@ -930,19 +930,29 @@ const App: React.FC = () => {
           onResult={(sessionId: string, imageUrl: string) => {
             setState(prev => {
               const history = prev.auth?.lookHistory || [];
-              const itemId = sessionId && sessionId !== 'tryon-lite' ? sessionId : `tryon-lite-${Date.now()}`;
               return {
                 ...prev,
                 auth: {
                   ...prev.auth,
                   lookHistory: [
-                    { id: itemId, imageUrl, timestamp: Date.now(), isNew: true },
-                    ...history.slice(0, 49),
+                    { id: sessionId, imageUrl, timestamp: Date.now(), isNew: true },
+                    ...history.filter(h => h.id !== sessionId).slice(0, 49),
                   ],
                 },
               };
             });
             setHasNewHistoryFromQuick(true);
+          }}
+          onVideoResult={(sessionId: string, videoUrl: string) => {
+            setState(prev => ({
+              ...prev,
+              auth: {
+                ...prev.auth,
+                lookHistory: (prev.auth?.lookHistory || []).map(item =>
+                  item.id === sessionId ? { ...item, videoUrl } : item
+                ),
+              },
+            }));
           }}
         />
       );

@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Dropzone } from './Dropzone';
-import { FullscreenPreview } from './FullscreenPreview';
 import { AppState } from '../types';
 import { MOCK_SHOPS } from '../constants';
 import { IMAGE_VALIDATION_ERROR, isValidImageFile } from '../utils/fileValidation';
+import { compressImageToBase64 } from '../utils/imageCompression';
 
 interface UploadBoxProps {
   // Пропсы для режима "фото пользователя"
@@ -31,8 +31,6 @@ const UploadBox: React.FC<UploadBoxProps> = ({
   setState,
   disableTryOnActions = false,
 }) => {
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
-
   // Режим "фото пользователя" (шаг 1) — если передан onUploadNew
   const isUserMode = !!onUploadNew;
 
@@ -106,7 +104,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({
           type="file"
           accept="image/*"
           className="hidden"
-          onChange={(e) => {
+          onChange={async (e) => {
             const file = e.target.files?.[0];
             if (!file || !onUploadNew) return;
             if (!isValidImageFile(file)) {
@@ -114,15 +112,16 @@ const UploadBox: React.FC<UploadBoxProps> = ({
               e.target.value = '';
               return;
             }
-            const reader = new FileReader();
-            reader.onloadend = () => {
-              const result = reader.result;
-              if (typeof result === 'string') {
-                onUploadNew(result);
-              }
-            };
-            reader.readAsDataURL(file);
             e.target.value = '';
+            try {
+              const compressed = await compressImageToBase64(file);
+              onUploadNew(compressed);
+            } catch {
+              // Fallback без сжатия
+              const reader = new FileReader();
+              reader.onloadend = () => { if (typeof reader.result === 'string') onUploadNew(reader.result); };
+              reader.readAsDataURL(file);
+            }
           }}
         />
 
@@ -235,6 +234,18 @@ const UploadBox: React.FC<UploadBoxProps> = ({
   // Режим "одежда / галерея" (шаг 2) — если передан onUpload
   const [galleryMode, setGalleryMode] = useState<'grid' | 'scroll'>('grid');
   const [showUpload, setShowUpload] = useState(false);
+  const [scrollToId, setScrollToId] = useState<string | null>(null);
+  const scrollRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  useEffect(() => {
+    if (scrollToId && galleryMode === 'scroll') {
+      const el = scrollRefs.current[scrollToId];
+      if (el) {
+        setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+      }
+      setScrollToId(null);
+    }
+  }, [scrollToId, galleryMode]);
 
   const deleteGarment = (img: string) => {
     setState(prev => {
@@ -398,49 +409,52 @@ const UploadBox: React.FC<UploadBoxProps> = ({
 
       <div className="w-full max-w-md">
         {galleryMode === 'scroll' ? (
-          /* Вертикальный слайдер — крупные карточки */
+          /* Вертикальный слайдер — крупные карточки, кнопки снизу */
           <div className="space-y-8 pb-10">
             {sortedItems.map((item) => {
               const isLiked = likedLooks.includes(item.imageUrl);
               return (
-                <div key={item.id} className="relative w-full">
+                <div
+                  key={item.id}
+                  ref={(el) => { scrollRefs.current[item.id] = el; }}
+                  className="relative w-full"
+                >
                   <div className="relative aspect-[3/4] rounded-[2.5rem] overflow-hidden shadow-xl bg-slate-50 border-4 border-white flex items-center justify-center">
                     <img
                       src={item.imageUrl}
                       alt={item.title}
                       className="w-full h-full object-contain rounded-[2.5rem]"
-                      onClick={() => setPreviewImage(item.imageUrl)}
                     />
-                    {/* Кнопки всегда видны */}
-                    <div className="absolute top-4 right-4 flex flex-col gap-2.5">
+                    {/* Лайк + удалить — верхний правый угол */}
+                    <div className="absolute top-4 right-4 flex flex-col gap-2">
                       <button
                         onClick={(e) => { e.stopPropagation(); toggleLike(item.imageUrl); }}
-                        className={`w-11 h-11 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-md transition-all active:scale-90 ${isLiked ? 'text-red-500' : 'text-slate-400'}`}
+                        className={`w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-md transition-all active:scale-90 ${isLiked ? 'text-red-500' : 'text-slate-400'}`}
                         title="Лайк"
                       >
-                        <span className="text-lg leading-none">{isLiked ? '♥' : '♡'}</span>
+                        <span className="text-base leading-none">{isLiked ? '♥' : '♡'}</span>
                       </button>
-                      {onUpload && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); if (!disableTryOnActions) onUpload(item.imageUrl); }}
-                          disabled={disableTryOnActions}
-                          className={`h-11 px-4 bg-[var(--primary)] rounded-full flex items-center gap-1.5 text-white shadow-md transition-all active:scale-90 ${disableTryOnActions ? 'opacity-40 cursor-not-allowed' : 'hover:shadow-lg'}`}
-                          title="Примерить"
-                        >
-                          <span className="text-base leading-none">◎</span>
-                          <span className="text-[10px] font-black uppercase tracking-wider leading-none">Примерить</span>
-                        </button>
-                      )}
                       {item.isUserUploaded && (
                         <button
                           onClick={(e) => { e.stopPropagation(); deleteGarment(item.imageUrl); }}
-                          className="w-11 h-11 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-red-400 shadow-md transition-all active:scale-90"
+                          className="w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-red-400 shadow-md transition-all active:scale-90"
                           title="Удалить"
                         >
                           <span className="text-xl font-light leading-none">×</span>
                         </button>
                       )}
                     </div>
+                    {/* ◎ Примерить — нижний правый угол */}
+                    {onUpload && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); if (!disableTryOnActions) onUpload(item.imageUrl); }}
+                        disabled={disableTryOnActions}
+                        className={`absolute bottom-4 right-4 w-12 h-12 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg transition-all active:scale-90 ${disableTryOnActions ? 'opacity-40 cursor-not-allowed text-slate-300' : 'text-[var(--primary)] hover:shadow-xl'}`}
+                        title="Примерить"
+                      >
+                        <span className="text-xl leading-none">◎</span>
+                      </button>
+                    )}
                   </div>
                   <div className="mt-3 px-2">
                     <p className="text-xs font-black uppercase tracking-widest text-slate-900 truncate">{item.title}</p>
@@ -451,52 +465,44 @@ const UploadBox: React.FC<UploadBoxProps> = ({
             })}
           </div>
         ) : (
-          /* Сетка 2 колонки */
+          /* Сетка 2 колонки — клик по фото переходит в листалку */
           <div className="grid grid-cols-2 gap-4 px-2 pb-10">
             {sortedItems.map((item) => {
               const isLiked = likedLooks.includes(item.imageUrl);
               return (
                 <div key={item.id} className="flex flex-col">
-                  <div className="relative aspect-[3/4] rounded-[2rem] overflow-hidden shadow-md bg-slate-50 border-2 border-white mb-2 flex items-center justify-center">
+                  <div
+                    className="relative aspect-[3/4] rounded-[2rem] overflow-hidden shadow-md bg-slate-50 border-2 border-white mb-2 flex items-center justify-center cursor-pointer"
+                    onClick={() => { setScrollToId(item.id); setGalleryMode('scroll'); }}
+                  >
                     <img
                       src={item.imageUrl}
                       alt={item.title}
                       className="w-full h-full object-contain rounded-[2rem]"
-                      onClick={() => setPreviewImage(item.imageUrl)}
                     />
-                    {/* Кнопки всегда видны */}
-                    <div className="absolute top-2.5 right-2.5 flex flex-col gap-2">
+                    {/* Лайк — верхний правый */}
+                    <div className="absolute top-2.5 right-2.5">
                       <button
                         onClick={(e) => { e.stopPropagation(); toggleLike(item.imageUrl); }}
-                        className={`w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm transition-all active:scale-90 ${isLiked ? 'text-red-500' : 'text-slate-300'}`}
+                        className={`w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm transition-all active:scale-90 ${isLiked ? 'text-red-500' : 'text-slate-300'}`}
                         title="Лайк"
                       >
                         <span className="text-sm leading-none">{isLiked ? '♥' : '♡'}</span>
                       </button>
+                    </div>
+                    {/* ◎ Примерить — нижний правый */}
                     {onUpload && (
                       <button
                         onClick={(e) => { e.stopPropagation(); if (!disableTryOnActions) onUpload(item.imageUrl); }}
                         disabled={disableTryOnActions}
-                        className={`h-8 px-2.5 bg-[var(--primary)] rounded-full flex items-center gap-1 text-white shadow-sm transition-all active:scale-90 ${disableTryOnActions ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        className={`absolute bottom-2.5 right-2.5 w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-md transition-all active:scale-90 ${disableTryOnActions ? 'opacity-40 cursor-not-allowed text-slate-300' : 'text-[var(--primary)]'}`}
                         title="Примерить"
                       >
-                        <span className="text-xs leading-none">◎</span>
-                        <span className="text-[9px] font-black uppercase tracking-wide leading-none">Примерить</span>
+                        <span className="text-base leading-none">◎</span>
                       </button>
                     )}
-                      {item.isUserUploaded && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); deleteGarment(item.imageUrl); }}
-                          className="w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-red-400 shadow-sm transition-all active:scale-90"
-                          title="Удалить"
-                        >
-                          <span className="text-lg font-light leading-none">×</span>
-                        </button>
-                      )}
-                    </div>
                   </div>
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-900 truncate px-1">{item.title}</p>
-                  <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 truncate px-1 mt-0.5">{item.shopName}</p>
                 </div>
               );
             })}
@@ -504,7 +510,6 @@ const UploadBox: React.FC<UploadBoxProps> = ({
         )}
       </div>
 
-      <FullscreenPreview image={previewImage} onClose={() => setPreviewImage(null)} />
     </div>
   );
 };
