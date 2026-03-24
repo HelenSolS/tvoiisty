@@ -26,6 +26,7 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
   onViewed,
 }) => {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewVideo, setPreviewVideo] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [stableOrderIds, setStableOrderIds] = useState<string[]>([]);
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
@@ -399,11 +400,15 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
                   {item.isNew && (
                     <span className="absolute top-2.5 left-2.5 w-2.5 h-2.5 rounded-full bg-[var(--primary)]" />
                   )}
-                  {/* Индикатор — есть видео */}
+                  {/* Индикатор — есть видео (кликабельный) */}
                   {item.videoUrl && (
-                    <div className="absolute bottom-2.5 left-2.5 w-6 h-6 bg-[var(--primary)]/85 backdrop-blur-sm rounded-full flex items-center justify-center text-white shadow-sm">
-                      <span className="text-[8px] leading-none">▷</span>
-                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setPreviewVideo(item.videoUrl!); }}
+                      className="absolute bottom-2.5 left-2.5 w-8 h-8 bg-[var(--primary)] backdrop-blur-sm rounded-full flex items-center justify-center text-white shadow-md active:scale-90 transition-all"
+                      title="Смотреть анимацию"
+                    >
+                      <span className="text-[10px] leading-none">▶</span>
+                    </button>
                   )}
                 </div>
                 {/* Mini action row */}
@@ -445,6 +450,29 @@ export const LookScroller: React.FC<LookScrollerProps> = ({
       )}
 
       <FullscreenPreview image={previewImage} onClose={() => setPreviewImage(null)} />
+
+      {/* Fullscreen video preview (grid mode) */}
+      {previewVideo && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
+          onClick={() => setPreviewVideo(null)}
+        >
+          <div className="relative w-full max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
+            <video
+              src={previewVideo}
+              autoPlay loop playsInline muted
+              className="w-full rounded-[2rem] object-cover"
+              style={{ aspectRatio: '9/16' }}
+            />
+            <button
+              onClick={() => setPreviewVideo(null)}
+              className="absolute top-3 right-3 w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-white text-xl"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
